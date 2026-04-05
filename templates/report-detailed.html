@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080">
+<title>Claude Carbon Report - Detailed</title>
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=owner-text@400,500,600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1080px;
+    height: 1080px;
+    background: #1b0b45;
+    color: #faf8f5;
+    font-family: 'Owner Text', sans-serif;
+    font-weight: 400;
+    overflow: hidden;
+  }
+
+  .card {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 80px 80px 48px;
+  }
+
+  .whisper {
+    font-style: italic;
+    font-size: 19px;
+    color: #7a6e63;
+    margin-bottom: 40px;
+  }
+
+  /* compact hero */
+  .hero {
+    margin-bottom: 48px;
+  }
+
+  .hero-line {
+    font-size: 26px;
+    color: #7a6e63;
+    line-height: 1.3;
+  }
+
+  .hero-number {
+    font-family: 'Clash Display', sans-serif;
+    font-weight: 700;
+    font-size: 80px;
+    line-height: 1;
+    letter-spacing: -3px;
+    margin: 4px 0 6px;
+  }
+
+  .hero-number .val { color: #faf8f5; }
+  .hero-number .unit {
+    font-size: 36px;
+    color: #7a6e63;
+    font-weight: 500;
+    letter-spacing: 0;
+    margin-left: 4px;
+  }
+
+  .hero-line strong {
+    color: #faf8f5;
+    font-weight: 500;
+  }
+
+  /* inline stats row */
+  .stats-inline {
+    display: flex;
+    gap: 48px;
+    padding: 24px 0;
+    border-top: 1px solid rgba(122, 110, 99, 0.12);
+    border-bottom: 1px solid rgba(122, 110, 99, 0.12);
+    margin-bottom: 40px;
+  }
+
+  .si-item {}
+
+  .si-val {
+    font-family: 'Clash Display', sans-serif;
+    font-weight: 700;
+    font-size: 28px;
+    color: #f55c0f;
+    letter-spacing: -0.5px;
+  }
+
+  .si-label {
+    font-size: 14px;
+    color: #7a6e63;
+    margin-top: 2px;
+  }
+
+  /* projects stack */
+  .projects {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .projects-label {
+    font-style: italic;
+    font-size: 17px;
+    color: #7a6e63;
+    margin-bottom: 20px;
+  }
+
+  .project {
+    display: flex;
+    align-items: baseline;
+    padding: 18px 0;
+    border-bottom: 1px solid rgba(122, 110, 99, 0.08);
+  }
+
+  .project:last-child { border-bottom: none; }
+
+  .project-num {
+    font-family: 'Clash Display', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: rgba(122, 110, 99, 0.3);
+    width: 32px;
+    flex-shrink: 0;
+  }
+
+  .project-name {
+    font-family: 'Clash Display', sans-serif;
+    font-weight: 600;
+    font-size: 22px;
+    color: #faf8f5;
+    flex: 1;
+  }
+
+  .project-sessions {
+    font-size: 15px;
+    color: #7a6e63;
+    margin-right: 24px;
+  }
+
+  .project-co2 {
+    font-family: 'Clash Display', sans-serif;
+    font-weight: 700;
+    font-size: 22px;
+    color: #f55c0f;
+    text-align: right;
+    min-width: 100px;
+  }
+
+  /* footer CTA */
+  .footer {
+    margin-top: auto;
+    padding-top: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .cta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .cta-text {
+    font-size: 15px;
+    color: #faf8f5;
+    opacity: 0.7;
+  }
+
+  .cta-arrow {
+    font-family: 'Clash Display', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: #f55c0f;
+  }
+
+  .cta-link {
+    font-family: 'Clash Display', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    color: #f55c0f;
+  }
+
+  .author {
+    font-size: 14px;
+    color: rgba(122, 110, 99, 0.5);
+  }
+</style>
+</head>
+<body>
+<div class="card">
+
+  <div class="whisper">claude carbon report</div>
+
+  <div class="hero">
+    <span class="hero-line">J'ai consomme</span>
+    <div class="hero-number"><span class="val">{{TOTAL_CO2_VALUE}}</span><span class="unit">{{TOTAL_CO2_UNIT}} de CO₂</span></div>
+    <span class="hero-line">en <strong>{{TOTAL_SESSIONS}} sessions</strong> depuis {{FIRST_DATE}}</span>
+  </div>
+
+  <div class="stats-inline">
+    <div class="si-item">
+      <div class="si-val">{{EQUIV_KM}} km</div>
+      <div class="si-label">equivalent voiture</div>
+    </div>
+    <div class="si-item">
+      <div class="si-val">${{TOTAL_COST}}</div>
+      <div class="si-label">cout API estime</div>
+    </div>
+    <div class="si-item">
+      <div class="si-val">{{CO2_2026_VALUE}} {{CO2_2026_UNIT}}</div>
+      <div class="si-label">en 2026</div>
+    </div>
+    <div class="si-item">
+      <div class="si-val">{{TOP_MODEL}}</div>
+      <div class="si-label">modele principal</div>
+    </div>
+  </div>
+
+  <div class="projects">
+    <div class="projects-label">repartition par projet</div>
+    <div class="project">
+      <span class="project-num">01</span>
+      <span class="project-name">{{P1_NAME}}</span>
+      <span class="project-sessions">{{P1_SESSIONS}} sessions</span>
+      <span class="project-co2">{{P1_CO2}}</span>
+    </div>
+    <div class="project">
+      <span class="project-num">02</span>
+      <span class="project-name">{{P2_NAME}}</span>
+      <span class="project-sessions">{{P2_SESSIONS}} sessions</span>
+      <span class="project-co2">{{P2_CO2}}</span>
+    </div>
+    <div class="project">
+      <span class="project-num">03</span>
+      <span class="project-name">{{P3_NAME}}</span>
+      <span class="project-sessions">{{P3_SESSIONS}} sessions</span>
+      <span class="project-co2">{{P3_CO2}}</span>
+    </div>
+    <div class="project">
+      <span class="project-num">04</span>
+      <span class="project-name">{{P4_NAME}}</span>
+      <span class="project-sessions">{{P4_SESSIONS}} sessions</span>
+      <span class="project-co2">{{P4_CO2}}</span>
+    </div>
+    <div class="project">
+      <span class="project-num">05</span>
+      <span class="project-name">{{P5_NAME}}</span>
+      <span class="project-sessions">{{P5_SESSIONS}} sessions</span>
+      <span class="project-co2">{{P5_CO2}}</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="cta">
+      <span class="cta-text">Mesure le tien</span>
+      <span class="cta-arrow">→</span>
+      <span class="cta-link">github.com/gwittebolle/claude-carbon</span>
+    </div>
+    <span class="author">gaetanwittebolle</span>
+  </div>
+
+</div>
+</body>
+</html>
