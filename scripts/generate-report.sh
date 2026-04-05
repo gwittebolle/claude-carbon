@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # generate-report.sh — Generate Claude Carbon Report PNGs from DB stats.
-# Exports 2 variants: summary (stats only) + detailed (with projects).
+# Usage: generate-report.sh [--since YYYY-MM-DD] [--all]
+# Default: since January 1st of current year.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,6 +10,37 @@ TEMPLATE_DIR="$PROJECT_DIR/templates"
 EXPORT_DIR="$PROJECT_DIR/exports"
 DB_PATH="${HOME}/.claude/claude-carbon/carbon.db"
 TODAY="$(date +%Y-%m-%d)"
+YEAR="$(date +%Y)"
+
+# ── Parse args ──────────────────────────────────────────────
+SINCE="${YEAR}-01-01"
+SINCE_LABEL="janvier ${YEAR}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --since)
+      SINCE="$2"
+      SINCE_LABEL="$2"
+      shift 2
+      ;;
+    --all)
+      SINCE=""
+      SINCE_LABEL="le début"
+      shift
+      ;;
+    *)
+      echo "Usage: generate-report.sh [--since YYYY-MM-DD] [--all]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Build SQL WHERE clause
+if [ -n "$SINCE" ]; then
+  WHERE="WHERE started_at >= '${SINCE}'"
+else
+  WHERE=""
+fi
 
 # ── Deps check ──────────────────────────────────────────────
 for cmd in sqlite3 node; do
@@ -26,17 +58,15 @@ fi
 mkdir -p "$EXPORT_DIR"
 
 # ── Query DB ────────────────────────────────────────────────
-echo "Querying carbon.db..."
+echo "Querying carbon.db (since ${SINCE_LABEL})..."
 
 read -r TOTAL_SESSIONS TOTAL_CO2_RAW TOTAL_COST_RAW FIRST_DATE_RAW <<< \
-  "$(sqlite3 "$DB_PATH" "SELECT COUNT(*), COALESCE(SUM(co2_grams), 0), COALESCE(SUM(cost_usd), 0), MIN(started_at) FROM sessions;" | tr '|' ' ')"
+  "$(sqlite3 "$DB_PATH" "SELECT COUNT(*), COALESCE(SUM(co2_grams), 0), COALESCE(SUM(cost_usd), 0), COALESCE(MIN(started_at), '') FROM sessions ${WHERE};" | tr '|' ' ')"
 
-CO2_2026_RAW="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(co2_grams), 0) FROM sessions WHERE started_at >= '2026-01-01';")"
+# Top 5 projects
+TOP_PROJECTS="$(sqlite3 -separator '|' "$DB_PATH" "SELECT project, SUM(co2_grams), COUNT(*) FROM sessions ${WHERE} GROUP BY project ORDER BY SUM(co2_grams) DESC LIMIT 5;")"
 
-# Top 5 projects (name, co2, session count)
-TOP_PROJECTS="$(sqlite3 -separator '|' "$DB_PATH" "SELECT project, SUM(co2_grams), COUNT(*) FROM sessions GROUP BY project ORDER BY SUM(co2_grams) DESC LIMIT 5;")"
-
-TOP_MODEL="$(sqlite3 "$DB_PATH" "SELECT model FROM sessions GROUP BY model ORDER BY COUNT(*) DESC LIMIT 1;")"
+TOP_MODEL="$(sqlite3 "$DB_PATH" "SELECT model FROM sessions ${WHERE} GROUP BY model ORDER BY COUNT(*) DESC LIMIT 1;")"
 
 # ── Format values ───────────────────────────────────────────
 format_co2() {
@@ -48,17 +78,7 @@ format_co2() {
   fi
 }
 
-format_co2_parts() {
-  local grams="$1"
-  if (( $(echo "$grams >= 1000" | bc -l) )); then
-    echo "$(echo "$grams" | awk '{printf "%.1f", $1/1000}') kg"
-  else
-    echo "$(echo "$grams" | awk '{printf "%.0f", $1}') g"
-  fi
-}
-
-read -r TOTAL_CO2_VALUE TOTAL_CO2_UNIT <<< "$(format_co2_parts "$TOTAL_CO2_RAW")"
-read -r CO2_2026_VALUE CO2_2026_UNIT <<< "$(format_co2_parts "$CO2_2026_RAW")"
+read -r TOTAL_CO2_VALUE TOTAL_CO2_UNIT <<< "$(format_co2 "$TOTAL_CO2_RAW")"
 TOTAL_COST="$(echo "$TOTAL_COST_RAW" | awk '{printf "%.0f", $1}')"
 FIRST_DATE="$(echo "$FIRST_DATE_RAW" | cut -c1-10)"
 EQUIV_KM="$(echo "$TOTAL_CO2_RAW" | awk '{printf "%.1f", $1/120}')"
@@ -70,13 +90,13 @@ TOP_MODEL_DISPLAY="$(echo "$TOP_MODEL" | sed 's/claude-//' | sed 's/-4-6//' | se
 declare -a P_NAME P_CO2 P_SESSIONS
 i=0
 while IFS='|' read -r pname pco2 psessions; do
+  [ -z "$pname" ] && continue
   P_NAME[$i]="$pname"
   P_CO2[$i]="$(format_co2 "$pco2")"
   P_SESSIONS[$i]="$psessions"
   i=$((i+1))
 done <<< "$TOP_PROJECTS"
 
-# Pad to 5 entries
 for ((j=i; j<5; j++)); do
   P_NAME[$j]="-"
   P_CO2[$j]="-"
@@ -90,12 +110,11 @@ inject_common() {
   local src="$1" dst="$2"
   sed \
     -e "s|{{TODAY}}|${TODAY}|g" \
+    -e "s|{{SINCE_LABEL}}|${SINCE_LABEL}|g" \
     -e "s|{{TOTAL_CO2_VALUE}}|${TOTAL_CO2_VALUE}|g" \
     -e "s|{{TOTAL_CO2_UNIT}}|${TOTAL_CO2_UNIT}|g" \
     -e "s|{{TOTAL_SESSIONS}}|${TOTAL_SESSIONS}|g" \
     -e "s|{{FIRST_DATE}}|${FIRST_DATE}|g" \
-    -e "s|{{CO2_2026_VALUE}}|${CO2_2026_VALUE}|g" \
-    -e "s|{{CO2_2026_UNIT}}|${CO2_2026_UNIT}|g" \
     -e "s|{{TOTAL_COST}}|${TOTAL_COST}|g" \
     -e "s|{{EQUIV_KM}}|${EQUIV_KM}|g" \
     -e "s|{{TOP_MODEL}}|${TOP_MODEL_DISPLAY}|g" \
