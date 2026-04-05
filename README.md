@@ -97,6 +97,84 @@ These are order-of-magnitude estimates, not precise measurements. Factors are ed
 
 `jq` and `sqlite3` are pre-installed on macOS. On Linux: `apt install jq sqlite3`.
 
+## Reduce your footprint
+
+Measuring is step one. Here are concrete levers to reduce your AI carbon footprint, ranked by impact.
+
+### Use the right model for the task
+
+Output tokens cost 5x more energy than input tokens. Opus consumes ~3x more than Sonnet per token.
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-haiku-4-5"
+  }
+}
+```
+
+Use Opus for architecture and planning. Sonnet for daily work. Haiku for subagents (exploration, file reading, reviews). This alone can cut your emissions by 60%.
+
+### Install RTK (Rust Token Killer)
+
+[RTK](https://github.com/rtk-ai/rtk) is a CLI proxy that filters noise from shell outputs (progress bars, verbose logs, passing tests) before they hit the context window. 60-90% token reduction on CLI commands, zero quality loss.
+
+```bash
+brew install rtk-ai/tap/rtk
+rtk init -g
+```
+
+### Reduce thinking tokens
+
+Claude's extended thinking can use up to 32k hidden tokens per message. Capping it reduces consumption without degrading quality on routine tasks.
+
+```json
+{
+  "env": {
+    "MAX_THINKING_TOKENS": "10000"
+  }
+}
+```
+
+### Compact earlier
+
+By default, Claude Code compacts context at 95% usage. Compacting earlier keeps context cleaner and avoids bloated sessions.
+
+```json
+{
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50"
+  }
+}
+```
+
+### Write concise instructions
+
+Add to your project's CLAUDE.md:
+
+```
+Be concise. No preamble, no summaries unless asked.
+```
+
+Output tokens are the most expensive in both cost and energy.
+
+### Combined impact
+
+| Lever | Estimated reduction |
+|-------|-------------------|
+| Right model per task | -60% vs all-Opus |
+| RTK | -70% on CLI tokens |
+| Thinking cap at 10k | -70% on thinking tokens |
+| Haiku subagents | -80% on exploration |
+| **All combined** | **-50 to 70% total** |
+
+### Further reading
+
+- [IEA - Energy and AI (2025)](https://www.iea.org/reports/energy-and-ai/) - data center projections
+- [Jegham et al. - How Hungry is AI?](https://arxiv.org/abs/2505.09598) - per-model energy measurements
+- [UCL/UNESCO - 90% AI energy reduction](https://www.ucl.ac.uk/news/2025/jul/practical-changes-could-reduce-ai-energy-demand-90) - frugal AI approaches
+- [GreenIT.fr - AI impacts 2025-2030](https://www.greenit.fr/impacts-ia-monde-2025-2030-rapport/) - French data
+
 ## Why
 
 Every Claude Code session uses real compute, real energy, real emissions. The number is small per query, but it adds up. Making it visible is the first step to owning it.
