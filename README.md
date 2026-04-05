@@ -17,7 +17,7 @@ Track the carbon footprint of your Claude Code sessions.
 ## Example report
 
 <p align="center">
-  <img src="docs/example-report.png?v=2" alt="Claude Carbon Report" width="540">
+  <img src="docs/example-report-v2.png" alt="Claude Carbon Report" width="540">
 </p>
 
 Generate yours:
