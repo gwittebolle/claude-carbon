@@ -1,0 +1,10 @@
+{
+  "_methodology": "Jegham et al. 2025 - AWS PUE 1.14, CIF 0.287 kgCO2e/kWh",
+  "_units": "gCO2e per million tokens",
+  "_source": "https://arxiv.org/abs/2505.09598",
+  "models": {
+    "opus": { "input": 500, "output": 3000 },
+    "sonnet": { "input": 190, "output": 1140 },
+    "haiku": { "input": 95, "output": 570 }
+  }
+}
