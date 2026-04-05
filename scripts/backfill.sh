@@ -71,7 +71,7 @@ while IFS= read -r JSONL_FILE; do
       first_ts: (map(.timestamp // "") | map(select(length > 0)) | sort | first // ""),
       last_ts: (map(.timestamp // "") | map(select(length > 0)) | sort | last // "")
     } |
-    .total_input = (.input_tokens + .cache_creation + .cache_read)
+    .total_input = (.input_tokens + .cache_creation)
   ' "$JSONL_FILE" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
 
   TOTAL_INPUT="$(echo "$AGGREGATED" | jq -r '.total_input // 0')"
