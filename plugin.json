@@ -1,0 +1,17 @@
+{
+  "name": "claude-carbon",
+  "version": "1.0.0",
+  "description": "Track the carbon footprint of your Claude Code sessions",
+  "author": {
+    "name": "Gaetan Wittebolle",
+    "url": "https://github.com/gwittebolle"
+  },
+  "homepage": "https://github.com/gwittebolle/claude-carbon",
+  "license": "MIT",
+  "hooks": "./hooks.json",
+  "skills": "./skills/",
+  "statusLine": {
+    "type": "command",
+    "command": "./scripts/statusline.sh"
+  }
+}
