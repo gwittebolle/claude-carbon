@@ -14,26 +14,36 @@ YEAR="$(date +%Y)"
 
 # ── Parse args ──────────────────────────────────────────────
 SINCE="${YEAR}-01-01"
-SINCE_LABEL="janvier ${YEAR}"
+SINCE_LABEL_FR="janvier ${YEAR}"
+SINCE_LABEL_EN="January ${YEAR}"
+LANG_FILTER="" # empty = both
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --since)
       SINCE="$2"
-      SINCE_LABEL="$2"
+      SINCE_LABEL_FR="$2"
+      SINCE_LABEL_EN="$2"
       shift 2
       ;;
     --all)
       SINCE=""
-      SINCE_LABEL="le début"
+      SINCE_LABEL_FR="le début"
+      SINCE_LABEL_EN="the beginning"
       shift
       ;;
+    --lang)
+      LANG_FILTER="$2"
+      shift 2
+      ;;
     *)
-      echo "Usage: generate-report.sh [--since YYYY-MM-DD] [--all]" >&2
+      echo "Usage: generate-report.sh [--since YYYY-MM-DD] [--all] [--lang fr|en]" >&2
       exit 1
       ;;
   esac
 done
+
+SINCE_LABEL="$SINCE_LABEL_FR"
 
 # Build SQL WHERE clause
 if [ -n "$SINCE" ]; then
@@ -192,37 +202,91 @@ inject_common() {
     "$src" > "$dst"
 }
 
-TMP_SUMMARY="$(mktemp /tmp/claude-carbon-summary-XXXXXX.html)"
-TMP_DETAILED="$(mktemp /tmp/claude-carbon-detailed-XXXXXX.html)"
+# Generate FR templates
+SINCE_LABEL="$SINCE_LABEL_FR"
+TMP_SUMMARY_FR="$(mktemp /tmp/claude-carbon-summary-fr-XXXXXX.html)"
+TMP_DETAILED_FR="$(mktemp /tmp/claude-carbon-detailed-fr-XXXXXX.html)"
+inject_common "$TEMPLATE_DIR/report-summary.html" "$TMP_SUMMARY_FR"
+inject_common "$TEMPLATE_DIR/report-detailed.html" "$TMP_DETAILED_FR"
 
-inject_common "$TEMPLATE_DIR/report-summary.html" "$TMP_SUMMARY"
-inject_common "$TEMPLATE_DIR/report-detailed.html" "$TMP_DETAILED"
+# Generate EN templates
+SINCE_LABEL="$SINCE_LABEL_EN"
+TMP_SUMMARY_EN="$(mktemp /tmp/claude-carbon-summary-en-XXXXXX.html)"
+TMP_DETAILED_EN="$(mktemp /tmp/claude-carbon-detailed-en-XXXXXX.html)"
+inject_common "$TEMPLATE_DIR/report-summary-en.html" "$TMP_SUMMARY_EN"
+inject_common "$TEMPLATE_DIR/report-detailed-en.html" "$TMP_DETAILED_EN"
 
-# Inject monthly bars directly (sed can't handle % and quotes in HTML)
-BARS_HTML=""
-while IFS='|' read -r month_key month_co2; do
-  [ -z "$month_key" ] && continue
-  month_num="${month_key:5:2}"
-  month_num_clean="$(echo "$month_num" | sed 's/^0//')"
-  month_label="$(echo "Jan Fév Mar Avr Mai Jun Jul Aoû Sep Oct Nov Déc" | awk -v n="$month_num_clean" '{print $n}')"
-  if [ "$MAX_MONTH_CO2" -gt 0 ] 2>/dev/null; then
-    pct="$(echo "$month_co2 $MAX_MONTH_CO2" | awk '{printf "%.0f", ($1/$2)*100}')"
-  else
-    pct="10"
-  fi
-  co2_display="$(format_co2 "$month_co2")"
-  BARS_HTML="${BARS_HTML}<div class=\"bar-row\"><span class=\"bar-label\">${month_label}</span><div class=\"bar-track\"><div class=\"bar-fill\" style=\"width: ${pct}%\"></div></div><span class=\"bar-value\">${co2_display}</span></div>"
-done <<< "$MONTHLY_DATA"
+# Inject monthly bars into all summary files
+TMP_SUMMARY="$TMP_SUMMARY_FR"
 
-# Use python to replace the placeholder (handles special chars)
+# Inject monthly bars via python (bash/sed can't handle % in style attrs)
+TMP_MONTHLY="$(mktemp /tmp/claude-carbon-monthly-XXXXXX.txt)"
+echo "$MONTHLY_DATA" > "$TMP_MONTHLY"
+
+export TMP_SUMMARY TMP_MONTHLY
+python3 << 'PYEOF'
+import sys, os
+
+months_fr = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
+summary_file = os.environ["TMP_SUMMARY"]
+monthly_file = os.environ["TMP_MONTHLY"]
+
+# Parse monthly data
+rows = []
+with open(monthly_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+        month_key, co2_str = line.split("|", 1)
+        co2 = float(co2_str)
+        month_num = int(month_key.split("-")[1])
+        label = months_fr[month_num - 1]
+        if co2 >= 1000:
+            display = f"{co2/1000:.1f} kg"
+        else:
+            display = f"{co2:.0f} g"
+        rows.append((label, co2, display))
+
+# Calculate percentages
+max_co2 = max(r[1] for r in rows) if rows else 1
+bars_html = ""
+for label, co2, display in rows:
+    pct = int(round(co2 / max_co2 * 100))
+    bars_html += (
+        f'<div class="bar-row">'
+        f'<span class="bar-label">{label}</span>'
+        f'<div class="bar-track"><div class="bar-fill" style="width: {pct}%"></div></div>'
+        f'<span class="bar-value">{display}</span>'
+        f'</div>\n'
+    )
+
+# Inject into all summary files
+for sf in [summary_file, summary_file.replace("-fr-", "-en-")]:
+    if os.path.exists(sf):
+        with open(sf) as f:
+            content = f.read()
+        content = content.replace("{{MONTHLY_BARS}}", bars_html)
+        with open(sf, "w") as f:
+            f.write(content)
+PYEOF
+
+export TMP_SUMMARY_EN
 python3 -c "
-import sys
-with open('$TMP_SUMMARY', 'r') as f:
-    content = f.read()
-content = content.replace('{{MONTHLY_BARS}}', '''${BARS_HTML}''')
-with open('$TMP_SUMMARY', 'w') as f:
-    f.write(content)
+import os
+sf = os.environ.get('TMP_SUMMARY_EN', '')
+if sf and os.path.exists(sf):
+    months_en = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    months_fr = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
+    with open(sf) as f:
+        c = f.read()
+    for fr, en in zip(months_fr, months_en):
+        c = c.replace(f'>{fr}<', f'>{en}<')
+    with open(sf, 'w') as f:
+        f.write(c)
 "
+
+rm -f "$TMP_MONTHLY"
 
 # ── Find Playwright ─────────────────────────────────────────
 PW_PATH="$(node -e "try { console.log(require.resolve('playwright-core').replace(/\/index\.js$/, '')); } catch(e) { process.exit(1); }" 2>/dev/null)" || true
@@ -252,7 +316,7 @@ echo "Exporting PNGs via Playwright..."
 PORT=8799
 python3 -m http.server "$PORT" --directory /tmp &>/dev/null &
 SERVER_PID=$!
-trap "kill $SERVER_PID 2>/dev/null; rm -f $TMP_SUMMARY $TMP_DETAILED" EXIT
+trap "kill $SERVER_PID 2>/dev/null; rm -f $TMP_SUMMARY_FR $TMP_DETAILED_FR $TMP_SUMMARY_EN $TMP_DETAILED_EN" EXIT
 sleep 0.5
 
 export_png() {
@@ -286,11 +350,15 @@ const { chromium } = require('${PW_PATH}');
   fi
 }
 
-OUT_SUMMARY="$EXPORT_DIR/claude-carbon-summary-${TODAY}.png"
-OUT_DETAILED="$EXPORT_DIR/claude-carbon-detailed-${TODAY}.png"
+if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "fr" ]; then
+  export_png "$TMP_SUMMARY_FR" "$EXPORT_DIR/claude-carbon-summary-fr-${TODAY}.png" "Summary FR"
+  export_png "$TMP_DETAILED_FR" "$EXPORT_DIR/claude-carbon-detailed-fr-${TODAY}.png" "Detailed FR"
+fi
 
-export_png "$TMP_SUMMARY" "$OUT_SUMMARY" "Summary"
-export_png "$TMP_DETAILED" "$OUT_DETAILED" "Detailed"
+if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "en" ]; then
+  export_png "$TMP_SUMMARY_EN" "$EXPORT_DIR/claude-carbon-summary-en-${TODAY}.png" "Summary EN"
+  export_png "$TMP_DETAILED_EN" "$EXPORT_DIR/claude-carbon-detailed-en-${TODAY}.png" "Detailed EN"
+fi
 
 echo ""
 echo "Done. ${EXPORT_DIR}/"

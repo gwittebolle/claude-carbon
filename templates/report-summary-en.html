@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=1080">
@@ -228,42 +228,43 @@
   </div>
 
   <div class="hero">
-    <div class="hero-context">Mon empreinte carbone Claude Code</div>
+    <div class="hero-context">My Claude Code carbon footprint</div>
     <div class="hero-number">{{TOTAL_CO2_VALUE}}</div>
-    <div class="hero-unit">{{TOTAL_CO2_UNIT}} de CO₂ estimés</div>
-    <div class="hero-detail"><strong>{{TOTAL_SESSIONS}} sessions</strong> depuis {{SINCE_LABEL}}</div>
+    <div class="hero-unit">{{TOTAL_CO2_UNIT}} of estimated CO₂</div>
+    <div class="hero-detail"><strong>{{TOTAL_SESSIONS}} sessions</strong> since {{SINCE_LABEL}}</div>
   </div>
 
   <div class="chart">
-    <div class="chart-title">évolution mensuelle</div>
+    <div class="chart-title">monthly breakdown</div>
     {{MONTHLY_BARS}}
   </div>
 
   <div class="metrics">
     <div class="metric">
       <div class="metric-val">{{TOTAL_TOKENS}}M</div>
-      <div class="metric-label">tokens consommés</div>
+      <div class="metric-label">tokens consumed</div>
     </div>
     <div class="metric">
       <div class="metric-val">{{EQUIV_KM}} km</div>
-      <div class="metric-label">équivalent voiture</div>
+      <div class="metric-label">car equivalent</div>
     </div>
     <div class="metric">
       <div class="metric-val">${{TOTAL_COST}}</div>
-      <div class="metric-label">coût API estimé</div>
+      <div class="metric-label">estimated API cost</div>
     </div>
     <div class="metric">
-      <div class="metric-val">~{{PROJECTION}} t/an</div>
-      <div class="metric-label">projection annuelle</div>
+      <div class="metric-val">~{{PROJECTION}} t/yr</div>
+      <div class="metric-label">yearly projection</div>
     </div>
   </div>
 
   <div class="footer">
     <div class="cta">
-      <span class="cta-label">Bilan carbone IT complet ?</span>
-      <span class="cta-link">getcarbonara.com</span>
+      <span class="cta-label">Measure yours</span>
+      <span class="cta-link">github.com/gwittebolle/claude-carbon</span>
     </div>
-    <span class="open-source">claude-carbon (open source)</span>
+    <span class="open-source">open source</span>
+
   </div>
 
 </div>
