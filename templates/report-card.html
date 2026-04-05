@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080">
+<title>Claude Carbon Report</title>
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@700&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=owner-text@400,600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1080px;
+    height: 1080px;
+    background: #1b0b45;
+    color: #faf8f5;
+    font-family: 'Owner Text', sans-serif;
+    font-weight: 400;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Subtle orange glow top */
+  body::before {
+    content: '';
+    position: absolute;
+    top: -200px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 800px;
+    height: 500px;
+    background: radial-gradient(ellipse, rgba(245, 92, 15, 0.12) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 80px 72px 56px;
+  }
+
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .label {
+    font-family: 'Owner Text', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    color: #f55c0f;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 20px;
+  }
+
+  .total-co2 {
+    font-family: 'Clash Display', sans-serif;
+    font-weight: 700;
+    font-size: 120px;
+    line-height: 1;
+    color: #faf8f5;
+    margin-bottom: 12px;
+  }
+
+  .total-co2 .unit {
+    font-size: 48px;
+    color: #7a6e63;
+    margin-left: 4px;
+  }
+
+  .subtitle {
+    font-size: 18px;
+    color: #7a6e63;
+    line-height: 1.4;
+  }
+
+  /* ── Stats row ── */
+  .stats-row {
+    display: flex;
+    justify-content: center;
+    gap: 64px;
+    margin-bottom: 56px;
+    padding: 40px 0;
+    border-top: 1px solid rgba(122, 110, 99, 0.2);
+    border-bottom: 1px solid rgba(122, 110, 99, 0.2);
+  }
+
+  .stat {
+    text-align: center;
+  }
+
+  .stat-value {
+    font-family: 'Clash Display', sans-serif;
+    font-weight: 700;
+    font-size: 48px;
+    color: #f55c0f;
+    line-height: 1.1;
+  }
+
+  .stat-value .stat-unit {
+    font-size: 24px;
+    color: #7a6e63;
+    margin-left: 2px;
+  }
+
+  .stat-label {
+    font-size: 16px;
+    color: #7a6e63;
+    margin-top: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+
+  /* ── Projects section ── */
+  .projects {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .projects-title {
+    font-family: 'Owner Text', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    color: #7a6e63;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 24px;
+  }
+
+  .project-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .project-bar-bg {
+    flex: 1;
+    height: 48px;
+    background: rgba(245, 92, 15, 0.08);
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .project-bar-fill {
+    height: 100%;
+    background: rgba(245, 92, 15, 0.25);
+    border-radius: 6px;
+    min-width: 40px;
+  }
+
+  .project-info {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+  }
+
+  .project-name {
+    font-family: 'Clash Display', sans-serif;
+    font-weight: 700;
+    font-size: 20px;
+    color: #faf8f5;
+  }
+
+  .project-co2 {
+    font-family: 'Clash Display', sans-serif;
+    font-weight: 700;
+    font-size: 20px;
+    color: #f55c0f;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: auto;
+    padding-top: 24px;
+    border-top: 1px solid rgba(122, 110, 99, 0.2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-left, .footer-right {
+    font-size: 14px;
+    color: #7a6e63;
+  }
+
+  .footer-model {
+    font-size: 13px;
+    color: rgba(122, 110, 99, 0.6);
+    text-align: center;
+    flex: 1;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="label">Claude Carbon Report</div>
+    <div class="total-co2">{{TOTAL_CO2_VALUE}}<span class="unit">{{TOTAL_CO2_UNIT}}</span></div>
+    <div class="subtitle">{{TOTAL_SESSIONS}} sessions since {{FIRST_DATE}}</div>
+  </div>
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="stat">
+      <div class="stat-value">{{CO2_2026_VALUE}}<span class="stat-unit">{{CO2_2026_UNIT}}</span></div>
+      <div class="stat-label">2026</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">${{TOTAL_COST}}</div>
+      <div class="stat-label">Total cost</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">{{EQUIV_KM}}<span class="stat-unit">km</span></div>
+      <div class="stat-label">Equiv. car</div>
+    </div>
+  </div>
+
+  <!-- Projects -->
+  <div class="projects">
+    <div class="projects-title">Top projects</div>
+    <div class="project-row">
+      <div class="project-bar-bg">
+        <div class="project-bar-fill" style="width: {{P1_PCT}}%"></div>
+        <div class="project-info">
+          <span class="project-name">{{P1_NAME}}</span>
+          <span class="project-co2">{{P1_CO2}}</span>
+        </div>
+      </div>
+    </div>
+    <div class="project-row">
+      <div class="project-bar-bg">
+        <div class="project-bar-fill" style="width: {{P2_PCT}}%"></div>
+        <div class="project-info">
+          <span class="project-name">{{P2_NAME}}</span>
+          <span class="project-co2">{{P2_CO2}}</span>
+        </div>
+      </div>
+    </div>
+    <div class="project-row">
+      <div class="project-bar-bg">
+        <div class="project-bar-fill" style="width: {{P3_PCT}}%"></div>
+        <div class="project-info">
+          <span class="project-name">{{P3_NAME}}</span>
+          <span class="project-co2">{{P3_CO2}}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span class="footer-left">github.com/gwittebolle/claude-carbon</span>
+    <span class="footer-model">{{TOP_MODEL}}</span>
+    <span class="footer-right">gaetanwittebolle</span>
+  </div>
+
+</div>
+</body>
+</html>

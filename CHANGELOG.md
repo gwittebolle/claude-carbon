@@ -2,6 +2,11 @@
 
 ## 2026-04-05
 
+### feat: generate-report.sh + report-card.html
+PNG card generator for LinkedIn sharing. Queries carbon.db for total CO2, sessions, cost, car km equivalence, top 3 projects, and most used model. Injects into a branded HTML template (violet/orange/cream, Clash Display + Owner Text) and exports retina 2x PNG via Playwright.
+
+## 2026-04-05
+
 ### feat: statusline.sh
 Reads Claude Code status JSON from stdin. Outputs formatted status line with color dot (green/yellow/red), 10-block progress bar, cost, CO2 in adaptive g/kg units, and project name.
 

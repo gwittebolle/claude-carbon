@@ -1,2 +1,3 @@
 *.db
 *.db-journal
+exports/
