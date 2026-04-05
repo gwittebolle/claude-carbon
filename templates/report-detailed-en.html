@@ -1,292 +1,308 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=1080">
-<title>Claude Carbon Report - Detailed</title>
-<link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap" rel="stylesheet">
-<link href="https://api.fontshare.com/v2/css?f[]=owner-text@400,500,600&display=swap" rel="stylesheet">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080" />
+    <title>Claude Carbon Report - Detailed</title>
+    <link
+      href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://api.fontshare.com/v2/css?f[]=owner-text@400,500,600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-  body {
-    width: 1080px;
-    height: 1080px;
-    background: #faf8f5;
-    color: #1d1d1f;
-    font-family: 'Owner Text', sans-serif;
-    font-weight: 400;
-    overflow: hidden;
-  }
+      body {
+        width: 1080px;
+        height: 1080px;
+        background: #faf8f5;
+        color: #1d1d1f;
+        font-family: "Owner Text", sans-serif;
+        font-weight: 400;
+        overflow: hidden;
+      }
 
-  .card {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    padding: 80px 80px 48px;
-  }
+      .card {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        padding: 80px 80px 48px;
+      }
 
-  .topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 48px;
-  }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 48px;
+      }
 
-  .logo {
-    font-family: 'Clash Display', sans-serif;
-    font-weight: 600;
-    font-size: 18px;
-    color: #1d1d1f;
-    letter-spacing: -0.5px;
-  }
+      .logo {
+        font-family: "Clash Display", sans-serif;
+        font-weight: 600;
+        font-size: 18px;
+        color: #1d1d1f;
+        letter-spacing: -0.5px;
+      }
 
-  .logo span { color: #7a6e63; font-weight: 400; }
+      .logo span {
+        color: #7a6e63;
+        font-weight: 400;
+      }
 
-  .date {
-    font-size: 16px;
-    color: #7a6e63;
-  }
+      .date {
+        font-size: 16px;
+        color: #7a6e63;
+      }
 
-  /* compact hero */
-  .hero {
-    margin-bottom: 40px;
-  }
+      /* compact hero */
+      .hero {
+        margin-bottom: 40px;
+      }
 
-  .hero-context {
-    font-size: 20px;
-    color: #7a6e63;
-    margin-bottom: 8px;
-  }
+      .hero-context {
+        font-size: 20px;
+        color: #7a6e63;
+        margin-bottom: 8px;
+      }
 
-  .hero-number {
-    font-family: 'Clash Display', sans-serif;
-    font-weight: 700;
-    font-size: 88px;
-    line-height: 0.9;
-    letter-spacing: -4px;
-    color: #1d1d1f;
-  }
+      .hero-number {
+        font-family: "Clash Display", sans-serif;
+        font-weight: 700;
+        font-size: 88px;
+        line-height: 0.9;
+        letter-spacing: -4px;
+        color: #1d1d1f;
+      }
 
-  .hero-unit {
-    font-family: 'Clash Display', sans-serif;
-    font-weight: 500;
-    font-size: 28px;
-    color: #7a6e63;
-    letter-spacing: -0.5px;
-    margin-top: 8px;
-  }
+      .hero-unit {
+        font-family: "Clash Display", sans-serif;
+        font-weight: 500;
+        font-size: 28px;
+        color: #7a6e63;
+        letter-spacing: -0.5px;
+        margin-top: 8px;
+      }
 
-  .hero-detail {
-    font-size: 17px;
-    color: #7a6e63;
-    margin-top: 12px;
-  }
+      .hero-detail {
+        font-size: 17px;
+        color: #7a6e63;
+        margin-top: 12px;
+      }
 
-  .hero-detail strong {
-    color: #1d1d1f;
-    font-weight: 500;
-  }
+      .hero-detail strong {
+        color: #1d1d1f;
+        font-weight: 500;
+      }
 
-  /* inline metrics */
-  .metrics-row {
-    display: flex;
-    gap: 40px;
-    padding: 20px 0 24px;
-    border-top: 1px solid rgba(29, 29, 31, 0.08);
-    border-bottom: 1px solid rgba(29, 29, 31, 0.08);
-    margin-bottom: 36px;
-  }
+      /* inline metrics */
+      .metrics-row {
+        display: flex;
+        gap: 40px;
+        padding: 20px 0 24px;
+        border-top: 1px solid rgba(29, 29, 31, 0.08);
+        border-bottom: 1px solid rgba(29, 29, 31, 0.08);
+        margin-bottom: 36px;
+      }
 
-  .mr-item {}
+      .mr-item {
+      }
 
-  .mr-val {
-    font-family: 'Clash Display', sans-serif;
-    font-weight: 700;
-    font-size: 22px;
-    color: #1d1d1f;
-    letter-spacing: -0.5px;
-  }
+      .mr-val {
+        font-family: "Clash Display", sans-serif;
+        font-weight: 700;
+        font-size: 22px;
+        color: #1d1d1f;
+        letter-spacing: -0.5px;
+      }
 
-  .mr-label {
-    font-size: 13px;
-    color: #7a6e63;
-    margin-top: 2px;
-  }
+      .mr-label {
+        font-size: 13px;
+        color: #7a6e63;
+        margin-top: 2px;
+      }
 
-  /* projects */
-  .projects {
-    flex: 1;
-  }
+      /* projects */
+      .projects {
+        flex: 1;
+      }
 
-  .projects-label {
-    font-size: 15px;
-    color: #7a6e63;
-    font-style: italic;
-    margin-bottom: 16px;
-  }
+      .projects-label {
+        font-size: 15px;
+        color: #7a6e63;
+        font-style: italic;
+        margin-bottom: 16px;
+      }
 
-  .project {
-    display: flex;
-    align-items: center;
-    padding: 16px 0;
-    border-bottom: 1px solid rgba(29, 29, 31, 0.05);
-  }
+      .project {
+        display: flex;
+        align-items: center;
+        padding: 16px 0;
+        border-bottom: 1px solid rgba(29, 29, 31, 0.05);
+      }
 
-  .project:last-child { border-bottom: none; }
+      .project:last-child {
+        border-bottom: none;
+      }
 
-  .project-rank {
-    font-family: 'Clash Display', sans-serif;
-    font-weight: 600;
-    font-size: 14px;
-    color: rgba(29, 29, 31, 0.2);
-    width: 36px;
-    flex-shrink: 0;
-  }
+      .project-rank {
+        font-family: "Clash Display", sans-serif;
+        font-weight: 600;
+        font-size: 14px;
+        color: rgba(29, 29, 31, 0.2);
+        width: 36px;
+        flex-shrink: 0;
+      }
 
-  .project-name {
-    font-family: 'Clash Display', sans-serif;
-    font-weight: 600;
-    font-size: 20px;
-    color: #1d1d1f;
-    flex: 1;
-    letter-spacing: -0.3px;
-  }
+      .project-name {
+        font-family: "Clash Display", sans-serif;
+        font-weight: 600;
+        font-size: 20px;
+        color: #1d1d1f;
+        flex: 1;
+        letter-spacing: -0.3px;
+      }
 
-  .project-sessions {
-    font-size: 14px;
-    color: #7a6e63;
-    margin-right: 28px;
-  }
+      .project-sessions {
+        font-size: 14px;
+        color: #7a6e63;
+        margin-right: 28px;
+      }
 
-  .project-co2 {
-    font-family: 'Clash Display', sans-serif;
-    font-weight: 700;
-    font-size: 20px;
-    color: #1d1d1f;
-    text-align: right;
-    min-width: 90px;
-  }
+      .project-co2 {
+        font-family: "Clash Display", sans-serif;
+        font-weight: 700;
+        font-size: 20px;
+        color: #1d1d1f;
+        text-align: right;
+        min-width: 90px;
+      }
 
-  /* footer */
-  .footer {
-    margin-top: auto;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-top: 20px;
-    border-top: 1px solid rgba(29, 29, 31, 0.08);
-  }
+      /* footer */
+      .footer {
+        margin-top: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 20px;
+        border-top: 1px solid rgba(29, 29, 31, 0.08);
+      }
 
-  .cta {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
+      .cta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
 
-  .cta-label {
-    font-size: 15px;
-    color: #7a6e63;
-  }
+      .cta-label {
+        font-size: 15px;
+        color: #7a6e63;
+      }
 
-  .cta-link {
-    font-family: 'Clash Display', sans-serif;
-    font-weight: 600;
-    font-size: 15px;
-    color: #f55c0f;
-  }
+      .cta-link {
+        font-family: "Clash Display", sans-serif;
+        font-weight: 600;
+        font-size: 15px;
+        color: #f55c0f;
+      }
 
-  .footer-logo {
-    width: 28px;
-    height: 28px;
-    border-radius: 4px;
-    margin-right: 12px;
-    flex-shrink: 0;
-  }
+      .footer-logo {
+        width: 28px;
+        height: 28px;
+        border-radius: 4px;
+        margin-right: 12px;
+        flex-shrink: 0;
+      }
 
-  .open-source {
-    font-size: 13px;
-    color: #7a6e63;
-    background: rgba(29, 29, 31, 0.04);
-    padding: 6px 14px;
-    border-radius: 4px;
-  }
-</style>
-</head>
-<body>
-<div class="card">
+      .open-source {
+        font-size: 13px;
+        color: #7a6e63;
+        background: rgba(29, 29, 31, 0.04);
+        padding: 6px 14px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="topbar">
+        <div class="logo">claude <span>carbon</span></div>
+        <div class="date">{{TODAY}}</div>
+      </div>
 
-  <div class="topbar">
-    <div class="logo">claude <span>carbon</span></div>
-    <div class="date">{{TODAY}}</div>
-  </div>
+      <div class="hero">
+        <div class="hero-context">My Claude Code carbon footprint</div>
+        <div class="hero-number">{{TOTAL_CO2_VALUE}}</div>
+        <div class="hero-unit">{{TOTAL_CO2_UNIT}} de CO₂ estimés</div>
+        <div class="hero-detail">
+          <strong>{{TOTAL_SESSIONS}} sessions</strong> since {{SINCE_LABEL}}
+        </div>
+      </div>
 
-  <div class="hero">
-    <div class="hero-context">My Claude Code carbon footprint</div>
-    <div class="hero-number">{{TOTAL_CO2_VALUE}}</div>
-    <div class="hero-unit">{{TOTAL_CO2_UNIT}} de CO₂ estimés</div>
-    <div class="hero-detail"><strong>{{TOTAL_SESSIONS}} sessions</strong> since {{SINCE_LABEL}}</div>
-  </div>
+      <div class="metrics-row">
+        <div class="mr-item">
+          <div class="mr-val">{{EQUIV_KM}} km</div>
+          <div class="mr-label">car equivalent</div>
+        </div>
+        <div class="mr-item">
+          <div class="mr-val">${{TOTAL_COST}}</div>
+          <div class="mr-label">estimated API cost</div>
+        </div>
+        <div class="mr-item">
+          <div class="mr-val">{{TOP_MODEL}}</div>
+          <div class="mr-label">primary model</div>
+        </div>
+      </div>
 
-  <div class="metrics-row">
-    <div class="mr-item">
-      <div class="mr-val">{{EQUIV_KM}} km</div>
-      <div class="mr-label">car equivalent</div>
+      <div class="projects">
+        <div class="projects-label">breakdown by project</div>
+        <div class="project">
+          <span class="project-rank">01</span>
+          <span class="project-name">{{P1_NAME}}</span>
+          <span class="project-sessions">{{P1_SESSIONS}} sessions</span>
+          <span class="project-co2">{{P1_CO2}}</span>
+        </div>
+        <div class="project">
+          <span class="project-rank">02</span>
+          <span class="project-name">{{P2_NAME}}</span>
+          <span class="project-sessions">{{P2_SESSIONS}} sessions</span>
+          <span class="project-co2">{{P2_CO2}}</span>
+        </div>
+        <div class="project">
+          <span class="project-rank">03</span>
+          <span class="project-name">{{P3_NAME}}</span>
+          <span class="project-sessions">{{P3_SESSIONS}} sessions</span>
+          <span class="project-co2">{{P3_CO2}}</span>
+        </div>
+        <div class="project">
+          <span class="project-rank">04</span>
+          <span class="project-name">{{P4_NAME}}</span>
+          <span class="project-sessions">{{P4_SESSIONS}} sessions</span>
+          <span class="project-co2">{{P4_CO2}}</span>
+        </div>
+        <div class="project">
+          <span class="project-rank">05</span>
+          <span class="project-name">{{P5_NAME}}</span>
+          <span class="project-sessions">{{P5_SESSIONS}} sessions</span>
+          <span class="project-co2">{{P5_CO2}}</span>
+        </div>
+      </div>
+
+      <div class="footer">
+        <img class="footer-logo" src="logo.png" alt="" />
+        <div class="cta">
+          <span class="cta-label">Measure yours</span>
+          <span class="cta-link">github.com/gwittebolle/claude-carbon</span>
+        </div>
+        <span class="open-source">open source</span>
+      </div>
     </div>
-    <div class="mr-item">
-      <div class="mr-val">${{TOTAL_COST}}</div>
-      <div class="mr-label">estimated API cost</div>
-    </div>
-    <div class="mr-item">
-      <div class="mr-val">{{TOP_MODEL}}</div>
-      <div class="mr-label">primary model</div>
-    </div>
-  </div>
-
-  <div class="projects">
-    <div class="projects-label">breakdown by project</div>
-    <div class="project">
-      <span class="project-rank">01</span>
-      <span class="project-name">{{P1_NAME}}</span>
-      <span class="project-sessions">{{P1_SESSIONS}} sessions</span>
-      <span class="project-co2">{{P1_CO2}}</span>
-    </div>
-    <div class="project">
-      <span class="project-rank">02</span>
-      <span class="project-name">{{P2_NAME}}</span>
-      <span class="project-sessions">{{P2_SESSIONS}} sessions</span>
-      <span class="project-co2">{{P2_CO2}}</span>
-    </div>
-    <div class="project">
-      <span class="project-rank">03</span>
-      <span class="project-name">{{P3_NAME}}</span>
-      <span class="project-sessions">{{P3_SESSIONS}} sessions</span>
-      <span class="project-co2">{{P3_CO2}}</span>
-    </div>
-    <div class="project">
-      <span class="project-rank">04</span>
-      <span class="project-name">{{P4_NAME}}</span>
-      <span class="project-sessions">{{P4_SESSIONS}} sessions</span>
-      <span class="project-co2">{{P4_CO2}}</span>
-    </div>
-    <div class="project">
-      <span class="project-rank">05</span>
-      <span class="project-name">{{P5_NAME}}</span>
-      <span class="project-sessions">{{P5_SESSIONS}} sessions</span>
-      <span class="project-co2">{{P5_CO2}}</span>
-    </div>
-  </div>
-
-  <div class="footer">
-    <img class="footer-logo" src="logo.png" alt="">
-    <div class="cta">
-      <span class="cta-label">Measure yours</span>
-      <span class="cta-link">github.com/gwittebolle/claude-carbon</span>
-    </div>
-    <span class="open-source">open source</span>
-  </div>
-
-</div>
-</body>
+  </body>
 </html>

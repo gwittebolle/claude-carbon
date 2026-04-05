@@ -21,19 +21,19 @@ Factors are in gCO2e per million tokens.
 
 ## Infrastructure parameters
 
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| PUE | 1.14 | AWS datacenter power usage effectiveness |
-| CIF | 0.287 kgCO2e/kWh | Carbon intensity factor (US grid average) |
-| WUE | 0.18 L/kWh | Water usage effectiveness (not used in CO2 calc) |
+| Parameter | Value            | Description                                      |
+| --------- | ---------------- | ------------------------------------------------ |
+| PUE       | 1.14             | AWS datacenter power usage effectiveness         |
+| CIF       | 0.287 kgCO2e/kWh | Carbon intensity factor (US grid average)        |
+| WUE       | 0.18 L/kWh       | Water usage effectiveness (not used in CO2 calc) |
 
 ## Per-model factors (gCO2e per million tokens)
 
-| Model family | Input | Output | Source |
-|-------------|-------|--------|--------|
-| Opus | 500 | 3000 | Extrapolated (3x Sonnet) |
-| Sonnet | 190 | 1140 | Measured (Jegham et al.) |
-| Haiku | 95 | 570 | Extrapolated (0.5x Sonnet) |
+| Model family | Input | Output | Source                     |
+| ------------ | ----- | ------ | -------------------------- |
+| Opus         | 500   | 3000   | Extrapolated (3x Sonnet)   |
+| Sonnet       | 190   | 1140   | Measured (Jegham et al.)   |
+| Haiku        | 95    | 570    | Extrapolated (0.5x Sonnet) |
 
 ## Why input and output factors differ
 
@@ -42,6 +42,7 @@ Output tokens are ~6x more expensive than input tokens in terms of compute. Duri
 ## Why Opus and Haiku are extrapolated
 
 The Jegham paper measured Sonnet-class models directly. Opus and Haiku factors are estimated by scaling:
+
 - Opus = 3x Sonnet (larger model, roughly proportional parameter count)
 - Haiku = 0.5x Sonnet (smaller model, lighter compute)
 
@@ -57,9 +58,9 @@ These are order-of-magnitude estimates. Actual values depend on Anthropic's spec
 
 ## Equivalences used in reports
 
-| Activity | Emission factor | Source |
-|----------|----------------|--------|
-| Car | 120 gCO2e/km | ADEME 2024 (thermal vehicle, average) |
-| Google search | 0.2 gCO2e | Google Environmental Report 2023 |
-| Email with attachment | 19 gCO2e | ADEME 2024 |
-| TGV | 2.4 gCO2e/km | SNCF 2023 Environmental Report |
+| Activity              | Emission factor | Source                                |
+| --------------------- | --------------- | ------------------------------------- |
+| Car                   | 120 gCO2e/km    | ADEME 2024 (thermal vehicle, average) |
+| Google search         | 0.2 gCO2e       | Google Environmental Report 2023      |
+| Email with attachment | 19 gCO2e        | ADEME 2024                            |
+| TGV                   | 2.4 gCO2e/km    | SNCF 2023 Environmental Report        |
