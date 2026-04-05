@@ -40,7 +40,7 @@ while IFS= read -r JSONL_FILE; do
 
   SESSION_ID="$FILENAME"
 
-  # Skip if already in DB
+  # Skip if already in DB (SESSION_ID is a validated UUID, safe for SQL)
   EXISTS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}';")"
   if [ "$EXISTS" -gt 0 ]; then
     SKIPPED=$((SKIPPED + 1))
@@ -129,6 +129,12 @@ while IFS= read -r JSONL_FILE; do
 
   # Calculate CO2
   CO2_G="$(echo "$TOTAL_INPUT $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | awk '{printf "%.4f", ($1 * $2 + $3 * $4) / 1000000}')"
+
+  # Sanitize strings for SQL (escape single quotes)
+  PROJECT="${PROJECT//\'/\'\'}"
+  MODEL_RAW="${MODEL_RAW//\'/\'\'}"
+  FIRST_TS="${FIRST_TS//\'/\'\'}"
+  LAST_TS="${LAST_TS//\'/\'\'}"
 
   # Insert into DB
   sqlite3 "$DB_PATH" "INSERT OR IGNORE INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, started_at, ended_at, source) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${TOTAL_INPUT}, ${OUTPUT_TOKENS}, ${COST_USD}, ${CO2_G}, '${FIRST_TS}', '${LAST_TS}', 'backfill');" 2>/dev/null || { ERRORS=$((ERRORS + 1)); continue; }

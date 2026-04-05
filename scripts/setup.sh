@@ -91,9 +91,12 @@ echo "Next steps:"
 echo ""
 echo "1. Add to ~/.claude/settings.json:"
 echo ""
-cat <<'JSON'
+cat <<EOF
 {
-  "statusLine": "echo '{\"session_id\":\"$SESSION_ID\"}' | ~/code/claude-carbon/scripts/statusline.sh",
+  "statusLine": {
+    "type": "command",
+    "command": "${PLUGIN_DIR}/scripts/statusline.sh"
+  },
   "hooks": {
     "Stop": [
       {
@@ -101,14 +104,14 @@ cat <<'JSON'
         "hooks": [
           {
             "type": "command",
-            "command": "~/code/claude-carbon/scripts/persist-session.sh"
+            "command": "${PLUGIN_DIR}/scripts/persist-session.sh"
           }
         ]
       }
     ]
   }
 }
-JSON
+EOF
 echo ""
 echo "2. Reload Claude Code to pick up the new status line."
 echo ""

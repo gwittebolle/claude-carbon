@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # persist-session.sh — Stop hook: persist session CO2 data to SQLite DB.
 # Reads JSON from stdin (same format as statusline). Never fails, never prints output.
+# Intentionally no set -euo pipefail: this hook must exit 0 silently in all cases.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
@@ -46,6 +47,12 @@ CO2_G="$(echo "$INPUT_TOKENS $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | awk '{prin
 
 # Current timestamp
 NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)" || NOW=""
+
+# Sanitize strings for SQL (escape single quotes)
+SESSION_ID="${SESSION_ID//\'/\'\'}"
+PROJECT="${PROJECT//\'/\'\'}"
+MODEL_ID="${MODEL_ID//\'/\'\'}"
+NOW="${NOW//\'/\'\'}"
 
 # INSERT OR REPLACE into sessions (source='live')
 sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, started_at, ended_at, source) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_ID}', ${INPUT_TOKENS}, ${OUTPUT_TOKENS}, ${COST_USD}, ${CO2_G}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${NOW}'), '${NOW}', 'live');" 2>/dev/null || true
