@@ -72,11 +72,11 @@ Restart Claude Code. The CO2 estimate appears in the status line.
 
 **Three data paths, two levels of accuracy:**
 
-| Script               | Trigger                 | Data source           | Subagents    | Cache reads | Accuracy    |
-| -------------------- | ----------------------- | --------------------- | ------------ | ----------- | ----------- |
-| `backfill.sh`        | Manual / setup          | JSONL files           | Included     | Excluded    | Exact       |
-| `persist-session.sh` | Stop hook (session end) | JSONL files           | Included     | Excluded    | Exact       |
-| `statusline.sh`      | Every turn (live)       | `context_window` JSON | Not included | Included\*  | Approximate |
+| Script               | Trigger                 | Data source           | Subagents    | Cache reads | Accuracy      |
+| -------------------- | ----------------------- | --------------------- | ------------ | ----------- | ------------- |
+| `backfill.sh`        | Manual / setup          | JSONL files           | Included     | Excluded    | Best estimate |
+| `persist-session.sh` | Stop hook (session end) | JSONL files           | Included     | Excluded    | Best estimate |
+| `statusline.sh`      | Every turn (live)       | `context_window` JSON | Not included | Included\*  | Approximate   |
 
 **backfill** and **persist-session** parse the raw JSONL transcripts (main session + subagent files), applying per-model emission factors. Only `input_tokens` and `cache_creation_input_tokens` are counted. These feed the SQLite database used by reports.
 
