@@ -108,7 +108,11 @@ if [ "$DAYS_ELAPSED" -gt 0 ]; then
   PROJ_LINEAR="$(echo "$TOTAL_CO2_RAW $DAYS_ELAPSED" | awk '{printf "%.1f", ($1 / $2) * 365 / 1000000}')"
 
   # Trend: last 30 days daily rate extrapolated
-  LAST_MONTH_DATA="$(sqlite3 "$DB_PATH" "SELECT SUM(co2_grams), MIN(started_at), MAX(started_at) FROM sessions ${WHERE} AND started_at >= date('now', '-30 days');" | tr '|' ' ')"
+  if [ -n "$WHERE" ]; then
+    LAST_MONTH_DATA="$(sqlite3 "$DB_PATH" "SELECT SUM(co2_grams), MIN(started_at), MAX(started_at) FROM sessions ${WHERE} AND started_at >= date('now', '-30 days');" | tr '|' ' ')"
+  else
+    LAST_MONTH_DATA="$(sqlite3 "$DB_PATH" "SELECT SUM(co2_grams), MIN(started_at), MAX(started_at) FROM sessions WHERE started_at >= date('now', '-30 days');" | tr '|' ' ')"
+  fi
   LAST_MONTH_CO2="$(echo "$LAST_MONTH_DATA" | awk '{print $1}')"
   LAST_MONTH_START="$(echo "$LAST_MONTH_DATA" | awk '{print $2}' | cut -c1-10)"
   LAST_MONTH_END="$(echo "$LAST_MONTH_DATA" | awk '{print $3}' | cut -c1-10)"

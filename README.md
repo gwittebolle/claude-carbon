@@ -90,7 +90,7 @@ Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), a peer-revi
 **Important: these are order-of-magnitude estimates, not precise measurements.**
 
 - Sonnet factors are derived from Jegham et al. direct measurements. Opus and Haiku are extrapolated (no public data from Anthropic on per-model energy consumption).
-- Cache read tokens are counted at the same rate as fresh compute. In reality, cache reads consume less energy. This means estimates skew high.
+- Cache read tokens are excluded from the calculation (only `input_tokens` and `cache_creation_input_tokens` are counted). Cache reads represent the majority of tokens in Claude Code but consume negligible energy.
 - Carbon intensity uses AWS grid-average (0.287 kgCO2e/kWh), not real-time grid data.
 - Anthropic does not publish Scope 1, 2, or 3 emissions. These estimates are independent and based on academic research, not provider data.
 
