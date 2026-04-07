@@ -4,6 +4,7 @@ set -euo pipefail
 # setup.sh — Initialize claude-carbon: check deps, create DB, backfill history, show summary.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
 DB_DIR="${HOME}/.claude/claude-carbon"
 DB_PATH="${DB_DIR}/carbon.db"
 
