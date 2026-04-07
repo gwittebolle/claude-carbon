@@ -10,7 +10,7 @@ Track the carbon footprint of your Claude Code sessions.
 
 - Adds a live CO2 estimate to the Claude Code status line, next to the session cost
 - Persists each session to a local SQLite database
-- Backfills historical data from existing `~/.claude` transcripts
+- Backfills historical data from existing `~/.claude` transcripts (⚠️ default Claude configuration keeps only 30 days)
 - Generates shareable PNG report cards for LinkedIn
 - Exposes a `/claude-carbon:report` skill for a full emissions breakdown
 
