@@ -29,9 +29,12 @@ ERRORS=0
 UUID_PATTERN='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
 # Helper: aggregate tokens from a JSONL file (excludes cache_read)
+# Tries fast jq -s first, falls back to line-by-line for corrupted files
 aggregate_jsonl() {
   local file="$1"
-  jq -s '
+  local result
+  # Fast path: slurp entire file
+  result="$(jq -s '
     [.[] | select(.type == "assistant" and .message.usage != null)] |
     {
       input_tokens: (map(.message.usage.input_tokens // 0) | add // 0),
@@ -42,7 +45,25 @@ aggregate_jsonl() {
       last_ts: (map(.timestamp // "") | map(select(length > 0)) | sort | last // "")
     } |
     .total_input = (.input_tokens + .cache_creation)
-  ' "$file" 2>/dev/null
+  ' "$file" 2>/dev/null)" && echo "$result" && return 0
+
+  # Slow path: line-by-line (tolerates corrupted lines)
+  while IFS= read -r line; do
+    echo "$line" | jq 'select(.type == "assistant" and .message.usage != null) | {
+      input_tokens: (.message.usage.input_tokens // 0),
+      cache_creation: (.message.usage.cache_creation_input_tokens // 0),
+      output_tokens: (.message.usage.output_tokens // 0),
+      model: (.message.model // ""),
+      ts: (.timestamp // "")
+    }' 2>/dev/null
+  done < "$file" | jq -s '{
+    input_tokens: (map(.input_tokens) | add // 0),
+    cache_creation: (map(.cache_creation) | add // 0),
+    output_tokens: (map(.output_tokens) | add // 0),
+    models: [.[].model | select(length > 0)],
+    first_ts: ([.[].ts | select(length > 0)] | sort | first // ""),
+    last_ts: ([.[].ts | select(length > 0)] | sort | last // "")
+  } | .total_input = (.input_tokens + .cache_creation)' 2>/dev/null
 }
 
 # Helper: resolve model family from model string

@@ -34,7 +34,8 @@ COST_USD="$(echo "$INPUT" | jq -r '.cost.total_cost_usd // 0' 2>/dev/null)" || e
 
 # Helper: aggregate tokens from a JSONL file (excludes cache_read)
 aggregate_jsonl() {
-  jq -s '
+  local result
+  result="$(jq -s '
     [.[] | select(.type == "assistant" and .message.usage != null)] |
     {
       input_tokens: (map(.message.usage.input_tokens // 0) | add // 0),
@@ -43,7 +44,21 @@ aggregate_jsonl() {
       models: ([.[] | .message.model // ""] | map(select(length > 0)))
     } |
     .total_input = (.input_tokens + .cache_creation)
-  ' "$1" 2>/dev/null
+  ' "$1" 2>/dev/null)" && echo "$result" && return 0
+  # Fallback: line-by-line for corrupted files
+  while IFS= read -r line; do
+    echo "$line" | jq 'select(.type == "assistant" and .message.usage != null) | {
+      input_tokens: (.message.usage.input_tokens // 0),
+      cache_creation: (.message.usage.cache_creation_input_tokens // 0),
+      output_tokens: (.message.usage.output_tokens // 0),
+      model: (.message.model // "")
+    }' 2>/dev/null
+  done < "$1" | jq -s '{
+    input_tokens: (map(.input_tokens) | add // 0),
+    cache_creation: (map(.cache_creation) | add // 0),
+    output_tokens: (map(.output_tokens) | add // 0),
+    models: [.[].model | select(length > 0)]
+  } | .total_input = (.input_tokens + .cache_creation)' 2>/dev/null
 }
 
 # Helper: compute CO2 for aggregated data using its own model
