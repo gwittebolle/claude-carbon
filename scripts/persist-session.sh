@@ -23,14 +23,14 @@ FACTOR_HAIKU_OUT="$(jq -r '.models.haiku.output' "$FACTORS_FILE" 2>/dev/null)" |
 INPUT="$(cat 2>/dev/null)" || exit 0
 [ -n "$INPUT" ] || exit 0
 
-# Extract session_id
+# Extract fields from Stop hook JSON
+# Stop hook provides: session_id, transcript_path, cwd
+# It does NOT provide: model.id, context_window, cost
 SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // ""' 2>/dev/null)" || exit 0
 [ -n "$SESSION_ID" ] || exit 0
 
-# Extract metadata from hook JSON
-MODEL_ID="$(echo "$INPUT" | jq -r '.model.id // ""' 2>/dev/null)" || exit 0
-CURRENT_DIR="$(echo "$INPUT" | jq -r '.workspace.current_dir // ""' 2>/dev/null)" || exit 0
-COST_USD="$(echo "$INPUT" | jq -r '.cost.total_cost_usd // 0' 2>/dev/null)" || exit 0
+TRANSCRIPT_PATH="$(echo "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null)" || exit 0
+CURRENT_DIR="$(echo "$INPUT" | jq -r '.cwd // ""' 2>/dev/null)" || exit 0
 
 # Helper: aggregate tokens from a JSONL file (excludes cache_read)
 aggregate_jsonl() {
@@ -85,50 +85,46 @@ compute_co2() {
   echo "$tin $out $co2"
 }
 
-# Find the JSONL file for this session
+# Find the JSONL file: use transcript_path from hook, fallback to search by session_id
 JSONL_FILE=""
-for DIR in "${HOME}/.claude/projects"/*; do
-  [ -d "$DIR" ] || continue
-  CANDIDATE="${DIR}/${SESSION_ID}.jsonl"
-  if [ -f "$CANDIDATE" ]; then
-    JSONL_FILE="$CANDIDATE"
-    break
-  fi
-done
-
-# Fallback: if no JSONL found, use hook data directly (less accurate, no subagents)
-if [ -z "$JSONL_FILE" ] || [ ! -f "$JSONL_FILE" ]; then
-  INPUT_TOKENS="$(echo "$INPUT" | jq -r '.context_window.total_input_tokens // 0' 2>/dev/null)" || exit 0
-  OUTPUT_TOKENS="$(echo "$INPUT" | jq -r '.context_window.total_output_tokens // 0' 2>/dev/null)" || exit 0
-
-  MODEL_FAMILY="sonnet"
-  echo "$MODEL_ID" | grep -qi "opus" 2>/dev/null && MODEL_FAMILY="opus"
-  echo "$MODEL_ID" | grep -qi "haiku" 2>/dev/null && MODEL_FAMILY="haiku"
-
-  FACTOR_IN="$(jq -r ".models.${MODEL_FAMILY}.input" "$FACTORS_FILE" 2>/dev/null)" || exit 0
-  FACTOR_OUT="$(jq -r ".models.${MODEL_FAMILY}.output" "$FACTORS_FILE" 2>/dev/null)" || exit 0
-  CO2_G="$(echo "$INPUT_TOKENS $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | LC_ALL=C awk '{printf "%.4f", ($1 * $2 + $3 * $4) / 1000000}' 2>/dev/null)" || exit 0
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  JSONL_FILE="$TRANSCRIPT_PATH"
 else
-  # Parse main JSONL
-  MAIN_AGG="$(aggregate_jsonl "$JSONL_FILE")" || exit 0
-  read -r INPUT_TOKENS OUTPUT_TOKENS CO2_G <<< "$(compute_co2 "$MAIN_AGG")"
-
-  # Parse subagent JSONLs (each with its own model/factor)
-  SUBAGENT_DIR="$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents"
-  if [ -d "$SUBAGENT_DIR" ]; then
-    for SUB_FILE in "$SUBAGENT_DIR"/*.jsonl; do
-      [ -f "$SUB_FILE" ] || continue
-      SUB_AGG="$(aggregate_jsonl "$SUB_FILE")" || continue
-
-      read -r SUB_IN SUB_OUT SUB_CO2 <<< "$(compute_co2 "$SUB_AGG")"
-      INPUT_TOKENS="$(echo "$INPUT_TOKENS $SUB_IN" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
-      OUTPUT_TOKENS="$(echo "$OUTPUT_TOKENS $SUB_OUT" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
-      CO2_G="$(echo "$CO2_G $SUB_CO2" | LC_ALL=C awk '{printf "%.4f", $1 + $2}')"
-    done
-  fi
+  for DIR in "${HOME}/.claude/projects"/*; do
+    [ -d "$DIR" ] || continue
+    CANDIDATE="${DIR}/${SESSION_ID}.jsonl"
+    if [ -f "$CANDIDATE" ]; then
+      JSONL_FILE="$CANDIDATE"
+      break
+    fi
+  done
 fi
 
-# Project name = last path segment
+# Exit if no JSONL found
+[ -n "$JSONL_FILE" ] && [ -f "$JSONL_FILE" ] || exit 0
+
+# Parse main JSONL
+MAIN_AGG="$(aggregate_jsonl "$JSONL_FILE")" || exit 0
+read -r INPUT_TOKENS OUTPUT_TOKENS CO2_G <<< "$(compute_co2 "$MAIN_AGG")"
+
+# Extract model from JSONL (not available in Stop hook JSON)
+MODEL_RAW="$(echo "$MAIN_AGG" | jq -r '.models | if length == 0 then "claude-sonnet" else group_by(.) | sort_by(-length) | first | first end' 2>/dev/null)" || MODEL_RAW="claude-sonnet"
+
+# Parse subagent JSONLs (each with its own model/factor)
+SUBAGENT_DIR="$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents"
+if [ -d "$SUBAGENT_DIR" ]; then
+  for SUB_FILE in "$SUBAGENT_DIR"/*.jsonl; do
+    [ -f "$SUB_FILE" ] || continue
+    SUB_AGG="$(aggregate_jsonl "$SUB_FILE")" || continue
+
+    read -r SUB_IN SUB_OUT SUB_CO2 <<< "$(compute_co2 "$SUB_AGG")"
+    INPUT_TOKENS="$(echo "$INPUT_TOKENS $SUB_IN" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
+    OUTPUT_TOKENS="$(echo "$OUTPUT_TOKENS $SUB_OUT" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
+    CO2_G="$(echo "$CO2_G $SUB_CO2" | LC_ALL=C awk '{printf "%.4f", $1 + $2}')"
+  done
+fi
+
+# Project name = last path segment of cwd
 PROJECT="$(basename "$CURRENT_DIR" 2>/dev/null)" || PROJECT="unknown"
 
 # Current timestamp
@@ -137,10 +133,10 @@ NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)" || NOW=""
 # Sanitize strings for SQL
 SESSION_ID="${SESSION_ID//\'/\'\'}"
 PROJECT="${PROJECT//\'/\'\'}"
-MODEL_ID="${MODEL_ID//\'/\'\'}"
+MODEL_RAW="${MODEL_RAW//\'/\'\'}"
 NOW="${NOW//\'/\'\'}"
 
-# INSERT OR REPLACE into sessions (source='live')
-sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, started_at, ended_at, source) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_ID}', ${INPUT_TOKENS}, ${OUTPUT_TOKENS}, ${COST_USD}, ${CO2_G}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${NOW}'), '${NOW}', 'live');" 2>/dev/null || true
+# INSERT OR REPLACE into sessions (source='live', cost=0 as Stop hook doesn't provide it)
+sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, started_at, ended_at, source) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${INPUT_TOKENS}, ${OUTPUT_TOKENS}, 0, ${CO2_G}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${NOW}'), '${NOW}', 'live');" 2>/dev/null || true
 
 exit 0
