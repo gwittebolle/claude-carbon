@@ -98,8 +98,8 @@ compute_co2_cost() {
   pin="$(get_price_in "$family")"
   pout="$(get_price_out "$family")"
 
-  co2="$(echo "$total_in $fin $out $fout" | awk '{printf "%.4f", ($1 * $2 + $3 * $4) / 1000000}')"
-  cost="$(echo "$total_in $pin $out $pout" | awk '{printf "%.6f", ($1 * $2 + $3 * $4) / 1000000}')"
+  co2="$(echo "$total_in $fin $out $fout" | LC_ALL=C awk '{printf "%.4f", ($1 * $2 + $3 * $4) / 1000000}')"
+  cost="$(echo "$total_in $pin $out $pout" | LC_ALL=C awk '{printf "%.6f", ($1 * $2 + $3 * $4) / 1000000}')"
 
   echo "$total_in $out $co2 $cost"
 }
@@ -155,10 +155,10 @@ while IFS= read -r JSONL_FILE; do
       read -r SUB_IN SUB_OUT SUB_CO2 SUB_COST <<< "$(compute_co2_cost "$SUB_AGG")"
 
       # Add to session totals
-      TOTAL_INPUT="$(echo "$TOTAL_INPUT $SUB_IN" | awk '{printf "%d", $1 + $2}')"
-      OUTPUT_TOKENS="$(echo "$OUTPUT_TOKENS $SUB_OUT" | awk '{printf "%d", $1 + $2}')"
-      CO2_G="$(echo "$CO2_G $SUB_CO2" | awk '{printf "%.4f", $1 + $2}')"
-      COST_USD="$(echo "$COST_USD $SUB_COST" | awk '{printf "%.6f", $1 + $2}')"
+      TOTAL_INPUT="$(echo "$TOTAL_INPUT $SUB_IN" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
+      OUTPUT_TOKENS="$(echo "$OUTPUT_TOKENS $SUB_OUT" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
+      CO2_G="$(echo "$CO2_G $SUB_CO2" | LC_ALL=C awk '{printf "%.4f", $1 + $2}')"
+      COST_USD="$(echo "$COST_USD $SUB_COST" | LC_ALL=C awk '{printf "%.6f", $1 + $2}')"
 
       # Update last timestamp if subagent ran later
       SUB_LAST="$(echo "$SUB_AGG" | jq -r '.last_ts // ""')"

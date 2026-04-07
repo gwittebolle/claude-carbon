@@ -35,17 +35,17 @@ FACTOR_IN="$(jq -r ".models.${MODEL_FAMILY}.input" "$FACTORS_FILE")"
 FACTOR_OUT="$(jq -r ".models.${MODEL_FAMILY}.output" "$FACTORS_FILE")"
 
 # Calculate CO2 in grams: (input * factor_in + output * factor_out) / 1_000_000
-CO2_G="$(echo "$INPUT_TOKENS $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | awk '{printf "%.0f", ($1 * $2 + $3 * $4) / 1000000}')"
+CO2_G="$(echo "$INPUT_TOKENS $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | LC_ALL=C awk '{printf "%.0f", ($1 * $2 + $3 * $4) / 1000000}')"
 
 # Format CO2 with adaptive unit
 if [ "$CO2_G" -ge 1000 ] 2>/dev/null; then
-  CO2_DISPLAY="$(echo "$CO2_G" | awk '{printf "%.1fkg", $1/1000}') CO₂"
+  CO2_DISPLAY="$(echo "$CO2_G" | LC_ALL=C awk '{printf "%.1fkg", $1/1000}') CO₂"
 else
   CO2_DISPLAY="${CO2_G}g CO₂"
 fi
 
 # Round cost to 2 decimals
-COST_DISPLAY="$(echo "$COST_USD" | awk '{printf "%.2f", $1}')"
+COST_DISPLAY="$(echo "$COST_USD" | LC_ALL=C awk '{printf "%.2f", $1}')"
 
 # Build progress bar (10 blocks)
 FILLED=$(( USED_PCT * 10 / 100 ))

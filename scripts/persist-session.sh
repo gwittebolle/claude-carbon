@@ -66,7 +66,7 @@ compute_co2() {
   esac
 
   local co2
-  co2="$(echo "$tin $fin $out $fout" | awk '{printf "%.4f", ($1 * $2 + $3 * $4) / 1000000}')"
+  co2="$(echo "$tin $fin $out $fout" | LC_ALL=C awk '{printf "%.4f", ($1 * $2 + $3 * $4) / 1000000}')"
   echo "$tin $out $co2"
 }
 
@@ -92,7 +92,7 @@ if [ -z "$JSONL_FILE" ] || [ ! -f "$JSONL_FILE" ]; then
 
   FACTOR_IN="$(jq -r ".models.${MODEL_FAMILY}.input" "$FACTORS_FILE" 2>/dev/null)" || exit 0
   FACTOR_OUT="$(jq -r ".models.${MODEL_FAMILY}.output" "$FACTORS_FILE" 2>/dev/null)" || exit 0
-  CO2_G="$(echo "$INPUT_TOKENS $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | awk '{printf "%.4f", ($1 * $2 + $3 * $4) / 1000000}' 2>/dev/null)" || exit 0
+  CO2_G="$(echo "$INPUT_TOKENS $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | LC_ALL=C awk '{printf "%.4f", ($1 * $2 + $3 * $4) / 1000000}' 2>/dev/null)" || exit 0
 else
   # Parse main JSONL
   MAIN_AGG="$(aggregate_jsonl "$JSONL_FILE")" || exit 0
@@ -106,9 +106,9 @@ else
       SUB_AGG="$(aggregate_jsonl "$SUB_FILE")" || continue
 
       read -r SUB_IN SUB_OUT SUB_CO2 <<< "$(compute_co2 "$SUB_AGG")"
-      INPUT_TOKENS="$(echo "$INPUT_TOKENS $SUB_IN" | awk '{printf "%d", $1 + $2}')"
-      OUTPUT_TOKENS="$(echo "$OUTPUT_TOKENS $SUB_OUT" | awk '{printf "%d", $1 + $2}')"
-      CO2_G="$(echo "$CO2_G $SUB_CO2" | awk '{printf "%.4f", $1 + $2}')"
+      INPUT_TOKENS="$(echo "$INPUT_TOKENS $SUB_IN" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
+      OUTPUT_TOKENS="$(echo "$OUTPUT_TOKENS $SUB_OUT" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
+      CO2_G="$(echo "$CO2_G $SUB_CO2" | LC_ALL=C awk '{printf "%.4f", $1 + $2}')"
     done
   fi
 fi

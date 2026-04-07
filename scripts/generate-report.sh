@@ -84,28 +84,33 @@ TOTAL_TOKENS_RAW="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(input_tokens), 0) + 
 # ── Format values ───────────────────────────────────────────
 format_co2() {
   local grams="$1"
-  if (( $(echo "$grams >= 1000" | bc -l) )); then
-    echo "$(echo "$grams" | awk '{printf "%.1f", $1/1000}') kg"
+  if (( $(echo "$grams >= 1000" | LC_ALL=C bc -l) )); then
+    echo "$(echo "$grams" | LC_ALL=C awk '{printf "%.1f", $1/1000}') kg"
   else
-    echo "$(echo "$grams" | awk '{printf "%.0f", $1}') g"
+    echo "$(echo "$grams" | LC_ALL=C awk '{printf "%.0f", $1}') g"
   fi
 }
 
 read -r TOTAL_CO2_VALUE TOTAL_CO2_UNIT <<< "$(format_co2 "$TOTAL_CO2_RAW")"
-TOTAL_COST="$(echo "$TOTAL_COST_RAW" | awk '{printf "%.0f", $1}')"
+TOTAL_COST="$(echo "$TOTAL_COST_RAW" | LC_ALL=C awk '{printf "%.0f", $1}')"
 FIRST_DATE="$(echo "$FIRST_DATE_RAW" | cut -c1-10)"
-EQUIV_KM="$(echo "$TOTAL_CO2_RAW" | awk '{printf "%.1f", $1/120}')"
+EQUIV_KM="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk '{printf "%.1f", $1/120}')"
 
 # Format tokens (M)
-TOTAL_TOKENS="$(echo "$TOTAL_TOKENS_RAW" | awk '{printf "%.0f", $1/1000000}')"
+TOTAL_TOKENS="$(echo "$TOTAL_TOKENS_RAW" | LC_ALL=C awk '{printf "%.0f", $1/1000000}')"
 
 # Projection annuelle (fourchette)
 # Use actual first session date, not --since filter
 ACTUAL_FIRST="$(echo "$FIRST_DATE" | cut -c1-10)"
-DAYS_ELAPSED="$(( ( $(date +%s) - $(date -j -f "%Y-%m-%d" "${ACTUAL_FIRST}" +%s 2>/dev/null || date -d "${ACTUAL_FIRST}" +%s 2>/dev/null) ) / 86400 ))"
+_FIRST_EPOCH="$(date -j -f "%Y-%m-%d" "${ACTUAL_FIRST}" +%s 2>/dev/null || date -d "${ACTUAL_FIRST}" +%s 2>/dev/null || echo "")"
+if [ -n "$_FIRST_EPOCH" ]; then
+  DAYS_ELAPSED="$(( ( $(date +%s) - _FIRST_EPOCH ) / 86400 ))"
+else
+  DAYS_ELAPSED=0
+fi
 if [ "$DAYS_ELAPSED" -gt 0 ]; then
   # Linear: average daily rate extrapolated (in tCO2 with 1 decimal)
-  PROJ_LINEAR="$(echo "$TOTAL_CO2_RAW $DAYS_ELAPSED" | awk '{printf "%.1f", ($1 / $2) * 365 / 1000000}')"
+  PROJ_LINEAR="$(echo "$TOTAL_CO2_RAW $DAYS_ELAPSED" | LC_ALL=C awk '{printf "%.1f", ($1 / $2) * 365 / 1000000}')"
 
   # Trend: last 30 days daily rate extrapolated
   if [ -n "$WHERE" ]; then
@@ -118,14 +123,14 @@ if [ "$DAYS_ELAPSED" -gt 0 ]; then
   LAST_MONTH_END="$(echo "$LAST_MONTH_DATA" | awk '{print $3}' | cut -c1-10)"
   LAST_MONTH_DAYS="$(( ( $(date -j -f "%Y-%m-%d" "${LAST_MONTH_END}" +%s 2>/dev/null || date -d "${LAST_MONTH_END}" +%s 2>/dev/null) - $(date -j -f "%Y-%m-%d" "${LAST_MONTH_START}" +%s 2>/dev/null || date -d "${LAST_MONTH_START}" +%s 2>/dev/null) ) / 86400 ))"
   if [ "$LAST_MONTH_DAYS" -gt 0 ]; then
-    PROJ_TREND="$(echo "$LAST_MONTH_CO2 $LAST_MONTH_DAYS" | awk '{printf "%.1f", ($1 / $2) * 365 / 1000000}')"
+    PROJ_TREND="$(echo "$LAST_MONTH_CO2 $LAST_MONTH_DAYS" | LC_ALL=C awk '{printf "%.1f", ($1 / $2) * 365 / 1000000}')"
   else
     PROJ_TREND="$PROJ_LINEAR"
   fi
 
   # Sort low-high for display (compare as floats)
-  LOW="$(echo "$PROJ_LINEAR $PROJ_TREND" | awk '{if ($1 <= $2) print $1; else print $2}')"
-  HIGH="$(echo "$PROJ_LINEAR $PROJ_TREND" | awk '{if ($1 >= $2) print $1; else print $2}')"
+  LOW="$(echo "$PROJ_LINEAR $PROJ_TREND" | LC_ALL=C awk '{if ($1 <= $2) print $1; else print $2}')"
+  HIGH="$(echo "$PROJ_LINEAR $PROJ_TREND" | LC_ALL=C awk '{if ($1 >= $2) print $1; else print $2}')"
   PROJECTION="${LOW} - ${HIGH}"
 else
   PROJECTION="0"
@@ -136,7 +141,7 @@ TOP_MODEL_DISPLAY="$(echo "$TOP_MODEL" | sed 's/claude-//' | sed 's/-4-6//' | se
 
 # ── Monthly bars HTML ───────────────────────────────────────
 MONTHLY_DATA="$(sqlite3 -separator '|' "$DB_PATH" "SELECT substr(started_at, 1, 7), SUM(co2_grams) FROM sessions ${WHERE} GROUP BY substr(started_at, 1, 7) ORDER BY substr(started_at, 1, 7);")"
-MAX_MONTH_CO2="$(echo "$MONTHLY_DATA" | awk -F'|' 'BEGIN{m=0} {if($2>m)m=$2} END{print m}')"
+MAX_MONTH_CO2="$(echo "$MONTHLY_DATA" | LC_ALL=C awk -F'|' 'BEGIN{m=0} {if($2>m)m=$2} END{print m}')"
 
 MONTHLY_BARS=""
 MONTH_NAMES="Jan Fév Mar Avr Mai Jun Jul Aoû Sep Oct Nov Déc"
@@ -146,7 +151,7 @@ while IFS='|' read -r month_key month_co2; do
   month_num_clean="$(echo "$month_num" | sed 's/^0//')"
   month_label="$(echo "$MONTH_NAMES" | awk -v n="$month_num_clean" '{print $n}')"
   if [ "$MAX_MONTH_CO2" -gt 0 ] 2>/dev/null; then
-    pct="$(echo "$month_co2 $MAX_MONTH_CO2" | awk '{printf "%.0f", ($1/$2)*100}')"
+    pct="$(echo "$month_co2 $MAX_MONTH_CO2" | LC_ALL=C awk '{printf "%.0f", ($1/$2)*100}')"
   else
     pct="10"
   fi
@@ -208,15 +213,15 @@ inject_common() {
 
 # Generate FR templates
 SINCE_LABEL="$SINCE_LABEL_FR"
-TMP_SUMMARY_FR="$(mktemp /tmp/claude-carbon-summary-fr-XXXXXX.html)"
-TMP_DETAILED_FR="$(mktemp /tmp/claude-carbon-detailed-fr-XXXXXX.html)"
+_t=$(mktemp /tmp/claude-carbon-summary-fr-XXXXXX); TMP_SUMMARY_FR="${_t}.html"; mv "$_t" "$TMP_SUMMARY_FR"
+_t=$(mktemp /tmp/claude-carbon-detailed-fr-XXXXXX); TMP_DETAILED_FR="${_t}.html"; mv "$_t" "$TMP_DETAILED_FR"
 inject_common "$TEMPLATE_DIR/report-summary.html" "$TMP_SUMMARY_FR"
 inject_common "$TEMPLATE_DIR/report-detailed.html" "$TMP_DETAILED_FR"
 
 # Generate EN templates
 SINCE_LABEL="$SINCE_LABEL_EN"
-TMP_SUMMARY_EN="$(mktemp /tmp/claude-carbon-summary-en-XXXXXX.html)"
-TMP_DETAILED_EN="$(mktemp /tmp/claude-carbon-detailed-en-XXXXXX.html)"
+_t=$(mktemp /tmp/claude-carbon-summary-en-XXXXXX); TMP_SUMMARY_EN="${_t}.html"; mv "$_t" "$TMP_SUMMARY_EN"
+_t=$(mktemp /tmp/claude-carbon-detailed-en-XXXXXX); TMP_DETAILED_EN="${_t}.html"; mv "$_t" "$TMP_DETAILED_EN"
 inject_common "$TEMPLATE_DIR/report-summary-en.html" "$TMP_SUMMARY_EN"
 inject_common "$TEMPLATE_DIR/report-detailed-en.html" "$TMP_DETAILED_EN"
 
@@ -224,7 +229,7 @@ inject_common "$TEMPLATE_DIR/report-detailed-en.html" "$TMP_DETAILED_EN"
 TMP_SUMMARY="$TMP_SUMMARY_FR"
 
 # Inject monthly bars via python (bash/sed can't handle % in style attrs)
-TMP_MONTHLY="$(mktemp /tmp/claude-carbon-monthly-XXXXXX.txt)"
+_t=$(mktemp /tmp/claude-carbon-monthly-XXXXXX); TMP_MONTHLY="${_t}.txt"; mv "$_t" "$TMP_MONTHLY"
 echo "$MONTHLY_DATA" > "$TMP_MONTHLY"
 
 export TMP_SUMMARY TMP_MONTHLY
@@ -296,7 +301,9 @@ rm -f "$TMP_MONTHLY"
 PW_PATH="$(node -e "try { console.log(require.resolve('playwright-core').replace(/\/index\.js$/, '')); } catch(e) { process.exit(1); }" 2>/dev/null)" || true
 
 if [ -z "$PW_PATH" ]; then
+  _npm_global_root="$(npm root -g 2>/dev/null || true)"
   for candidate in \
+    "${_npm_global_root}/playwright-core" \
     "${HOME}/node_modules/playwright-core" \
     "${HOME}/claude cowork/node_modules/playwright-core" \
     "/opt/homebrew/lib/node_modules/playwright-core"; do
@@ -310,7 +317,7 @@ fi
 if [ -z "$PW_PATH" ]; then
   echo "Error: playwright-core not found." >&2
   echo "Install: npm install -g playwright-core && npx playwright install chromium" >&2
-  rm -f "$TMP_SUMMARY" "$TMP_DETAILED"
+  rm -f "$TMP_SUMMARY_FR" "$TMP_SUMMARY_EN" "$TMP_DETAILED_FR" "$TMP_DETAILED_EN"
   exit 1
 fi
 
