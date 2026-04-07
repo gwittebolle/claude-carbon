@@ -66,6 +66,24 @@ And add the Stop hook to persist sessions (append to your existing `hooks.Stop` 
 
 Restart Claude Code. The CO2 estimate appears in the status line.
 
+## How it works
+
+![Data flow](docs/data-flow.png)
+
+**Three data paths, two levels of accuracy:**
+
+| Script               | Trigger                 | Data source           | Subagents    | Cache reads | Accuracy    |
+| -------------------- | ----------------------- | --------------------- | ------------ | ----------- | ----------- |
+| `backfill.sh`        | Manual / setup          | JSONL files           | Included     | Excluded    | Exact       |
+| `persist-session.sh` | Stop hook (session end) | JSONL files           | Included     | Excluded    | Exact       |
+| `statusline.sh`      | Every turn (live)       | `context_window` JSON | Not included | Included\*  | Approximate |
+
+**backfill** and **persist-session** parse the raw JSONL transcripts (main session + subagent files), applying per-model emission factors. Only `input_tokens` and `cache_creation_input_tokens` are counted. These feed the SQLite database used by reports.
+
+**statusline** reads `context_window.total_input_tokens` from Claude Code at each turn. This value represents the current context size (not a cumulative total), includes cache reads, and does not account for subagent tokens. It's an indicative live display, not a data source for reports.
+
+_\*Claude Code does not expose `cache_read_input_tokens` separately in the statusline JSON. Parsing JSONL incrementally would be too slow for a per-turn display. A proper fix would require Anthropic to expose the token breakdown in the status hook API._
+
 ## Commands
 
 | Command                 | What it does                                                   |
@@ -73,7 +91,7 @@ Restart Claude Code. The CO2 estimate appears in the status line.
 | `setup.sh`              | Init database, backfill historical sessions, show total        |
 | `statusline.sh`         | Status line script (called automatically by Claude Code)       |
 | `persist-session.sh`    | Stop hook (saves session data on exit)                         |
-| `backfill.sh`           | Re-parse all historical JSONL transcripts                      |
+| `backfill.sh`           | Re-parse all historical JSONL transcripts (incl. subagents)    |
 | `generate-report.sh`    | Export shareable PNG report cards                              |
 | `/claude-carbon:report` | In-session text report with totals, equivalences, top sessions |
 

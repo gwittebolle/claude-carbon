@@ -52,7 +52,8 @@ These are order-of-magnitude estimates. Actual values depend on Anthropic's spec
 
 - Order of magnitude only. Do not use these numbers for regulatory reporting or lifecycle assessments.
 - Inference only. Training costs, hardware manufacturing, and cooling water are not included.
-- Cache read tokens excluded. Only `input_tokens` and `cache_creation_input_tokens` are counted. Cache reads (which represent 90%+ of tokens in Claude Code) consume negligible energy and are ignored.
+- Cache read tokens excluded from reports. Only `input_tokens` and `cache_creation_input_tokens` are counted in backfill and persist-session (JSONL parsing). Cache reads (90%+ of tokens in Claude Code) consume negligible energy and are ignored.
+- Status line is approximate. Claude Code does not expose `cache_read_input_tokens` separately in the statusline hook JSON, and parsing JSONL incrementally at each turn would be too slow. The live display uses `context_window.total_input_tokens` (current context size, includes cache reads, no subagents). This is not used in reports.
 - Grid-average, not real-time. The CIF is a static US grid average. Actual emissions depend on Anthropic's datacenter location, energy mix, and time of day.
 - No multi-region awareness. AWS runs inference in multiple regions with different grid intensities.
 
