@@ -125,10 +125,10 @@ while IFS= read -r JSONL_FILE; do
   esac
 
   # Estimate cost (per million tokens)
-  COST_USD="$(echo "$TOTAL_INPUT $PRICE_IN $OUTPUT_TOKENS $PRICE_OUT" | awk '{printf "%.6f", ($1 * $2 + $3 * $4) / 1000000}')"
+  COST_USD="$(echo "$TOTAL_INPUT $PRICE_IN $OUTPUT_TOKENS $PRICE_OUT" | LC_ALL=C awk '{printf "%.6f", ($1 * $2 + $3 * $4) / 1000000}')"
 
   # Calculate CO2
-  CO2_G="$(echo "$TOTAL_INPUT $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | awk '{printf "%.4f", ($1 * $2 + $3 * $4) / 1000000}')"
+  CO2_G="$(echo "$TOTAL_INPUT $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | LC_ALL=C awk '{printf "%.4f", ($1 * $2 + $3 * $4) / 1000000}')"
 
   # Sanitize strings for SQL (escape single quotes)
   PROJECT="${PROJECT//\'/\'\'}"
