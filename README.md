@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/inst
 - Persists each session to a local SQLite database
 - Backfills historical data from existing `~/.claude` transcripts
 - Generates shareable PNG report cards for LinkedIn
-- Exposes a `/claude-carbon:report` skill for a full emissions breakdown
+- Exposes a `/carbon-report` skill for a full emissions breakdown
 
 ## Example report
 
@@ -113,14 +113,14 @@ _\*Claude Code does not expose `cache_read_input_tokens` separately in the statu
 
 ## Commands
 
-| Command                 | What it does                                                   |
-| ----------------------- | -------------------------------------------------------------- |
-| `setup.sh`              | Init database, backfill historical sessions, show total        |
-| `statusline.sh`         | Status line script (called automatically by Claude Code)       |
-| `persist-session.sh`    | Stop hook (saves session data on exit)                         |
-| `backfill.sh`           | Re-parse all historical JSONL transcripts (incl. subagents)    |
-| `generate-report.sh`    | Export shareable PNG report cards                              |
-| `/claude-carbon:report` | In-session text report with totals, equivalences, top sessions |
+| Command              | What it does                                                   |
+| -------------------- | -------------------------------------------------------------- |
+| `setup.sh`           | Init database, backfill historical sessions, show total        |
+| `statusline.sh`      | Status line script (called automatically by Claude Code)       |
+| `persist-session.sh` | Stop hook (saves session data on exit)                         |
+| `backfill.sh`        | Re-parse all historical JSONL transcripts (incl. subagents)    |
+| `generate-report.sh` | Export shareable PNG report cards                              |
+| `/carbon-report`     | In-session text report with totals, equivalences, top sessions |
 
 ## Emission factors
 

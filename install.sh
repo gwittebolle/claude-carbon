@@ -103,6 +103,19 @@ else
   echo "  Created $SETTINGS_FILE"
 fi
 
+# 5. Install /carbon-report slash command
+COMMANDS_DIR="${HOME}/.claude/commands"
+SKILL_SOURCE="${INSTALL_DIR}/skills/carbon-report/SKILL.md"
+SKILL_LINK="${COMMANDS_DIR}/carbon-report.md"
+
+mkdir -p "$COMMANDS_DIR"
+if [ -L "$SKILL_LINK" ] || [ -f "$SKILL_LINK" ]; then
+  echo "  /carbon-report: already installed (skipped)"
+else
+  ln -s "$SKILL_SOURCE" "$SKILL_LINK"
+  echo "  /carbon-report: installed"
+fi
+
 echo ""
 echo "Done. Restart Claude Code to see your CO2 in the status line."
 echo ""
