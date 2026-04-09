@@ -6,6 +6,10 @@
 
 Track the carbon footprint of your Claude Code sessions.
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
+```
+
 ```
 🟢 Opus 4.6 (1M context) ░░░░ 6% | $3.20 | 145g CO₂ | claude cowork
 ```
