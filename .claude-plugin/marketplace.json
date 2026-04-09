@@ -10,7 +10,8 @@
     {
       "name": "claude-carbon",
       "source": {
-        "source": "self"
+        "source": "url",
+        "url": "https://github.com/gwittebolle/claude-carbon.git"
       },
       "description": "Track the carbon footprint of your Claude Code sessions",
       "version": "1.0.0",
