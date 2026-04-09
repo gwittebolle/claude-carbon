@@ -9,7 +9,9 @@
   "plugins": [
     {
       "name": "claude-carbon",
-      "source": ".",
+      "source": {
+        "source": "self"
+      },
       "description": "Track the carbon footprint of your Claude Code sessions",
       "version": "1.0.0",
       "author": {
