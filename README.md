@@ -1,5 +1,9 @@
 # claude-carbon
 
+[![GitHub stars](https://img.shields.io/github/stars/gwittebolle/claude-carbon)](https://github.com/gwittebolle/claude-carbon/stargazers)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/gwittebolle/claude-carbon)](https://github.com/gwittebolle/claude-carbon/releases)
+
 Track the carbon footprint of your Claude Code sessions.
 
 ```
@@ -38,33 +42,52 @@ Exports two PNGs to `exports/`: a summary card and a detailed card with per-proj
 ## Install
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
+```
+
+This clones the repo, creates the database, backfills your existing Claude Code sessions, and configures `~/.claude/settings.json` automatically. Restart Claude Code and the CO2 estimate appears in the status line.
+
+To install in a custom directory:
+
+```bash
+CLAUDE_CARBON_DIR=~/my-path/claude-carbon curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
+```
+
+<details>
+<summary>Manual install</summary>
+
+```bash
 git clone https://github.com/gwittebolle/claude-carbon.git ~/code/claude-carbon
 bash ~/code/claude-carbon/scripts/setup.sh
 ```
 
-The setup script checks dependencies, creates the SQLite database, backfills your existing Claude Code sessions, and prints the total CO2 emitted so far.
-
-Then add to `~/.claude/settings.json` (or `settings.local.json`):
+Then add to `~/.claude/settings.json`:
 
 ```json
 {
   "statusLine": {
     "type": "command",
     "command": "~/code/claude-carbon/scripts/statusline.sh"
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/code/claude-carbon/scripts/persist-session.sh"
+          }
+        ]
+      }
+    ]
   }
 }
 ```
 
-And add the Stop hook to persist sessions (append to your existing `hooks.Stop` array):
+Restart Claude Code.
 
-```json
-{
-  "type": "command",
-  "command": "~/code/claude-carbon/scripts/persist-session.sh"
-}
-```
-
-Restart Claude Code. The CO2 estimate appears in the status line.
+</details>
 
 ## How it works
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-04-09
+
+### feat: one-line installer (install.sh)
+
+`curl | bash` installer that clones the repo, runs setup, and auto-configures `~/.claude/settings.json` (statusLine + Stop hook). Supports custom install directory via `CLAUDE_CARBON_DIR`. Idempotent: updates existing installs with `git pull`.
+
+### chore: add GitHub badges to README
+
+Stars, license, and release badges for social proof.
+
 ## 2026-04-05
 
 ### feat: generate-report.sh + report-card.html
