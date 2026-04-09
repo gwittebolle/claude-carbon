@@ -14,6 +14,13 @@ curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/inst
 
 Same command to install and to update to the latest version.
 
+Or install as a Claude Code plugin:
+
+```
+/plugin marketplace add gwittebolle/claude-carbon
+/plugin install claude-carbon
+```
+
 **2. Restart Claude Code.** Your CO2 appears in the status line:
 
 ```
@@ -38,34 +45,29 @@ Same command to install and to update to the latest version.
   <img src="docs/example-report-v2.png" alt="Claude Carbon Report" width="540">
 </p>
 
-Generate yours:
+Generate yours with `/carbon-card` in Claude Code. Exports summary and detailed PNGs to `exports/`.
+
+<details>
+<summary>Advanced options (CLI)</summary>
 
 ```bash
-# Since January 1st (default)
-bash scripts/generate-report.sh
-
 # Since a specific date
-bash scripts/generate-report.sh --since 2026-03-01
+bash ~/code/claude-carbon/scripts/generate-report.sh --since 2026-03-01
 
 # All time
-bash scripts/generate-report.sh --all
+bash ~/code/claude-carbon/scripts/generate-report.sh --all
 ```
 
-Exports two PNGs to `exports/`: a summary card and a detailed card with per-project breakdown.
+</details>
 
-## Install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
-```
-
-This clones the repo, creates the database, backfills your existing Claude Code sessions, and configures `~/.claude/settings.json` automatically. Restart Claude Code and the CO2 estimate appears in the status line.
-
-To install in a custom directory:
+<details>
+<summary>Custom install directory</summary>
 
 ```bash
 CLAUDE_CARBON_DIR=~/my-path/claude-carbon curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
 ```
+
+</details>
 
 <details>
 <summary>Manual install</summary>
@@ -123,15 +125,23 @@ _\*Claude Code does not expose `cache_read_input_tokens` separately in the statu
 
 ## Commands
 
-| Command              | What it does                                                   |
-| -------------------- | -------------------------------------------------------------- |
-| `setup.sh`           | Init database, backfill historical sessions, show total        |
-| `statusline.sh`      | Status line script (called automatically by Claude Code)       |
-| `persist-session.sh` | Stop hook (saves session data on exit)                         |
-| `backfill.sh`        | Re-parse all historical JSONL transcripts (incl. subagents)    |
-| `generate-report.sh` | Export shareable PNG report cards                              |
-| `/carbon-report`     | In-session text report with totals, equivalences, top sessions |
-| `/carbon-card`       | Generate shareable PNG report cards from Claude Code           |
+| Command          | What it does                                        |
+| ---------------- | --------------------------------------------------- |
+| `/carbon-report` | Text report with totals, equivalences, top sessions |
+| `/carbon-card`   | Generate shareable PNG report cards                 |
+
+<details>
+<summary>Scripts (run automatically, rarely needed manually)</summary>
+
+| Script               | What it does                                                |
+| -------------------- | ----------------------------------------------------------- |
+| `setup.sh`           | Init database, backfill historical sessions, show total     |
+| `statusline.sh`      | Status line script (called automatically by Claude Code)    |
+| `persist-session.sh` | Stop hook (saves session data on exit)                      |
+| `backfill.sh`        | Re-parse all historical JSONL transcripts (incl. subagents) |
+| `generate-report.sh` | Export PNG report cards (CLI, with `--since` / `--all`)     |
+
+</details>
 
 ## Emission factors
 

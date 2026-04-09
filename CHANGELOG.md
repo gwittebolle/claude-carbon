@@ -6,6 +6,10 @@
 
 `curl | bash` installer that clones the repo, runs setup, and auto-configures `~/.claude/settings.json` (statusLine + Stop hook). Supports custom install directory via `CLAUDE_CARBON_DIR`. Idempotent: updates existing installs with `git pull`.
 
+### feat: plugin marketplace support
+
+Restructured as official Claude Code plugin. Installable via `/plugin install claude-carbon` or `curl | bash`. Added `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`.
+
 ### chore: add GitHub badges to README
 
 Stars, license, and release badges for social proof.

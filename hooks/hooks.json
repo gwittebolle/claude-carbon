@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./scripts/persist-session.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/persist-session.sh"
           }
         ]
       }
