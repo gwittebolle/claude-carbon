@@ -2,6 +2,10 @@
 
 ## 2026-04-09
 
+### docs: update README install instructions
+
+Removed plugin marketplace install (not validated by Anthropic). Added Playwright + Chromium install instructions for `/carbon-card`.
+
 ### feat: one-line installer (install.sh)
 
 `curl | bash` installer that clones the repo, runs setup, and auto-configures `~/.claude/settings.json` (statusLine + Stop hook). Supports custom install directory via `CLAUDE_CARBON_DIR`. Idempotent: updates existing installs with `git pull`.

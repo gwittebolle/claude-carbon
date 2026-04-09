@@ -14,13 +14,6 @@ curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/inst
 
 Same command to install and to update to the latest version.
 
-Or install as a Claude Code plugin:
-
-```
-/plugin marketplace add gwittebolle/claude-carbon
-/plugin install claude-carbon
-```
-
 **2. Restart Claude Code.** Your CO2 appears in the status line:
 
 ```
@@ -30,7 +23,7 @@ Or install as a Claude Code plugin:
 **3. Use the slash commands:**
 
 - `/carbon-report` - text report with totals, equivalences, top sessions
-- `/carbon-card` - generate shareable PNG report cards
+- `/carbon-card` - generate shareable PNG report cards (requires `playwright-core`, see [Dependencies](#dependencies))
 
 ## What it does
 
@@ -166,9 +159,16 @@ Factors are editable in `data/factors.json`. See [METHODOLOGY.md](METHODOLOGY.md
 
 - `jq` - JSON parsing
 - `sqlite3` - local database
-- `playwright-core` - PNG export only (optional)
+- `playwright-core` + Chromium - PNG export for `/carbon-card` (optional)
 
 `jq` and `sqlite3` are pre-installed on macOS. On Linux: `apt install jq sqlite3`.
+
+To use `/carbon-card`, install Playwright and its Chromium browser:
+
+```bash
+npm install -g playwright-core
+npx playwright install chromium
+```
 
 ## Reduce your footprint
 
