@@ -109,12 +109,16 @@ SKILL_SOURCE="${INSTALL_DIR}/skills/carbon-report/SKILL.md"
 SKILL_LINK="${COMMANDS_DIR}/carbon-report.md"
 
 mkdir -p "$COMMANDS_DIR"
-if [ -L "$SKILL_LINK" ] || [ -f "$SKILL_LINK" ]; then
-  echo "  /carbon-report: already installed (skipped)"
-else
-  ln -s "$SKILL_SOURCE" "$SKILL_LINK"
-  echo "  /carbon-report: installed"
-fi
+for SKILL_NAME in carbon-report carbon-card; do
+  SKILL_SRC="${INSTALL_DIR}/skills/${SKILL_NAME}/SKILL.md"
+  SKILL_LNK="${COMMANDS_DIR}/${SKILL_NAME}.md"
+  if [ -L "$SKILL_LNK" ] || [ -f "$SKILL_LNK" ]; then
+    echo "  /${SKILL_NAME}: already installed (skipped)"
+  else
+    ln -s "$SKILL_SRC" "$SKILL_LNK"
+    echo "  /${SKILL_NAME}: installed"
+  fi
+done
 
 echo ""
 echo "Done. Restart Claude Code to see your CO2 in the status line."

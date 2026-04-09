@@ -6,21 +6,29 @@
 
 Track the carbon footprint of your Claude Code sessions.
 
+**1. Install:**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
 ```
 
+**2. Restart Claude Code.** Your CO2 appears in the status line:
+
 ```
 🟢 Opus 4.6 (1M context) ░░░░ 6% | $3.20 | 145g CO₂ | claude cowork
 ```
+
+**3. Use the slash commands:**
+
+- `/carbon-report` - text report with totals, equivalences, top sessions
+- `/carbon-card` - generate shareable PNG report cards
 
 ## What it does
 
 - Adds a live CO2 estimate to the Claude Code status line, next to the session cost
 - Persists each session to a local SQLite database
 - Backfills historical data from existing `~/.claude` transcripts
-- Generates shareable PNG report cards for LinkedIn
-- Exposes a `/carbon-report` skill for a full emissions breakdown
+- Two slash commands: `/carbon-report` (text) and `/carbon-card` (PNG)
 
 ## Example report
 
@@ -121,6 +129,7 @@ _\*Claude Code does not expose `cache_read_input_tokens` separately in the statu
 | `backfill.sh`        | Re-parse all historical JSONL transcripts (incl. subagents)    |
 | `generate-report.sh` | Export shareable PNG report cards                              |
 | `/carbon-report`     | In-session text report with totals, equivalences, top sessions |
+| `/carbon-card`       | Generate shareable PNG report cards from Claude Code           |
 
 ## Emission factors
 
