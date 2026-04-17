@@ -20,7 +20,7 @@ Same command to install and to update to the latest version.
 claude-carbon ⌥ main | 🟢 Opus 4.7 ▓▓▓░░░░░░░ 35% | $0.50 · 65g CO₂ | Use 17% ↻13:00
 ```
 
-Segments, left to right: project + git branch · model + context window % · session cost + CO2 · 5h block quota usage + reset time. A 🔥 prefix appears on the quota segment if you're burning >50%/h since block start.
+Segments, left to right: project + git branch · model + context window % · session cost + CO2 · 5h block quota usage + reset time. A 🔥 prefix appears on the quota segment if usage exceeds 15% AND burn rate exceeds 50%/h since block start (after a 15 min grace window to absorb bursty session starts).
 
 **3. Use the slash commands:**
 

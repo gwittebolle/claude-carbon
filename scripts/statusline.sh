@@ -109,15 +109,15 @@ if command -v jq &>/dev/null; then
       # Parse endTime (ISO-8601 UTC) to local HH:MM
       RESET_LOCAL="$(date -j -f "%Y-%m-%dT%H:%M:%S" "${END_TIME%.*}" "+%H:%M" 2>/dev/null \
         || date -d "$END_TIME" "+%H:%M" 2>/dev/null || echo "")"
-      # Warning icon if burn rate >= 50% / hour since block start
+      # Warning icon if burn rate >= 50% / hour AND usage >= 15%
+      # 15 min grace window to absorb bursty session starts
       WARN=""
-      if [ -n "$START_TIME" ]; then
+      if [ -n "$START_TIME" ] && [ "$USAGE_PCT_INT" -ge 15 ] 2>/dev/null; then
         START_EPOCH="$(date -j -f "%Y-%m-%dT%H:%M:%S" "${START_TIME%.*}" "+%s" 2>/dev/null \
           || date -d "$START_TIME" "+%s" 2>/dev/null || echo 0)"
         NOW_EPOCH="$(date +%s)"
         ELAPSED_SEC=$(( NOW_EPOCH - START_EPOCH ))
-        # Need at least 5 min elapsed to avoid false positives on block start
-        if [ "$ELAPSED_SEC" -gt 300 ]; then
+        if [ "$ELAPSED_SEC" -gt 900 ]; then
           HOT="$(echo "$USAGE_PCT $ELAPSED_SEC" | LC_ALL=C awk '{print (($1 * 3600 / $2) >= 50) ? "1" : "0"}')"
           [ "$HOT" = "1" ] && WARN="🔥 "
         fi
