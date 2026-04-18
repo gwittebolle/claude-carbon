@@ -99,10 +99,12 @@ if command -v jq &>/dev/null; then
 
   # Render from cache if available (even if stale)
   if [ -f "$USAGE_CACHE_FILE" ]; then
-    USAGE_PCT="$(jq -r '.blocks[0].tokenLimitStatus.percentUsed // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
+    TOTAL_TOKENS="$(jq -r '.blocks[0].totalTokens // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
+    TOKEN_LIMIT="$(jq -r '.blocks[0].tokenLimitStatus.limit // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
     END_TIME="$(jq -r '.blocks[0].endTime // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
     START_TIME="$(jq -r '.blocks[0].startTime // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
-    if [ -n "$USAGE_PCT" ] && [ -n "$END_TIME" ]; then
+    if [ -n "$TOTAL_TOKENS" ] && [ -n "$TOKEN_LIMIT" ] && [ -n "$END_TIME" ]; then
+      USAGE_PCT="$(echo "$TOTAL_TOKENS $TOKEN_LIMIT" | LC_ALL=C awk '{printf "%.2f", ($2 > 0) ? ($1 / $2 * 100) : 0}')"
       USAGE_PCT_INT="$(echo "$USAGE_PCT" | LC_ALL=C awk '{printf "%.0f", $1}')"
       # Clamp >100 to 100 for display
       [ "$USAGE_PCT_INT" -gt 100 ] 2>/dev/null && USAGE_PCT_INT=100
