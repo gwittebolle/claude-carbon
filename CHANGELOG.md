@@ -2,6 +2,10 @@
 
 ## 2026-04-19
 
+### fix: stale lock + UTC-to-local conversion for reset time
+
+Two bugs masked the correct 5h block reset time: (1) the async-refresh lock file could survive a crashed/killed ccusage process and block every subsequent refresh indefinitely (6h of stuck data in practice), and (2) macOS `date -j -f` without `-u` parses the UTC timestamp as local time, making `↻11:00` display when the real reset was 13:00 (or 18:00 after the block rolled over). Locks older than 60s are now broken on the next run, and both `startTime`/`endTime` are parsed as UTC then formatted in local via epoch.
+
 ### feat: learned token limit file with auto-bump
 
 The 5h quota % is now computed against a persistent ceiling stored in `~/.claude/claude-carbon/token-limit`. The file is seeded from the `CLAUDE_CARBON_TOKEN_LIMIT` env var on first run (or can be written directly), then auto-bumps whenever an observed block exceeds it. Falls back to ccusage's heuristic if neither is set. Fixes the Max 20x case where ccusage's heuristic ceiling is far too low until a block has been saturated, inflating the displayed percentage (68% shown when `/usage` reported 24%). README explains the seeding procedure via `/usage`.

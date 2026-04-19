@@ -84,6 +84,12 @@ if command -v jq &>/dev/null; then
   # Trigger async refresh if stale. Uses npx -y ccusage@latest; first run ~15s, subsequent cached.
   if [ "$CACHE_AGE" -gt "$USAGE_CACHE_TTL" ]; then
     LOCK_FILE="${USAGE_CACHE_FILE}.lock"
+    # Break stale locks (killed process, crash) after 60s so a dead lock never blocks refreshes
+    if [ -f "$LOCK_FILE" ]; then
+      LOCK_MTIME="$(stat -f %m "$LOCK_FILE" 2>/dev/null || stat -c %Y "$LOCK_FILE" 2>/dev/null || echo 0)"
+      LOCK_AGE=$(( $(date +%s) - LOCK_MTIME ))
+      [ "$LOCK_AGE" -gt 60 ] && rm -f "$LOCK_FILE" "${USAGE_CACHE_FILE}.tmp"
+    fi
     if ( set -o noclobber; echo "$$" > "$LOCK_FILE" ) 2>/dev/null; then
       (
         trap 'rm -f "$LOCK_FILE"' EXIT
@@ -132,14 +138,22 @@ if command -v jq &>/dev/null; then
       USAGE_PCT="$(echo "$TOTAL_TOKENS $TOKEN_LIMIT" | LC_ALL=C awk '{printf "%.2f", ($2 > 0) ? ($1 / $2 * 100) : 0}')"
       USAGE_PCT_INT="$(echo "$USAGE_PCT" | LC_ALL=C awk '{printf "%.0f", $1}')"
       [ "$USAGE_PCT_INT" -gt 100 ] 2>/dev/null && USAGE_PCT_INT=100
-      # Parse endTime (ISO-8601 UTC) to local HH:MM
-      RESET_LOCAL="$(date -j -f "%Y-%m-%dT%H:%M:%S" "${END_TIME%.*}" "+%H:%M" 2>/dev/null \
-        || date -d "$END_TIME" "+%H:%M" 2>/dev/null || echo "")"
+      # Parse endTime (ISO-8601 UTC) to local HH:MM.
+      # macOS `date -j -f` without -u treats input as local time; we need -u to
+      # read the UTC timestamp correctly, then convert via epoch to local display.
+      END_EPOCH="$(date -j -u -f "%Y-%m-%dT%H:%M:%S" "${END_TIME%.*}" "+%s" 2>/dev/null \
+        || date -d "$END_TIME" "+%s" 2>/dev/null || echo "")"
+      if [ -n "$END_EPOCH" ]; then
+        RESET_LOCAL="$(date -r "$END_EPOCH" "+%H:%M" 2>/dev/null \
+          || date -d "@$END_EPOCH" "+%H:%M" 2>/dev/null || echo "")"
+      else
+        RESET_LOCAL=""
+      fi
       # 🔥 when sustained burn rate over elapsed time would finish the 5h block
       # above 100% of the limit. 15 min grace to absorb bursty starts.
       WARN=""
       if [ -n "$START_TIME" ] && [ "$USAGE_PCT_INT" -ge 15 ] 2>/dev/null; then
-        START_EPOCH="$(date -j -f "%Y-%m-%dT%H:%M:%S" "${START_TIME%.*}" "+%s" 2>/dev/null \
+        START_EPOCH="$(date -j -u -f "%Y-%m-%dT%H:%M:%S" "${START_TIME%.*}" "+%s" 2>/dev/null \
           || date -d "$START_TIME" "+%s" 2>/dev/null || echo 0)"
         NOW_EPOCH="$(date +%s)"
         ELAPSED_SEC=$(( NOW_EPOCH - START_EPOCH ))
