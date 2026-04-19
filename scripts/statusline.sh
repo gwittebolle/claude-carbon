@@ -97,22 +97,46 @@ if command -v jq &>/dev/null; then
     fi
   fi
 
-  # Render from cache if available (even if stale)
+  # Render from cache if available (even if stale).
+  # Effective token limit precedence:
+  #   1. $USAGE_CACHE_DIR/token-limit (learned ceiling, auto-bumps when a block exceeds it)
+  #   2. $CLAUDE_CARBON_TOKEN_LIMIT env var (seeds the learned file on first run)
+  #   3. ccusage heuristic (highest observed block, inaccurate on Max 20x until saturated)
+  # Discover the real number via /usage in Claude Code; the learned file will
+  # grow automatically on any block that overshoots it.
+  LIMIT_STATE_FILE="${USAGE_CACHE_DIR}/token-limit"
   if [ -f "$USAGE_CACHE_FILE" ]; then
     TOTAL_TOKENS="$(jq -r '.blocks[0].totalTokens // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
-    TOKEN_LIMIT="$(jq -r '.blocks[0].tokenLimitStatus.limit // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
+    CCUSAGE_LIMIT="$(jq -r '.blocks[0].tokenLimitStatus.limit // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
     END_TIME="$(jq -r '.blocks[0].endTime // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
     START_TIME="$(jq -r '.blocks[0].startTime // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
+
+    LEARNED_LIMIT=""
+    [ -f "$LIMIT_STATE_FILE" ] && LEARNED_LIMIT="$(cat "$LIMIT_STATE_FILE" 2>/dev/null | tr -cd '0-9')"
+    # First-run seed: if env var set and no learned file yet, seed it
+    if [ -z "$LEARNED_LIMIT" ] && [ -n "${CLAUDE_CARBON_TOKEN_LIMIT:-}" ]; then
+      LEARNED_LIMIT="$CLAUDE_CARBON_TOKEN_LIMIT"
+      echo "$LEARNED_LIMIT" > "$LIMIT_STATE_FILE" 2>/dev/null || true
+    fi
+    TOKEN_LIMIT="${LEARNED_LIMIT:-$CCUSAGE_LIMIT}"
+
+    # Auto-bump: if current block already exceeded the limit, raise the ceiling
+    if [ -n "$TOTAL_TOKENS" ] && [ -n "$TOKEN_LIMIT" ]; then
+      if [ "$TOTAL_TOKENS" -gt "$TOKEN_LIMIT" ] 2>/dev/null; then
+        TOKEN_LIMIT="$TOTAL_TOKENS"
+        echo "$TOKEN_LIMIT" > "$LIMIT_STATE_FILE" 2>/dev/null || true
+      fi
+    fi
+
     if [ -n "$TOTAL_TOKENS" ] && [ -n "$TOKEN_LIMIT" ] && [ -n "$END_TIME" ]; then
       USAGE_PCT="$(echo "$TOTAL_TOKENS $TOKEN_LIMIT" | LC_ALL=C awk '{printf "%.2f", ($2 > 0) ? ($1 / $2 * 100) : 0}')"
       USAGE_PCT_INT="$(echo "$USAGE_PCT" | LC_ALL=C awk '{printf "%.0f", $1}')"
-      # Clamp >100 to 100 for display
       [ "$USAGE_PCT_INT" -gt 100 ] 2>/dev/null && USAGE_PCT_INT=100
       # Parse endTime (ISO-8601 UTC) to local HH:MM
       RESET_LOCAL="$(date -j -f "%Y-%m-%dT%H:%M:%S" "${END_TIME%.*}" "+%H:%M" 2>/dev/null \
         || date -d "$END_TIME" "+%H:%M" 2>/dev/null || echo "")"
-      # Warning icon if burn rate >= 50% / hour AND usage >= 15%
-      # 15 min grace window to absorb bursty session starts
+      # 🔥 when sustained burn rate over elapsed time would finish the 5h block
+      # above 100% of the limit. 15 min grace to absorb bursty starts.
       WARN=""
       if [ -n "$START_TIME" ] && [ "$USAGE_PCT_INT" -ge 15 ] 2>/dev/null; then
         START_EPOCH="$(date -j -f "%Y-%m-%dT%H:%M:%S" "${START_TIME%.*}" "+%s" 2>/dev/null \
@@ -120,7 +144,7 @@ if command -v jq &>/dev/null; then
         NOW_EPOCH="$(date +%s)"
         ELAPSED_SEC=$(( NOW_EPOCH - START_EPOCH ))
         if [ "$ELAPSED_SEC" -gt 900 ]; then
-          HOT="$(echo "$USAGE_PCT $ELAPSED_SEC" | LC_ALL=C awk '{print (($1 * 3600 / $2) >= 50) ? "1" : "0"}')"
+          HOT="$(echo "$USAGE_PCT $ELAPSED_SEC" | LC_ALL=C awk '{print (($1 * 18000 / $2) >= 100) ? "1" : "0"}')"
           [ "$HOT" = "1" ] && WARN="🔥 "
         fi
       fi

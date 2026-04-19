@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-04-19
+
+### feat: learned token limit file with auto-bump
+
+The 5h quota % is now computed against a persistent ceiling stored in `~/.claude/claude-carbon/token-limit`. The file is seeded from the `CLAUDE_CARBON_TOKEN_LIMIT` env var on first run (or can be written directly), then auto-bumps whenever an observed block exceeds it. Falls back to ccusage's heuristic if neither is set. Fixes the Max 20x case where ccusage's heuristic ceiling is far too low until a block has been saturated, inflating the displayed percentage (68% shown when `/usage` reported 24%). README explains the seeding procedure via `/usage`.
+
 ## 2026-04-17
 
 ### feat: richer status line (git branch + 5h quota usage)

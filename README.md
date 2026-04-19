@@ -17,10 +17,32 @@ Same command to install and to update to the latest version.
 **2. Restart Claude Code.** Your CO2 appears in the status line:
 
 ```
-claude-carbon ⌥ main | 🟢 Opus 4.7 ▓▓▓░░░░░░░ 35% | $0.50 · 65g CO₂ | Use 17% ↻13:00
+claude-carbon ⌥ main | 🟢 Opus 4.7 ▓▓▓░░░░░░░ 35% | $0.50 · 65g CO₂ | Use 24% ↻13:00
 ```
 
-Segments, left to right: project + git branch · model + context window % · session cost + CO2 · 5h block quota usage + reset time. A 🔥 prefix appears on the quota segment if usage exceeds 15% AND burn rate exceeds 50%/h since block start (after a 15 min grace window to absorb bursty session starts).
+Segments, left to right: project + git branch · model + context window % · session cost + CO2 · 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
+
+**Setting the right token limit.** The 5h quota % is computed against a token ceiling stored in `~/.claude/claude-carbon/token-limit`. The authoritative per-plan limit is not exposed externally — Claude Code only shows it through `/usage` — so this file has to be seeded once.
+
+Limit resolution order:
+
+1. **Learned file** (`~/.claude/claude-carbon/token-limit`): a single number, auto-bumps whenever a block's actual token count exceeds it. Once set correctly, this is what the status line uses.
+2. **`CLAUDE_CARBON_TOKEN_LIMIT` env var**: seeds the learned file on first run if the file doesn't exist. Useful to bootstrap.
+3. **ccusage heuristic** (fallback): the highest-tokens block found in your local `~/.claude` history. Fine on Pro / Max 5x once you've saturated a block, but **underestimates on Max 20x until you've actually hit your ceiling** — so the displayed % runs too high.
+
+Seed the real limit once, then the file maintains itself:
+
+```bash
+# Run /usage in Claude Code, note the real % for the current 5h block.
+# Divide the tokens you've actually used by that %. Example:
+# /usage says 24%, ccusage reports 131M tokens → limit ≈ 131M / 0.24 ≈ 546M.
+export CLAUDE_CARBON_TOKEN_LIMIT=546000000
+
+# Or skip the env var and write the file directly:
+echo 546000000 > ~/.claude/claude-carbon/token-limit
+```
+
+The file then auto-bumps on its own: if you ever run a block that burns more tokens than the stored ceiling, the ceiling is raised to that new value. So if Anthropic increases your plan limit (or you switch plans upward), it adapts. If they decrease the limit, re-seed the file by hand.
 
 **3. Use the slash commands:**
 
