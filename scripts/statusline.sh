@@ -66,107 +66,106 @@ else
   PCT_DISPLAY="${USED_PCT}%"
 fi
 
-# 5-hour block usage (ccusage) with background-refresh cache
+# 5-hour block usage via stdin (preferred) or Anthropic OAuth API (fallback).
+# Canonical source: same data as `/usage` in Claude Code. Replaces ccusage heuristic.
 USAGE_SEGMENT=""
 if command -v jq &>/dev/null; then
-  USAGE_CACHE_DIR="${HOME}/.claude/claude-carbon"
-  USAGE_CACHE_FILE="${USAGE_CACHE_DIR}/block-usage.json"
-  USAGE_CACHE_TTL="${CLAUDE_CARBON_USAGE_TTL:-30}"
-  mkdir -p "$USAGE_CACHE_DIR"
+  FIVE_PCT=""
+  FIVE_RESET_ISO=""
 
-  if [ -f "$USAGE_CACHE_FILE" ]; then
-    CACHE_MTIME="$(stat -f %m "$USAGE_CACHE_FILE" 2>/dev/null || stat -c %Y "$USAGE_CACHE_FILE" 2>/dev/null || echo 0)"
-    CACHE_AGE=$(( $(date +%s) - CACHE_MTIME ))
-  else
-    CACHE_AGE=999999
-  fi
+  # Priority 1: Claude Code injects rate_limits in the statusline stdin JSON.
+  FIVE_PCT="$(echo "$INPUT" | jq -r '.rate_limits.five_hour.used_percentage // empty')"
+  FIVE_RESET_ISO="$(echo "$INPUT" | jq -r '.rate_limits.five_hour.resets_at // empty')"
 
-  # Trigger async refresh if stale. Uses npx -y ccusage@latest; first run ~15s, subsequent cached.
-  if [ "$CACHE_AGE" -gt "$USAGE_CACHE_TTL" ]; then
-    LOCK_FILE="${USAGE_CACHE_FILE}.lock"
-    # Break stale locks (killed process, crash) after 60s so a dead lock never blocks refreshes
-    if [ -f "$LOCK_FILE" ]; then
-      LOCK_MTIME="$(stat -f %m "$LOCK_FILE" 2>/dev/null || stat -c %Y "$LOCK_FILE" 2>/dev/null || echo 0)"
-      LOCK_AGE=$(( $(date +%s) - LOCK_MTIME ))
-      [ "$LOCK_AGE" -gt 60 ] && rm -f "$LOCK_FILE" "${USAGE_CACHE_FILE}.tmp"
+  # Priority 2: fallback to GET /api/oauth/usage with 60s cache.
+  if [ -z "$FIVE_PCT" ]; then
+    USAGE_CACHE_DIR="${HOME}/.claude/claude-carbon"
+    USAGE_CACHE_FILE="${USAGE_CACHE_DIR}/oauth-usage.json"
+    USAGE_CACHE_TTL=60
+    mkdir -p "$USAGE_CACHE_DIR"
+
+    NEEDS_REFRESH=1
+    if [ -f "$USAGE_CACHE_FILE" ]; then
+      CACHE_MTIME="$(stat -f %m "$USAGE_CACHE_FILE" 2>/dev/null || stat -c %Y "$USAGE_CACHE_FILE" 2>/dev/null || echo 0)"
+      CACHE_AGE=$(( $(date +%s) - CACHE_MTIME ))
+      [ "$CACHE_AGE" -lt "$USAGE_CACHE_TTL" ] && NEEDS_REFRESH=0
     fi
-    if ( set -o noclobber; echo "$$" > "$LOCK_FILE" ) 2>/dev/null; then
-      (
-        trap 'rm -f "$LOCK_FILE"' EXIT
-        if npx -y ccusage@latest blocks --active --json --token-limit max --offline > "${USAGE_CACHE_FILE}.tmp" 2>/dev/null; then
-          mv "${USAGE_CACHE_FILE}.tmp" "$USAGE_CACHE_FILE"
-        else
-          rm -f "${USAGE_CACHE_FILE}.tmp"
+
+    if [ "$NEEDS_REFRESH" = "1" ]; then
+      TOKEN=""
+      if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+        TOKEN="$CLAUDE_CODE_OAUTH_TOKEN"
+      elif command -v security &>/dev/null; then
+        BLOB="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)"
+        [ -n "$BLOB" ] && TOKEN="$(echo "$BLOB" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)"
+      fi
+      if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+        CREDS="${HOME}/.claude/.credentials.json"
+        [ -f "$CREDS" ] && TOKEN="$(jq -r '.claudeAiOauth.accessToken // empty' "$CREDS" 2>/dev/null)"
+      fi
+
+      if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
+        RESPONSE="$(curl -s --max-time 5 \
+          -H "Accept: application/json" \
+          -H "Content-Type: application/json" \
+          -H "Authorization: Bearer $TOKEN" \
+          -H "anthropic-beta: oauth-2025-04-20" \
+          -H "User-Agent: claude-code/2.1.34" \
+          "https://api.anthropic.com/api/oauth/usage" 2>/dev/null || true)"
+        if [ -n "$RESPONSE" ] && echo "$RESPONSE" | jq -e '.five_hour' >/dev/null 2>&1; then
+          echo "$RESPONSE" > "$USAGE_CACHE_FILE"
         fi
-      ) </dev/null >/dev/null 2>&1 &
-      disown 2>/dev/null || true
-    fi
-  fi
-
-  # Render from cache if available (even if stale).
-  # Effective token limit precedence:
-  #   1. $USAGE_CACHE_DIR/token-limit (learned ceiling, auto-bumps when a block exceeds it)
-  #   2. $CLAUDE_CARBON_TOKEN_LIMIT env var (seeds the learned file on first run)
-  #   3. ccusage heuristic (highest observed block, inaccurate on Max 20x until saturated)
-  # Discover the real number via /usage in Claude Code; the learned file will
-  # grow automatically on any block that overshoots it.
-  LIMIT_STATE_FILE="${USAGE_CACHE_DIR}/token-limit"
-  if [ -f "$USAGE_CACHE_FILE" ]; then
-    TOTAL_TOKENS="$(jq -r '.blocks[0].totalTokens // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
-    CCUSAGE_LIMIT="$(jq -r '.blocks[0].tokenLimitStatus.limit // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
-    END_TIME="$(jq -r '.blocks[0].endTime // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
-    START_TIME="$(jq -r '.blocks[0].startTime // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
-
-    LEARNED_LIMIT=""
-    [ -f "$LIMIT_STATE_FILE" ] && LEARNED_LIMIT="$(cat "$LIMIT_STATE_FILE" 2>/dev/null | tr -cd '0-9')"
-    # First-run seed: if env var set and no learned file yet, seed it
-    if [ -z "$LEARNED_LIMIT" ] && [ -n "${CLAUDE_CARBON_TOKEN_LIMIT:-}" ]; then
-      LEARNED_LIMIT="$CLAUDE_CARBON_TOKEN_LIMIT"
-      echo "$LEARNED_LIMIT" > "$LIMIT_STATE_FILE" 2>/dev/null || true
-    fi
-    TOKEN_LIMIT="${LEARNED_LIMIT:-$CCUSAGE_LIMIT}"
-
-    # Auto-bump: if current block already exceeded the limit, raise the ceiling
-    if [ -n "$TOTAL_TOKENS" ] && [ -n "$TOKEN_LIMIT" ]; then
-      if [ "$TOTAL_TOKENS" -gt "$TOKEN_LIMIT" ] 2>/dev/null; then
-        TOKEN_LIMIT="$TOTAL_TOKENS"
-        echo "$TOKEN_LIMIT" > "$LIMIT_STATE_FILE" 2>/dev/null || true
       fi
     fi
 
-    if [ -n "$TOTAL_TOKENS" ] && [ -n "$TOKEN_LIMIT" ] && [ -n "$END_TIME" ]; then
-      USAGE_PCT="$(echo "$TOTAL_TOKENS $TOKEN_LIMIT" | LC_ALL=C awk '{printf "%.2f", ($2 > 0) ? ($1 / $2 * 100) : 0}')"
-      USAGE_PCT_INT="$(echo "$USAGE_PCT" | LC_ALL=C awk '{printf "%.0f", $1}')"
-      [ "$USAGE_PCT_INT" -gt 100 ] 2>/dev/null && USAGE_PCT_INT=100
-      # Parse endTime (ISO-8601 UTC) to local HH:MM.
-      # macOS `date -j -f` without -u treats input as local time; we need -u to
-      # read the UTC timestamp correctly, then convert via epoch to local display.
-      END_EPOCH="$(date -j -u -f "%Y-%m-%dT%H:%M:%S" "${END_TIME%.*}" "+%s" 2>/dev/null \
-        || date -d "$END_TIME" "+%s" 2>/dev/null || echo "")"
+    if [ -f "$USAGE_CACHE_FILE" ]; then
+      FIVE_PCT="$(jq -r '.five_hour.utilization // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
+      FIVE_RESET_ISO="$(jq -r '.five_hour.resets_at // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
+    fi
+  fi
+
+  if [ -n "$FIVE_PCT" ]; then
+    USAGE_PCT_INT="$(echo "$FIVE_PCT" | LC_ALL=C awk '{printf "%.0f", $1}')"
+    [ "$USAGE_PCT_INT" -gt 100 ] 2>/dev/null && USAGE_PCT_INT=100
+
+    END_EPOCH=""
+    RESET_LOCAL=""
+    if [ -n "$FIVE_RESET_ISO" ]; then
+      # Claude Code stdin passes resets_at as epoch (number); API returns ISO-8601 with fractional
+      # seconds + tz offset (e.g. 2026-04-21T08:00:00.608966+00:00). Handle both.
+      if [[ "$FIVE_RESET_ISO" =~ ^[0-9]+$ ]]; then
+        END_EPOCH="$FIVE_RESET_ISO"
+      else
+        ISO_TRIM="${FIVE_RESET_ISO%%.*}"     # strip fractional seconds
+        ISO_TRIM="${ISO_TRIM%%Z}"            # strip trailing Z
+        ISO_TRIM="${ISO_TRIM%%+*}"           # strip +HH:MM offset
+        END_EPOCH="$(date -j -u -f "%Y-%m-%dT%H:%M:%S" "$ISO_TRIM" "+%s" 2>/dev/null \
+          || date -d "$FIVE_RESET_ISO" "+%s" 2>/dev/null || echo "")"
+      fi
       if [ -n "$END_EPOCH" ]; then
         RESET_LOCAL="$(date -r "$END_EPOCH" "+%H:%M" 2>/dev/null \
           || date -d "@$END_EPOCH" "+%H:%M" 2>/dev/null || echo "")"
-      else
-        RESET_LOCAL=""
       fi
-      # 🔥 when sustained burn rate over elapsed time would finish the 5h block
-      # above 100% of the limit. 15 min grace to absorb bursty starts.
-      WARN=""
-      if [ -n "$START_TIME" ] && [ "$USAGE_PCT_INT" -ge 15 ] 2>/dev/null; then
-        START_EPOCH="$(date -j -u -f "%Y-%m-%dT%H:%M:%S" "${START_TIME%.*}" "+%s" 2>/dev/null \
-          || date -d "$START_TIME" "+%s" 2>/dev/null || echo 0)"
-        NOW_EPOCH="$(date +%s)"
-        ELAPSED_SEC=$(( NOW_EPOCH - START_EPOCH ))
-        if [ "$ELAPSED_SEC" -gt 900 ]; then
-          HOT="$(echo "$USAGE_PCT $ELAPSED_SEC" | LC_ALL=C awk '{print (($1 * 18000 / $2) >= 100) ? "1" : "0"}')"
-          [ "$HOT" = "1" ] && WARN="🔥 "
-        fi
+    fi
+
+    # 🔥 when sustained burn rate over elapsed time would finish the 5h block
+    # above 100% of the limit. 15 min grace + 15% floor to absorb bursty starts.
+    # Block start derived as end - 5h (18000s).
+    WARN=""
+    if [ -n "$END_EPOCH" ] && [ "$USAGE_PCT_INT" -ge 15 ] 2>/dev/null; then
+      NOW_EPOCH="$(date +%s)"
+      START_EPOCH=$(( END_EPOCH - 18000 ))
+      ELAPSED_SEC=$(( NOW_EPOCH - START_EPOCH ))
+      if [ "$ELAPSED_SEC" -gt 900 ]; then
+        HOT="$(echo "$FIVE_PCT $ELAPSED_SEC" | LC_ALL=C awk '{print (($1 * 18000 / $2) >= 100) ? "1" : "0"}')"
+        [ "$HOT" = "1" ] && WARN="🔥 "
       fi
-      if [ -n "$RESET_LOCAL" ]; then
-        USAGE_SEGMENT=" | ${WARN}Use ${USAGE_PCT_INT}% ↻${RESET_LOCAL}"
-      else
-        USAGE_SEGMENT=" | ${WARN}Use ${USAGE_PCT_INT}%"
-      fi
+    fi
+
+    if [ -n "$RESET_LOCAL" ]; then
+      USAGE_SEGMENT=" | ${WARN}Use ${USAGE_PCT_INT}% ↻${RESET_LOCAL}"
+    else
+      USAGE_SEGMENT=" | ${WARN}Use ${USAGE_PCT_INT}%"
     fi
   fi
 fi

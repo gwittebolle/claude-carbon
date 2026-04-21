@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-04-21
+
+### fix: restore reset time display when stdin passes epoch
+
+Claude Code injects `rate_limits.five_hour.resets_at` as a Unix epoch (number), while the fallback API returns ISO-8601 with fractional seconds + tz offset. The parser now branches on numeric vs string input and strips `.fraction`, `Z`, and `+HH:MM` suffixes before `date -j -u -f`. Without this, the stdin path left `END_EPOCH` empty and the `↻HH:MM` suffix silently disappeared.
+
+### refactor: 5h quota via Anthropic OAuth API (drops ccusage heuristic)
+
+The 5h block usage % is now pulled from `https://api.anthropic.com/api/oauth/usage` (same data as `/usage` in Claude Code), with a stdin-first path reading `rate_limits.five_hour.used_percentage` when Claude Code injects it. Removes the ccusage dependency, the learned `token-limit` file, the `CLAUDE_CARBON_TOKEN_LIMIT` env seed, the async refresh lock, and the npx cold-start latency. Accurate on Max 20x without needing to saturate a block first. OAuth token resolved from macOS Keychain, env, or `~/.claude/.credentials.json`. Response cached 60s in `~/.claude/claude-carbon/oauth-usage.json`. The 🔥 burn-rate prefix and `↻HH:MM` reset time are preserved; block start is derived as `resets_at - 5h`.
+
 ## 2026-04-19
 
 ### fix: stale lock + UTC-to-local conversion for reset time

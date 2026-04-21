@@ -20,29 +20,14 @@ Same command to install and to update to the latest version.
 claude-carbon ⌥ main | 🟢 Opus 4.7 ▓▓▓░░░░░░░ 35% | $0.50 · 65g CO₂ | Use 24% ↻13:00
 ```
 
-Segments, left to right: project + git branch · model + context window % · session cost + CO2 · 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
+Segments, left to right: project + git branch, model + context window %, session cost + CO2, 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
 
-**Setting the right token limit.** The 5h quota % is computed against a token ceiling stored in `~/.claude/claude-carbon/token-limit`. The authoritative per-plan limit is not exposed externally — Claude Code only shows it through `/usage` — so this file has to be seeded once.
+**5h quota source.** The percentage comes directly from Anthropic's `/api/oauth/usage` endpoint (the same data Claude Code displays in `/usage`). No heuristic, no token-limit file to seed. Two sources in order:
 
-Limit resolution order:
+1. **stdin** (preferred): if Claude Code injects `rate_limits.five_hour.used_percentage` in the statusline JSON, that value is used straight away.
+2. **OAuth API fallback**: `GET https://api.anthropic.com/api/oauth/usage` with the bearer token from macOS Keychain, `CLAUDE_CODE_OAUTH_TOKEN`, or `~/.claude/.credentials.json`. Cached 60s in `~/.claude/claude-carbon/oauth-usage.json`.
 
-1. **Learned file** (`~/.claude/claude-carbon/token-limit`): a single number, auto-bumps whenever a block's actual token count exceeds it. Once set correctly, this is what the status line uses.
-2. **`CLAUDE_CARBON_TOKEN_LIMIT` env var**: seeds the learned file on first run if the file doesn't exist. Useful to bootstrap.
-3. **ccusage heuristic** (fallback): the highest-tokens block found in your local `~/.claude` history. Fine on Pro / Max 5x once you've saturated a block, but **underestimates on Max 20x until you've actually hit your ceiling** — so the displayed % runs too high.
-
-Seed the real limit once, then the file maintains itself:
-
-```bash
-# Run /usage in Claude Code, note the real % for the current 5h block.
-# Divide the tokens you've actually used by that %. Example:
-# /usage says 24%, ccusage reports 131M tokens → limit ≈ 131M / 0.24 ≈ 546M.
-export CLAUDE_CARBON_TOKEN_LIMIT=546000000
-
-# Or skip the env var and write the file directly:
-echo 546000000 > ~/.claude/claude-carbon/token-limit
-```
-
-The file then auto-bumps on its own: if you ever run a block that burns more tokens than the stored ceiling, the ceiling is raised to that new value. So if Anthropic increases your plan limit (or you switch plans upward), it adapts. If they decrease the limit, re-seed the file by hand.
+Accurate on every plan, including Max 20x.
 
 **3. Use the slash commands:**
 
@@ -184,7 +169,7 @@ Factors are editable in `data/factors.json`. See [METHODOLOGY.md](METHODOLOGY.md
 - `jq` - JSON parsing
 - `sqlite3` - local database
 - `git` - branch detection in status line (optional)
-- `npx` (Node.js) - 5h quota usage in status line via [ccusage](https://github.com/ryoppippi/ccusage), called with aggressive cache (optional)
+- `curl` - 5h quota usage via Anthropic's `/api/oauth/usage` endpoint (optional, 60s cache)
 - `playwright-core` + Chromium - PNG export for `/carbon-card` (optional)
 
 `jq` and `sqlite3` are pre-installed on macOS. On Linux: `apt install jq sqlite3`.
