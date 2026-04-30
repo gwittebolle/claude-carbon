@@ -238,7 +238,7 @@ import sys, os
 
 months_fr = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
 summary_file = os.environ["TMP_SUMMARY"]
-summary_file_en = os.environ.get("TMP_SUMMARY_EN", "")
+summary_file_en = os.environ["TMP_SUMMARY_EN"]
 monthly_file = os.environ["TMP_MONTHLY"]
 
 # Parse monthly data
