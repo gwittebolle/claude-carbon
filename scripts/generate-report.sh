@@ -232,12 +232,13 @@ TMP_SUMMARY="$TMP_SUMMARY_FR"
 _t=$(mktemp /tmp/claude-carbon-monthly-XXXXXX); TMP_MONTHLY="${_t}.txt"; mv "$_t" "$TMP_MONTHLY"
 echo "$MONTHLY_DATA" > "$TMP_MONTHLY"
 
-export TMP_SUMMARY TMP_MONTHLY
+export TMP_SUMMARY TMP_SUMMARY_EN TMP_MONTHLY
 python3 << 'PYEOF'
 import sys, os
 
 months_fr = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
 summary_file = os.environ["TMP_SUMMARY"]
+summary_file_en = os.environ["TMP_SUMMARY_EN"]
 monthly_file = os.environ["TMP_MONTHLY"]
 
 # Parse monthly data
@@ -271,8 +272,8 @@ for label, co2, display in rows:
     )
 
 # Inject into all summary files
-for sf in [summary_file, summary_file.replace("-fr-", "-en-")]:
-    if os.path.exists(sf):
+for sf in [summary_file, summary_file_en]:
+    if sf and os.path.exists(sf):
         with open(sf) as f:
             content = f.read()
         content = content.replace("{{MONTHLY_BARS}}", bars_html)
