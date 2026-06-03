@@ -19,6 +19,13 @@ FACTOR_SONNET_OUT="$(jq -r '.models.sonnet.output' "$FACTORS_FILE" 2>/dev/null)"
 FACTOR_HAIKU_IN="$(jq -r '.models.haiku.input' "$FACTORS_FILE" 2>/dev/null)" || exit 0
 FACTOR_HAIKU_OUT="$(jq -r '.models.haiku.output' "$FACTORS_FILE" 2>/dev/null)" || exit 0
 
+# Theoretical API pricing per million tokens (public list price, same as backfill.sh).
+# The Stop hook doesn't provide the actual billed cost, so we estimate the API
+# price the usage would have cost outside of a subscription.
+PRICE_OPUS_IN="15"; PRICE_OPUS_OUT="75"
+PRICE_SONNET_IN="3"; PRICE_SONNET_OUT="15"
+PRICE_HAIKU_IN="0.80"; PRICE_HAIKU_OUT="4"
+
 # Read stdin
 INPUT="$(cat 2>/dev/null)" || exit 0
 [ -n "$INPUT" ] || exit 0
@@ -61,10 +68,10 @@ aggregate_jsonl() {
   } | .total_input = (.input_tokens + .cache_creation)' 2>/dev/null
 }
 
-# Helper: compute CO2 for aggregated data using its own model
+# Helper: compute CO2 and theoretical API cost for aggregated data using its own model
 compute_co2() {
   local agg="$1"
-  local tin out model family fin fout
+  local tin out model family fin fout pin pout
 
   tin="$(echo "$agg" | jq -r '.total_input // 0')"
   out="$(echo "$agg" | jq -r '.output_tokens // 0')"
@@ -75,14 +82,15 @@ compute_co2() {
   echo "$model" | grep -qi "haiku" && family="haiku"
 
   case "$family" in
-    opus)  fin="$FACTOR_OPUS_IN"; fout="$FACTOR_OPUS_OUT" ;;
-    haiku) fin="$FACTOR_HAIKU_IN"; fout="$FACTOR_HAIKU_OUT" ;;
-    *)     fin="$FACTOR_SONNET_IN"; fout="$FACTOR_SONNET_OUT" ;;
+    opus)  fin="$FACTOR_OPUS_IN"; fout="$FACTOR_OPUS_OUT"; pin="$PRICE_OPUS_IN"; pout="$PRICE_OPUS_OUT" ;;
+    haiku) fin="$FACTOR_HAIKU_IN"; fout="$FACTOR_HAIKU_OUT"; pin="$PRICE_HAIKU_IN"; pout="$PRICE_HAIKU_OUT" ;;
+    *)     fin="$FACTOR_SONNET_IN"; fout="$FACTOR_SONNET_OUT"; pin="$PRICE_SONNET_IN"; pout="$PRICE_SONNET_OUT" ;;
   esac
 
-  local co2
+  local co2 cost
   co2="$(echo "$tin $fin $out $fout" | LC_ALL=C awk '{printf "%.4f", ($1 * $2 + $3 * $4) / 1000000}')"
-  echo "$tin $out $co2"
+  cost="$(echo "$tin $pin $out $pout" | LC_ALL=C awk '{printf "%.6f", ($1 * $2 + $3 * $4) / 1000000}')"
+  echo "$tin $out $co2 $cost"
 }
 
 # Find the JSONL file: use transcript_path from hook, fallback to search by session_id
@@ -105,7 +113,7 @@ fi
 
 # Parse main JSONL
 MAIN_AGG="$(aggregate_jsonl "$JSONL_FILE")" || exit 0
-read -r INPUT_TOKENS OUTPUT_TOKENS CO2_G <<< "$(compute_co2 "$MAIN_AGG")"
+read -r INPUT_TOKENS OUTPUT_TOKENS CO2_G COST_USD <<< "$(compute_co2 "$MAIN_AGG")"
 
 # Extract model from JSONL (not available in Stop hook JSON)
 MODEL_RAW="$(echo "$MAIN_AGG" | jq -r '.models | if length == 0 then "claude-sonnet" else group_by(.) | sort_by(-length) | first | first end' 2>/dev/null)" || MODEL_RAW="claude-sonnet"
@@ -117,10 +125,11 @@ if [ -d "$SUBAGENT_DIR" ]; then
     [ -f "$SUB_FILE" ] || continue
     SUB_AGG="$(aggregate_jsonl "$SUB_FILE")" || continue
 
-    read -r SUB_IN SUB_OUT SUB_CO2 <<< "$(compute_co2 "$SUB_AGG")"
+    read -r SUB_IN SUB_OUT SUB_CO2 SUB_COST <<< "$(compute_co2 "$SUB_AGG")"
     INPUT_TOKENS="$(echo "$INPUT_TOKENS $SUB_IN" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
     OUTPUT_TOKENS="$(echo "$OUTPUT_TOKENS $SUB_OUT" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
     CO2_G="$(echo "$CO2_G $SUB_CO2" | LC_ALL=C awk '{printf "%.4f", $1 + $2}')"
+    COST_USD="$(echo "$COST_USD $SUB_COST" | LC_ALL=C awk '{printf "%.6f", $1 + $2}')"
   done
 fi
 
@@ -136,7 +145,7 @@ PROJECT="${PROJECT//\'/\'\'}"
 MODEL_RAW="${MODEL_RAW//\'/\'\'}"
 NOW="${NOW//\'/\'\'}"
 
-# INSERT OR REPLACE into sessions (source='live', cost=0 as Stop hook doesn't provide it)
-sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, started_at, ended_at, source) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${INPUT_TOKENS}, ${OUTPUT_TOKENS}, 0, ${CO2_G}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${NOW}'), '${NOW}', 'live');" 2>/dev/null || true
+# INSERT OR REPLACE into sessions (source='live', cost = theoretical API list price)
+sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, started_at, ended_at, source) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${INPUT_TOKENS}, ${OUTPUT_TOKENS}, ${COST_USD}, ${CO2_G}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${NOW}'), '${NOW}', 'live');" 2>/dev/null || true
 
 exit 0
