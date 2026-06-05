@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-06-05
+
+### fix: deduplicate tokens, correct pricing, and count cache_read energy
+
+Three correctness fixes to token accounting in `backfill.sh` and `persist-session.sh`, validated against ccusage on the same JSONL:
+
+- **Deduplication.** `aggregate_jsonl` now dedups assistant messages by `(message.id, requestId)` keeping the last occurrence, before summing. Resumed/compacted sessions replay prior messages within a file and streaming writes the same message repeatedly; 55% of assistant lines on observed data are replays, so the previous raw sum over-counted tokens ~3x. The duplication is entirely within-file, so per-file dedup is sufficient.
+- **Pricing.** Replaced the hardcoded $15/$75 (retired Opus 4.0/4.1 rate) with current Anthropic list pricing: Opus 4.6+ $5/$25, Sonnet $3/$15, Haiku $1/$5. Cost now also counts cache_write at 1.25x input and cache_read at 0.1x input. On deduplicated data `cost_usd` reconciles to within a few percent of ccusage.
+- **Cache read energy.** Cache reads (90%+ of token volume) are no longer excluded from CO2. They now count at `cache_read_factor` (default 0.08) of the input factor, an engineering estimate of the decode-phase KV re-read residual, documented in METHODOLOGY.md and `data/factors.json`. This is not the 0.1x billing ratio (a price, not energy).
+
+Schema gains a `cache_read_tokens` column (idempotent `ALTER TABLE` migration in setup/backfill/persist; new installs get it in `CREATE TABLE`). `CLAUDE_CARBON_DB` env var added to override the DB path for testing. Existing rows keep their old values until a re-backfill; new live sessions use the corrected methodology immediately.
+
+### feat: durable raw-token storage + recompute, surviving the 30-day JSONL purge
+
+Make the DB self-sufficient so derived metrics survive Anthropic's ~30-day transcript purge and any future methodology change, without ever needing the JSONL again.
+
+- **Raw tokens stored, not just derived numbers.** Added `cache_creation_tokens` and `methodology_version` columns. Rows now carry the full breakdown (regular input = `input_tokens - cache_creation_tokens`, cache write, cache read, output), so cost and CO2 become pure functions of stored tokens + config.
+- **`recompute.sh`** (new). Re-derives `cost_usd` and `co2_grams` for all `methodology_version >= 2` rows from `data/factors.json` + `data/prices.json`, no JSONL. Run it after any price/factor change. Mixed-model sessions recompute at the dominant model (small approximation; the insert is per-subagent accurate). `CLAUDE_CARBON_FACTORS` / `CLAUDE_CARBON_PRICES` env overrides for testing.
+- **`data/prices.json`** (new). Pricing moved out of the scripts into config (Opus $5/$25, Sonnet $3/$15, Haiku $1/$5; cache write 1.25x, cache read 0.1x). A future price change is one edit + `recompute.sh`, not a code change in three scripts.
+- **`safety-rescan.sh`** (new) + `SessionStart` hook. Throttled (once/day), backgrounded `backfill.sh` re-run that catches sessions the `Stop` hook missed, while their transcript is still on disk.
+
+Verified end-to-end on a temp DB: backfill stores the raw breakdown; recompute reproduces totals from tokens alone (~$2,667 / 230 kg, matching ccusage); changing the cache_read_factor moves CO2 only; changing a price moves cost only.
+
 ## 2026-04-21
 
 ### fix: restore reset time display when stdin passes epoch

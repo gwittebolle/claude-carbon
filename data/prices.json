@@ -1,0 +1,12 @@
+{
+  "_units": "USD per million tokens — current Anthropic list price (pay-as-you-go API value).",
+  "_note": "Opus 4.6+ is 5/25 (the retired 4.0/4.1 was 15/75). cache_write = input x cache_write_multiplier (5-min TTL), cache_read = input x cache_read_multiplier. After editing, run scripts/recompute.sh to re-derive cost_usd for all raw-token rows without needing the (purged) JSONL.",
+  "_updated": "2026-06-05",
+  "models": {
+    "opus": { "input": 5, "output": 25 },
+    "sonnet": { "input": 3, "output": 15 },
+    "haiku": { "input": 1, "output": 5 }
+  },
+  "cache_write_multiplier": 1.25,
+  "cache_read_multiplier": 0.1
+}

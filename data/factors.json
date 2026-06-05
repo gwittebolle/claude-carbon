@@ -2,6 +2,8 @@
   "_methodology": "Jegham et al. 2025 - AWS PUE 1.14, CIF 0.287 kgCO2e/kWh",
   "_units": "gCO2e per million tokens",
   "_source": "https://arxiv.org/abs/2505.09598",
+  "_cache_read_factor": "Energy of a cache_read token as a fraction of an uncached input token. Engineering estimate (~0.08, defensible range 0.05-0.15) derived from the decode-phase KV re-read residual. NOT Anthropic's 0.1x billing ratio (a price, not energy). See METHODOLOGY.md.",
+  "cache_read_factor": 0.08,
   "models": {
     "opus": { "input": 500, "output": 3000 },
     "sonnet": { "input": 190, "output": 1140 },

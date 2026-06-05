@@ -41,14 +41,22 @@ CREATE TABLE IF NOT EXISTS sessions (
   model TEXT,
   input_tokens INTEGER,
   output_tokens INTEGER,
+  cache_read_tokens INTEGER DEFAULT 0,
+  cache_creation_tokens INTEGER DEFAULT 0,
   cost_usd REAL,
   co2_grams REAL,
   started_at TEXT,
   ended_at TEXT,
-  source TEXT DEFAULT 'live'
+  source TEXT DEFAULT 'live',
+  methodology_version INTEGER DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_year ON sessions(started_at);
 SQL
+
+# Migrate pre-existing DBs that lack the newer columns (idempotent; errors ignored when present).
+sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_read_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
+sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
+sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN methodology_version INTEGER DEFAULT 1;" 2>/dev/null || true
 
 echo "  Schema created."
 
@@ -107,6 +115,17 @@ if [ "${CLAUDE_CARBON_INSTALLER:-}" != "1" ]; then
           {
             "type": "command",
             "command": "${PLUGIN_DIR}/scripts/persist-session.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${PLUGIN_DIR}/scripts/safety-rescan.sh"
           }
         ]
       }

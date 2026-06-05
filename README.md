@@ -113,17 +113,25 @@ Restart Claude Code.
 
 **Three data paths, two levels of accuracy:**
 
-| Script               | Trigger                 | Data source           | Subagents    | Cache reads | Accuracy      |
-| -------------------- | ----------------------- | --------------------- | ------------ | ----------- | ------------- |
-| `backfill.sh`        | Manual / setup          | JSONL files           | Included     | Excluded    | Best estimate |
-| `persist-session.sh` | Stop hook (session end) | JSONL files           | Included     | Excluded    | Best estimate |
-| `statusline.sh`      | Every turn (live)       | `context_window` JSON | Not included | Included\*  | Approximate   |
+| Script               | Trigger                 | Data source           | Subagents    | Cache reads         | Accuracy      |
+| -------------------- | ----------------------- | --------------------- | ------------ | ------------------- | ------------- |
+| `backfill.sh`        | Manual / setup          | JSONL files           | Included     | Counted (8% energy) | Best estimate |
+| `persist-session.sh` | Stop hook (session end) | JSONL files           | Included     | Counted (8% energy) | Best estimate |
+| `statusline.sh`      | Every turn (live)       | `context_window` JSON | Not included | Included (approx)   | Approximate   |
 
-**backfill** and **persist-session** parse the raw JSONL transcripts (main session + subagent files), applying per-model emission factors. Only `input_tokens` and `cache_creation_input_tokens` are counted. These feed the SQLite database used by reports.
+**backfill** and **persist-session** parse the raw JSONL transcripts (main session + subagent files), applying per-model emission factors. They deduplicate assistant messages by `(message.id, requestId)`, so resumed and compacted sessions are not double-counted (this matches `ccusage`; without it the token sum inflates roughly 3x). Each session stores its raw token breakdown (input, cache write, cache read, output), which feeds the SQLite database used by reports.
+
+**Cost** is the theoretical API list value (pay-as-you-go), not your subscription price: input, output, cache write (1.25x input), and cache read (0.1x input) at current Anthropic rates, set in `data/prices.json`. On deduplicated data it matches `ccusage`.
 
 **statusline** reads `context_window.total_input_tokens` from Claude Code at each turn. This value represents the current context size (not a cumulative total), includes cache reads, and does not account for subagent tokens. It's an indicative live display, not a data source for reports.
 
-_\*Claude Code does not expose `cache_read_input_tokens` separately in the statusline JSON. Parsing JSONL incrementally would be too slow for a per-turn display. A proper fix would require Anthropic to expose the token breakdown in the status hook API._
+### Surviving the 30-day transcript purge
+
+Claude Code deletes JSONL transcripts after about 30 days, so the SQLite database is the durable record. The `Stop` hook captures each session before its transcript ages out, and a once-a-day background re-scan (`SessionStart` hook, `safety-rescan.sh`) catches any session the `Stop` hook missed while its transcript still exists. Because each row stores raw token counts, `recompute.sh` regenerates cost and CO2 from `data/factors.json` + `data/prices.json` at any time, with no transcript needed. When Anthropic changes a price or a factor is revised, edit the config and run:
+
+```bash
+bash scripts/recompute.sh
+```
 
 ## Commands
 
@@ -135,13 +143,15 @@ _\*Claude Code does not expose `cache_read_input_tokens` separately in the statu
 <details>
 <summary>Scripts (run automatically, rarely needed manually)</summary>
 
-| Script               | What it does                                                |
-| -------------------- | ----------------------------------------------------------- |
-| `setup.sh`           | Init database, backfill historical sessions, show total     |
-| `statusline.sh`      | Status line script (called automatically by Claude Code)    |
-| `persist-session.sh` | Stop hook (saves session data on exit)                      |
-| `backfill.sh`        | Re-parse all historical JSONL transcripts (incl. subagents) |
-| `generate-report.sh` | Export PNG report cards (CLI, with `--since` / `--all`)     |
+| Script               | What it does                                                                              |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| `setup.sh`           | Init database, backfill historical sessions, show total                                   |
+| `statusline.sh`      | Status line script (called automatically by Claude Code)                                  |
+| `persist-session.sh` | Stop hook (saves session data on exit)                                                    |
+| `safety-rescan.sh`   | SessionStart hook (throttled background re-scan, catches missed sessions)                 |
+| `backfill.sh`        | Re-parse all historical JSONL transcripts (incl. subagents)                               |
+| `recompute.sh`       | Re-derive cost/CO2 from stored tokens after a price/factor change (no transcripts needed) |
+| `generate-report.sh` | Export PNG report cards (CLI, with `--since` / `--all`)                                   |
 
 </details>
 
@@ -158,7 +168,7 @@ Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), a peer-revi
 **Important: these are order-of-magnitude estimates, not precise measurements.**
 
 - Sonnet factors are derived from Jegham et al. direct measurements. Opus and Haiku are extrapolated (no public data from Anthropic on per-model energy consumption).
-- Cache read tokens are excluded from the calculation (only `input_tokens` and `cache_creation_input_tokens` are counted). Cache reads represent the majority of tokens in Claude Code but consume negligible energy.
+- Cache read tokens are counted at a reduced factor (default 0.08 of an input token, set in `data/factors.json`). A cached token skips prefill compute but still incurs decode-phase memory reads, so it is cheap but not free. This is an engineering estimate derived from the literature, not Anthropic's 0.1x billing ratio. See [METHODOLOGY.md](METHODOLOGY.md).
 - Carbon intensity uses AWS grid-average (0.287 kgCO2e/kWh), not real-time grid data.
 - Anthropic does not publish Scope 1, 2, or 3 emissions. These estimates are independent and based on academic research, not provider data.
 
