@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-12
+
+### fix: LC_ALL=C in carbon-report skill awk calls (#10)
+
+The bash script in `skills/carbon-report/SKILL.md` called awk without `LC_ALL=C`. Under comma-decimal locales (de_DE, fr_FR), awk truncated values at the decimal point (431.7045 → 431) and rendered output with commas. `export LC_ALL=C` at the top of the script covers all seven calls, mirroring the fix already applied to `scripts/*.sh`.
+
+### fix: backfill.sh derives project name from cwd instead of directory name (#11)
+
+`backfill.sh` took the last hyphen-separated token of the transcript directory name, which destroyed real hyphens in project names (`billing-service` → `service`) and merged distinct projects. It now reads the first `cwd` from the transcript JSONL via `jq -n 'first(inputs ...)'` (no SIGPIPE under `set -o pipefail`) and takes its basename, matching `persist-session.sh`. Previously backfilled rows keep their old names; delete and re-run backfill to normalize (noted in README).
+
 ## 2026-04-21
 
 ### fix: restore reset time display when stdin passes epoch

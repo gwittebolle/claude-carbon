@@ -150,10 +150,13 @@ while IFS= read -r JSONL_FILE; do
     continue
   fi
 
-  # Extract project name from parent directory
-  PROJECT_DIR="$(basename "$(dirname "$JSONL_FILE")")"
-  PROJECT="$(echo "$PROJECT_DIR" | tr '-' '\n' | tail -1)"
-  if [ -z "$PROJECT" ]; then
+  # Project name = basename of the session's cwd, matching persist-session.sh.
+  # The transcript directory name encodes the full path with hyphens, so real
+  # hyphens in project names cannot be recovered from it.
+  PROJECT_CWD="$(jq -rn 'first(inputs | .cwd? // empty)' "$JSONL_FILE" 2>/dev/null || true)"
+  if [ -n "$PROJECT_CWD" ]; then
+    PROJECT="$(basename "$PROJECT_CWD")"
+  else
     PROJECT="unknown"
   fi
 

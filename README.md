@@ -143,6 +143,8 @@ _\*Claude Code does not expose `cache_read_input_tokens` separately in the statu
 | `backfill.sh`        | Re-parse all historical JSONL transcripts (incl. subagents) |
 | `generate-report.sh` | Export PNG report cards (CLI, with `--since` / `--all`)     |
 
+Note: backfill now derives project names from the transcript's `cwd` (matching the live hook). Sessions backfilled before this change keep their old, possibly truncated names; delete those rows and re-run `backfill.sh` to normalize them.
+
 </details>
 
 ## Emission factors
