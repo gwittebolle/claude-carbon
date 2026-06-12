@@ -2,6 +2,14 @@
 
 ## 2026-06-12
 
+### feat: exclude non-Anthropic models from cost/CO2 accounting (#7)
+
+Claude Code pointed at a local model (via `ANTHROPIC_BASE_URL`) was silently counted as Sonnet, with Sonnet datacenter factors and Anthropic API pricing. Sessions whose dominant model string does not contain `claude` (including `<synthetic>`) are now stored with raw tokens but `cost_usd = 0`, `co2_grams = 0` and a new `excluded` column set to 1, and filtered out of all reports (`/carbon-report`, `generate-report.sh`). The statusline shows 0g for those models. A user-configurable `exclude_models` pattern list in `data/factors.json` can exclude additional models by name. Schema migration is the usual idempotent `ALTER TABLE`; raw tokens are preserved so excluded rows can be re-priced by `recompute.sh` if local-model factors are ever added.
+
+### feat: Fable 5 model family (pricing + extrapolated emission factors)
+
+`claude-fable-5` / `claude-mythos-5` were falling into the Sonnet fallback of `resolve_family`, under-costing them by 70%. New `fable` family across all scripts (backfill, persist-session, recompute, statusline): pricing $10/$50 per Mtok (current Anthropic list price), emission factors 1000/6000 gCO2e/Mtok extrapolated from Opus by the 2x list-price ratio (no published measurement; same approach as the Opus 3x-Sonnet extrapolation, documented in METHODOLOGY.md).
+
 ### fix: LC_ALL=C in carbon-report skill awk calls (#10)
 
 The bash script in `skills/carbon-report/SKILL.md` called awk without `LC_ALL=C`. Under comma-decimal locales (de_DE, fr_FR), awk truncated values at the decimal point (431.7045 → 431) and rendered output with commas. `export LC_ALL=C` at the top of the script covers all seven calls, mirroring the fix already applied to `scripts/*.sh`.

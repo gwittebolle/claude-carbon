@@ -17,12 +17,15 @@ DB_PATH="${CLAUDE_CARBON_DB:-${HOME}/.claude/claude-carbon/carbon.db}"
 METHODOLOGY_VERSION=2
 
 # Ensure schema exists and is migrated (idempotent; safe on fresh or pre-existing DBs).
-sqlite3 "$DB_PATH" "CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT DEFAULT 'live', methodology_version INTEGER DEFAULT 1); CREATE INDEX IF NOT EXISTS idx_sessions_year ON sessions(started_at);" 2>/dev/null || true
+sqlite3 "$DB_PATH" "CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT DEFAULT 'live', methodology_version INTEGER DEFAULT 1, excluded INTEGER DEFAULT 0); CREATE INDEX IF NOT EXISTS idx_sessions_year ON sessions(started_at);" 2>/dev/null || true
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_read_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN methodology_version INTEGER DEFAULT 1;" 2>/dev/null || true
+sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN excluded INTEGER DEFAULT 0;" 2>/dev/null || true
 
 # Load emission factors once (gCO2e per million tokens)
+FACTOR_FABLE_IN="$(jq -r '.models.fable.input // 1000' "$FACTORS_FILE")"
+FACTOR_FABLE_OUT="$(jq -r '.models.fable.output // 6000' "$FACTORS_FILE")"
 FACTOR_OPUS_IN="$(jq -r '.models.opus.input' "$FACTORS_FILE")"
 FACTOR_OPUS_OUT="$(jq -r '.models.opus.output' "$FACTORS_FILE")"
 FACTOR_SONNET_IN="$(jq -r '.models.sonnet.input' "$FACTORS_FILE")"
@@ -32,7 +35,11 @@ FACTOR_HAIKU_OUT="$(jq -r '.models.haiku.output' "$FACTORS_FILE")"
 # Energy of a cache_read token as a fraction of an uncached input token (see METHODOLOGY.md).
 CACHE_READ_FACTOR="$(jq -r '.cache_read_factor // 0.08' "$FACTORS_FILE")"
 
+# User-defined exclusion patterns (grep -E, case-insensitive), joined with |
+EXCLUDE_MODELS="$(jq -r '(.exclude_models // []) | join("|")' "$FACTORS_FILE" 2>/dev/null || true)"
+
 # Load pricing once (USD per million tokens, current Anthropic list price)
+PRICE_FABLE_IN="$(jq -r '.models.fable.input // 10' "$PRICES_FILE")"; PRICE_FABLE_OUT="$(jq -r '.models.fable.output // 50' "$PRICES_FILE")"
 PRICE_OPUS_IN="$(jq -r '.models.opus.input' "$PRICES_FILE")";     PRICE_OPUS_OUT="$(jq -r '.models.opus.output' "$PRICES_FILE")"
 PRICE_SONNET_IN="$(jq -r '.models.sonnet.input' "$PRICES_FILE")"; PRICE_SONNET_OUT="$(jq -r '.models.sonnet.output' "$PRICES_FILE")"
 PRICE_HAIKU_IN="$(jq -r '.models.haiku.input' "$PRICES_FILE")";   PRICE_HAIKU_OUT="$(jq -r '.models.haiku.output' "$PRICES_FILE")"
@@ -109,31 +116,42 @@ aggregate_jsonl() {
 # Helper: resolve model family from model string
 resolve_family() {
   local model="$1"
-  if echo "$model" | grep -qi "opus"; then echo "opus"
+  if echo "$model" | grep -qiE "fable|mythos"; then echo "fable"
+  elif echo "$model" | grep -qi "opus"; then echo "opus"
   elif echo "$model" | grep -qi "haiku"; then echo "haiku"
   else echo "sonnet"
   fi
 }
 
+# Helper: returns 0 when the model should be excluded from cost/CO2 accounting:
+# not an Anthropic Claude model (e.g. a local model behind ANTHROPIC_BASE_URL,
+# or the "<synthetic>" marker), or matching a user pattern in exclude_models.
+is_excluded_model() {
+  local model="$1"
+  if ! echo "$model" | grep -qi "claude"; then return 0; fi
+  if [ -n "$EXCLUDE_MODELS" ] && echo "$model" | grep -qiE "$EXCLUDE_MODELS"; then return 0; fi
+  return 1
+}
+
 # Helper: get factors and pricing for a model family
 get_factor_in() {
   case "$1" in
-    opus) echo "$FACTOR_OPUS_IN" ;; haiku) echo "$FACTOR_HAIKU_IN" ;; *) echo "$FACTOR_SONNET_IN" ;;
+    fable) echo "$FACTOR_FABLE_IN" ;; opus) echo "$FACTOR_OPUS_IN" ;; haiku) echo "$FACTOR_HAIKU_IN" ;; *) echo "$FACTOR_SONNET_IN" ;;
   esac
 }
 get_factor_out() {
   case "$1" in
-    opus) echo "$FACTOR_OPUS_OUT" ;; haiku) echo "$FACTOR_HAIKU_OUT" ;; *) echo "$FACTOR_SONNET_OUT" ;;
+    fable) echo "$FACTOR_FABLE_OUT" ;; opus) echo "$FACTOR_OPUS_OUT" ;; haiku) echo "$FACTOR_HAIKU_OUT" ;; *) echo "$FACTOR_SONNET_OUT" ;;
   esac
 }
 get_price_in() {
   case "$1" in
-    opus) echo "$PRICE_OPUS_IN" ;; haiku) echo "$PRICE_HAIKU_IN" ;; *) echo "$PRICE_SONNET_IN" ;;
+    fable) echo "$PRICE_FABLE_IN" ;; opus) echo "$PRICE_OPUS_IN" ;; haiku) echo "$PRICE_HAIKU_IN" ;; *) echo "$PRICE_SONNET_IN" ;;
   esac
 }
 get_price_out() {
   case "$1" in
-    opus) echo "$PRICE_OPUS_OUT" ;; haiku) echo "$PRICE_HAIKU_OUT" ;; *) echo "$PRICE_SONNET_OUT" ;;
+    fable) echo "$PRICE_FABLE_OUT" ;; opus) echo "$PRICE_OPUS_OUT" ;; haiku) echo "$PRICE_HAIKU_OUT" ;; *) echo "$PRICE_SONNET_OUT" ;;
   esac
 }
 
@@ -157,16 +175,22 @@ compute_co2_cost() {
     end
   ')"
 
-  family="$(resolve_family "$model_raw")"
-  fin="$(get_factor_in "$family")"
-  fout="$(get_factor_out "$family")"
-  pin="$(get_price_in "$family")"
-  pout="$(get_price_out "$family")"
+  if is_excluded_model "$model_raw"; then
+    # Non-Anthropic / user-excluded model: keep raw tokens, no cost/CO2 estimate
+    co2="0"
+    cost="0"
+  else
+    family="$(resolve_family "$model_raw")"
+    fin="$(get_factor_in "$family")"
+    fout="$(get_factor_out "$family")"
+    pin="$(get_price_in "$family")"
+    pout="$(get_price_out "$family")"
 
-  co2="$(echo "$it $cw $cr $out $fin $fout $CACHE_READ_FACTOR" | LC_ALL=C awk \
-    '{printf "%.4f", (($1 + $2) * $5 + $3 * ($5 * $7) + $4 * $6) / 1000000}')"
-  cost="$(echo "$it $cw $cr $out $pin $pout $CACHE_WRITE_MULT $CACHE_READ_MULT" | LC_ALL=C awk \
-    '{printf "%.6f", ($1 * $5 + $2 * ($5 * $7) + $3 * ($5 * $8) + $4 * $6) / 1000000}')"
+    co2="$(echo "$it $cw $cr $out $fin $fout $CACHE_READ_FACTOR" | LC_ALL=C awk \
+      '{printf "%.4f", (($1 + $2) * $5 + $3 * ($5 * $7) + $4 * $6) / 1000000}')"
+    cost="$(echo "$it $cw $cr $out $pin $pout $CACHE_WRITE_MULT $CACHE_READ_MULT" | LC_ALL=C awk \
+      '{printf "%.6f", ($1 * $5 + $2 * ($5 * $7) + $3 * ($5 * $8) + $4 * $6) / 1000000}')"
+  fi
 
   total_input="$(echo "$it $cw" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
   echo "$total_input $cw $cr $out $co2 $cost"
@@ -255,6 +279,10 @@ while IFS= read -r JSONL_FILE; do
     end
   ')"
 
+  # Excluded flag (based on the session's dominant model)
+  EXCLUDED=0
+  if is_excluded_model "$MODEL_RAW"; then EXCLUDED=1; fi
+
   # Sanitize strings for SQL (escape single quotes)
   PROJECT="${PROJECT//\'/\'\'}"
   MODEL_RAW="${MODEL_RAW//\'/\'\'}"
@@ -262,7 +290,7 @@ while IFS= read -r JSONL_FILE; do
   LAST_TS="${LAST_TS//\'/\'\'}"
 
   # Insert into DB
-  sqlite3 "$DB_PATH" "INSERT OR IGNORE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd, co2_grams, started_at, ended_at, source, methodology_version) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${TOTAL_INPUT}, ${OUTPUT_TOKENS}, ${CACHE_READ}, ${CACHE_CREATION}, ${COST_USD}, ${CO2_G}, '${FIRST_TS}', '${LAST_TS}', 'backfill', ${METHODOLOGY_VERSION});" 2>/dev/null || { ERRORS=$((ERRORS + 1)); continue; }
+  sqlite3 "$DB_PATH" "INSERT OR IGNORE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${TOTAL_INPUT}, ${OUTPUT_TOKENS}, ${CACHE_READ}, ${CACHE_CREATION}, ${COST_USD}, ${CO2_G}, '${FIRST_TS}', '${LAST_TS}', 'backfill', ${METHODOLOGY_VERSION}, ${EXCLUDED});" 2>/dev/null || { ERRORS=$((ERRORS + 1)); continue; }
 
   ADDED=$((ADDED + 1))
 

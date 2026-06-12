@@ -35,6 +35,7 @@ Factors are in gCO2e per million tokens. `cache_write_tokens` (`cache_creation_i
 
 | Model family | Input | Output | Source                     |
 | ------------ | ----- | ------ | -------------------------- |
+| Fable        | 1000  | 6000   | Extrapolated (2x Opus)     |
 | Opus         | 500   | 3000   | Extrapolated (3x Sonnet)   |
 | Sonnet       | 190   | 1140   | Measured (Jegham et al.)   |
 | Haiku        | 95    | 570    | Extrapolated (0.5x Sonnet) |
@@ -43,14 +44,19 @@ Factors are in gCO2e per million tokens. `cache_write_tokens` (`cache_creation_i
 
 Output tokens are ~6x more expensive than input tokens in terms of compute. During prefill (input processing), the model processes all input tokens in parallel. During decoding (output generation), each token requires a full forward pass through the model sequentially. This autoregressive step dominates energy consumption.
 
-## Why Opus and Haiku are extrapolated
+## Why Fable, Opus and Haiku are extrapolated
 
-The Jegham paper measured Sonnet-class models directly. Opus and Haiku factors are estimated by scaling:
+The Jegham paper measured Sonnet-class models directly. The other families are estimated by scaling:
 
+- Fable = 2x Opus (no published measurement for Fable 5 / Mythos 5; the list-price ratio, $10/$50 vs $5/$25, is used as a compute proxy)
 - Opus = 3x Sonnet (larger model, roughly proportional parameter count)
 - Haiku = 0.5x Sonnet (smaller model, lighter compute)
 
 These are order-of-magnitude estimates. Actual values depend on Anthropic's specific hardware configuration and batching strategies, which are not publicly available.
+
+## Excluded models (non-Anthropic)
+
+Claude Code can be pointed at non-Anthropic models (e.g. local models behind `ANTHROPIC_BASE_URL`). Their impact profile is not an AWS datacenter's, so neither the emission factors nor the API pricing apply. Sessions whose dominant model string does not contain `claude` (including the `<synthetic>` marker) are stored with their raw token counts but `cost_usd = 0`, `co2_grams = 0` and `excluded = 1`, and are left out of all report aggregates. Additional models can be excluded by name via the `exclude_models` patterns in `data/factors.json`. Because raw tokens are preserved, excluded sessions can be re-priced later by `recompute.sh` if factors for local models are ever added.
 
 ## Token counting and deduplication
 
