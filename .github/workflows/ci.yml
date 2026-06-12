@@ -1,0 +1,22 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  methodology-vectors:
+    name: methodology golden vectors
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # jq is preinstalled on ubuntu-latest; the runner only needs bash + jq + awk.
+      - name: Replay golden vectors against data/factors.json + data/prices.json
+        run: bash tests/run-vectors.sh
