@@ -52,11 +52,11 @@ done
 
 SINCE_LABEL="$SINCE_LABEL_FR"
 
-# Build SQL WHERE clause
+# Build SQL WHERE clause (always filters out excluded sessions, e.g. non-Anthropic models)
 if [ -n "$SINCE" ]; then
-  WHERE="WHERE started_at >= '${SINCE}'"
+  WHERE="WHERE COALESCE(excluded, 0) = 0 AND started_at >= '${SINCE}'"
 else
-  WHERE=""
+  WHERE="WHERE COALESCE(excluded, 0) = 0"
 fi
 
 # ── Deps check ──────────────────────────────────────────────
@@ -73,6 +73,9 @@ if [ ! -f "$DB_PATH" ]; then
 fi
 
 mkdir -p "$EXPORT_DIR"
+
+# Ensure the excluded column exists on pre-existing DBs (idempotent)
+sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN excluded INTEGER DEFAULT 0;" 2>/dev/null || true
 
 # ── Query DB ────────────────────────────────────────────────
 echo "Querying carbon.db (since ${SINCE_LABEL})..."

@@ -24,15 +24,23 @@ PROJECT="$(basename "$CURRENT_DIR")"
 
 # Resolve model family
 MODEL_FAMILY="sonnet"
-if echo "$MODEL_ID" | grep -qi "opus"; then
+if echo "$MODEL_ID" | grep -qiE "fable|mythos"; then
+  MODEL_FAMILY="fable"
+elif echo "$MODEL_ID" | grep -qi "opus"; then
   MODEL_FAMILY="opus"
 elif echo "$MODEL_ID" | grep -qi "haiku"; then
   MODEL_FAMILY="haiku"
 fi
 
-# Load emission factors
-FACTOR_IN="$(jq -r ".models.${MODEL_FAMILY}.input" "$FACTORS_FILE")"
-FACTOR_OUT="$(jq -r ".models.${MODEL_FAMILY}.output" "$FACTORS_FILE")"
+# Load emission factors (zero for non-Anthropic models, e.g. local models
+# behind ANTHROPIC_BASE_URL — a datacenter factor doesn't apply to them)
+if echo "$MODEL_ID" | grep -qi "claude"; then
+  FACTOR_IN="$(jq -r ".models.${MODEL_FAMILY}.input // 190" "$FACTORS_FILE")"
+  FACTOR_OUT="$(jq -r ".models.${MODEL_FAMILY}.output // 1140" "$FACTORS_FILE")"
+else
+  FACTOR_IN="0"
+  FACTOR_OUT="0"
+fi
 
 # Calculate CO2 in grams: (input * factor_in + output * factor_out) / 1_000_000
 CO2_G="$(echo "$INPUT_TOKENS $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | LC_ALL=C awk '{printf "%.0f", ($1 * $2 + $3 * $4) / 1000000}')"

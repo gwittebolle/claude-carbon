@@ -163,13 +163,15 @@ Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), a peer-revi
 
 | Model  | Input (gCO2e/Mtok) | Output (gCO2e/Mtok) | Basis                      |
 | ------ | ------------------ | ------------------- | -------------------------- |
+| Fable  | 1000               | 6000                | Extrapolated (2x Opus)     |
 | Opus   | 500                | 3000                | Extrapolated (3x Sonnet)   |
 | Sonnet | 190                | 1140                | Measured                   |
 | Haiku  | 95                 | 570                 | Extrapolated (0.5x Sonnet) |
 
 **Important: these are order-of-magnitude estimates, not precise measurements.**
 
-- Sonnet factors are derived from Jegham et al. direct measurements. Opus and Haiku are extrapolated (no public data from Anthropic on per-model energy consumption).
+- Sonnet factors are derived from Jegham et al. direct measurements. Fable, Opus and Haiku are extrapolated (no public data from Anthropic on per-model energy consumption).
+- Sessions run on non-Anthropic models (e.g. local models behind `ANTHROPIC_BASE_URL`) are stored with their raw tokens but zero cost/CO2 and excluded from reports - a datacenter factor doesn't apply to them. Add patterns to `exclude_models` in `data/factors.json` to exclude more models by name.
 - Cache read tokens are counted at a reduced factor (default 0.08 of an input token, set in `data/factors.json`). A cached token skips prefill compute but still incurs decode-phase memory reads, so it is cheap but not free. This is an engineering estimate derived from the literature, not Anthropic's 0.1x billing ratio. See [METHODOLOGY.md](METHODOLOGY.md).
 - Carbon intensity uses AWS grid-average (0.287 kgCO2e/kWh), not real-time grid data.
 - Anthropic does not publish Scope 1, 2, or 3 emissions. These estimates are independent and based on academic research, not provider data.

@@ -23,16 +23,21 @@ fi
 CURRENT_YEAR="$(date +%Y)"
 TODAY="$(date +%Y-%m-%d)"
 
+# Ensure the excluded column exists on pre-existing DBs (idempotent).
+# Excluded sessions (non-Anthropic models, e.g. local models) are left out of all aggregates.
+sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN excluded INTEGER DEFAULT 0;" 2>/dev/null || true
+NOT_EXCLUDED="COALESCE(excluded, 0) = 0"
+
 # --- Aggregates ---
-TODAY_CO2="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(co2_grams), 0) FROM sessions WHERE started_at LIKE '${TODAY}%';" | awk '{printf "%.1f", $1}')"
-TODAY_SESSIONS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE started_at LIKE '${TODAY}%';")"
+TODAY_CO2="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(co2_grams), 0) FROM sessions WHERE ${NOT_EXCLUDED} AND started_at LIKE '${TODAY}%';" | awk '{printf "%.1f", $1}')"
+TODAY_SESSIONS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE ${NOT_EXCLUDED} AND started_at LIKE '${TODAY}%';")"
 
-YEAR_CO2="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(co2_grams), 0) FROM sessions WHERE started_at LIKE '${CURRENT_YEAR}%';" | awk '{printf "%.1f", $1}')"
-YEAR_SESSIONS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE started_at LIKE '${CURRENT_YEAR}%';")"
+YEAR_CO2="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(co2_grams), 0) FROM sessions WHERE ${NOT_EXCLUDED} AND started_at LIKE '${CURRENT_YEAR}%';" | awk '{printf "%.1f", $1}')"
+YEAR_SESSIONS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE ${NOT_EXCLUDED} AND started_at LIKE '${CURRENT_YEAR}%';")"
 
-ALL_CO2="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(co2_grams), 0) FROM sessions;" | awk '{printf "%.1f", $1}')"
-ALL_SESSIONS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions;")"
-ALL_COST="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(cost_usd), 0) FROM sessions;" | awk '{printf "%.2f", $1}')"
+ALL_CO2="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(co2_grams), 0) FROM sessions WHERE ${NOT_EXCLUDED};" | awk '{printf "%.1f", $1}')"
+ALL_SESSIONS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE ${NOT_EXCLUDED};")"
+ALL_COST="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(cost_usd), 0) FROM sessions WHERE ${NOT_EXCLUDED};" | awk '{printf "%.2f", $1}')"
 
 # --- Equivalences (all-time total) ---
 KM_CAR="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 120}')"
@@ -43,6 +48,7 @@ KM_TGV="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 2.4}')"
 TOP5="$(sqlite3 -separator '|' "$DB_PATH" \
   "SELECT DATE(started_at), project, ROUND(co2_grams, 2), model, ROUND(cost_usd, 4)
    FROM sessions
+   WHERE ${NOT_EXCLUDED}
    ORDER BY co2_grams DESC
    LIMIT 5;")"
 
@@ -50,6 +56,7 @@ TOP5="$(sqlite3 -separator '|' "$DB_PATH" \
 BY_PROJECT="$(sqlite3 -separator '|' "$DB_PATH" \
   "SELECT project, ROUND(SUM(co2_grams), 2), COUNT(*), ROUND(SUM(cost_usd), 4)
    FROM sessions
+   WHERE ${NOT_EXCLUDED}
    GROUP BY project
    ORDER BY SUM(co2_grams) DESC;")"
 

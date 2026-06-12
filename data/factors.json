@@ -4,9 +4,13 @@
   "_source": "https://arxiv.org/abs/2505.09598",
   "_cache_read_factor": "Energy of a cache_read token as a fraction of an uncached input token. Engineering estimate (~0.08, defensible range 0.05-0.15) derived from the decode-phase KV re-read residual. NOT Anthropic's 0.1x billing ratio (a price, not energy). See METHODOLOGY.md.",
   "cache_read_factor": 0.08,
+  "_fable": "No published measurement for Fable 5 (claude-fable-5 / claude-mythos-5). Extrapolated from Opus by the list-price ratio (2x, $10/$50 vs $5/$25), same approach as the Opus 3x-Sonnet extrapolation.",
   "models": {
+    "fable": { "input": 1000, "output": 6000 },
     "opus": { "input": 500, "output": 3000 },
     "sonnet": { "input": 190, "output": 1140 },
     "haiku": { "input": 95, "output": 570 }
-  }
+  },
+  "_exclude_models": "Sessions whose model string does not contain 'claude' (e.g. local models served behind ANTHROPIC_BASE_URL) are always stored with cost_usd=0, co2_grams=0 and excluded=1, and left out of report aggregates. Add case-insensitive grep -E patterns here to exclude additional models by name.",
+  "exclude_models": []
 }

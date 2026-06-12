@@ -22,12 +22,14 @@ DB_PATH="${CLAUDE_CARBON_DB:-${HOME}/.claude/claude-carbon/carbon.db}"
 [ -f "$DB_PATH" ] || { echo "No database at ${DB_PATH}" >&2; exit 1; }
 
 # Emission factors (gCO2e per million tokens) + cache_read energy fraction
+F_FAB_IN="$(jq -r '.models.fable.input // 1000' "$FACTORS_FILE")"; F_FAB_OUT="$(jq -r '.models.fable.output // 6000' "$FACTORS_FILE")"
 F_OPUS_IN="$(jq -r '.models.opus.input' "$FACTORS_FILE")";    F_OPUS_OUT="$(jq -r '.models.opus.output' "$FACTORS_FILE")"
 F_SON_IN="$(jq -r '.models.sonnet.input' "$FACTORS_FILE")";   F_SON_OUT="$(jq -r '.models.sonnet.output' "$FACTORS_FILE")"
 F_HAI_IN="$(jq -r '.models.haiku.input' "$FACTORS_FILE")";    F_HAI_OUT="$(jq -r '.models.haiku.output' "$FACTORS_FILE")"
 CRF="$(jq -r '.cache_read_factor // 0.08' "$FACTORS_FILE")"
 
 # Prices (USD per million tokens) + cache multipliers
+P_FAB_IN="$(jq -r '.models.fable.input // 10' "$PRICES_FILE")"; P_FAB_OUT="$(jq -r '.models.fable.output // 50' "$PRICES_FILE")"
 P_OPUS_IN="$(jq -r '.models.opus.input' "$PRICES_FILE")";     P_OPUS_OUT="$(jq -r '.models.opus.output' "$PRICES_FILE")"
 P_SON_IN="$(jq -r '.models.sonnet.input' "$PRICES_FILE")";    P_SON_OUT="$(jq -r '.models.sonnet.output' "$PRICES_FILE")"
 P_HAI_IN="$(jq -r '.models.haiku.input' "$PRICES_FILE")";     P_HAI_OUT="$(jq -r '.models.haiku.output' "$PRICES_FILE")"
@@ -46,15 +48,16 @@ update_family() {
     UPDATE sessions SET
       co2_grams = (input_tokens*${fin} + cache_read_tokens*(${fin}*${CRF}) + output_tokens*${fout}) / 1000000.0,
       cost_usd  = ((input_tokens - cache_creation_tokens)*${pin} + cache_creation_tokens*(${pin}*${CW_MULT}) + cache_read_tokens*(${pin}*${CR_MULT}) + output_tokens*${pout}) / 1000000.0
-    WHERE methodology_version >= 2 AND ${where};
+    WHERE methodology_version >= 2 AND COALESCE(excluded, 0) = 0 AND ${where};
   "
 }
 
+update_family "(model LIKE '%fable%' OR model LIKE '%mythos%')" "$F_FAB_IN" "$F_FAB_OUT" "$P_FAB_IN" "$P_FAB_OUT"
 update_family "model LIKE '%opus%'"  "$F_OPUS_IN" "$F_OPUS_OUT" "$P_OPUS_IN" "$P_OPUS_OUT"
 update_family "model LIKE '%haiku%'" "$F_HAI_IN"  "$F_HAI_OUT"  "$P_HAI_IN"  "$P_HAI_OUT"
-update_family "model NOT LIKE '%opus%' AND model NOT LIKE '%haiku%'" "$F_SON_IN" "$F_SON_OUT" "$P_SON_IN" "$P_SON_OUT"
+update_family "model NOT LIKE '%fable%' AND model NOT LIKE '%mythos%' AND model NOT LIKE '%opus%' AND model NOT LIKE '%haiku%'" "$F_SON_IN" "$F_SON_OUT" "$P_SON_IN" "$P_SON_OUT"
 
-RECOMPUTED="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE methodology_version >= 2;")"
+RECOMPUTED="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE methodology_version >= 2 AND COALESCE(excluded, 0) = 0;")"
 LEGACY="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE methodology_version IS NULL OR methodology_version < 2;")"
 TOTAL_COST="$(sqlite3 "$DB_PATH" "SELECT printf('%.0f', COALESCE(SUM(cost_usd),0)) FROM sessions;")"
 TOTAL_CO2_KG="$(sqlite3 "$DB_PATH" "SELECT printf('%.0f', COALESCE(SUM(co2_grams),0)/1000.0) FROM sessions;")"
