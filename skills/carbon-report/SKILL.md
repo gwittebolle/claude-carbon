@@ -8,6 +8,10 @@ Run the following bash script exactly as written and present the output to the u
 ```bash
 #!/usr/bin/env bash
 
+# Force C locale: comma-decimal locales (de_DE, fr_FR) make awk mis-parse
+# "431.7045" as 431 and print "431,0" instead of "431.7"
+export LC_ALL=C
+
 DB_PATH="${HOME}/.claude/claude-carbon/carbon.db"
 
 if [ ! -f "$DB_PATH" ]; then
