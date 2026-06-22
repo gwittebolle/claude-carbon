@@ -35,8 +35,8 @@ fi
 # Load emission factors (zero for non-Anthropic models, e.g. local models
 # behind ANTHROPIC_BASE_URL — a datacenter factor doesn't apply to them)
 if echo "$MODEL_ID" | grep -qi "claude"; then
-  FACTOR_IN="$(jq -r ".models.${MODEL_FAMILY}.input // 190" "$FACTORS_FILE")"
-  FACTOR_OUT="$(jq -r ".models.${MODEL_FAMILY}.output // 1140" "$FACTORS_FILE")"
+  FACTOR_IN="$(jq -r ".models.${MODEL_FAMILY}.input // 39" "$FACTORS_FILE")"
+  FACTOR_OUT="$(jq -r ".models.${MODEL_FAMILY}.output // 826" "$FACTORS_FILE")"
 else
   FACTOR_IN="0"
   FACTOR_OUT="0"
@@ -185,4 +185,18 @@ if [ -n "$CURRENT_DIR" ] && command -v git &>/dev/null; then
   [ -n "$BRANCH" ] && [ "$BRANCH" != "HEAD" ] && BRANCH_SUFFIX=" ⌥ ${BRANCH}"
 fi
 
-echo "${PROJECT}${BRANCH_SUFFIX} | ${DOT} ${DISPLAY_NAME} ${PROGRESS_BAR} ${PCT_DISPLAY} | \$${COST_DISPLAY} · ${CO2_DISPLAY}${USAGE_SEGMENT}"
+# "Update available" notice — read-only, network-free. The remote check runs in the background
+# (SessionStart hook → check-update.sh) and writes a cached flag; here we only read it. A 7-day
+# staleness gate means an abandoned flag (background check stopped) self-clears.
+UPDATE_SEGMENT=""
+UPD_FILE="${HOME}/.claude/claude-carbon/update-check.json"
+if [ -z "${CLAUDE_CARBON_NO_UPDATE_NOTIFIER:-}" ] && [ -f "$UPD_FILE" ] && command -v jq &>/dev/null; then
+  if [ "$(jq -r '.behind // false' "$UPD_FILE" 2>/dev/null)" = "true" ]; then
+    UPD_AT="$(jq -r '.checked_at // 0' "$UPD_FILE" 2>/dev/null || echo 0)"
+    if [ "$UPD_AT" -gt 0 ] 2>/dev/null && [ "$(( $(date +%s) - UPD_AT ))" -lt 604800 ] 2>/dev/null; then
+      UPDATE_SEGMENT=" | ⬆ /carbon-update"
+    fi
+  fi
+fi
+
+echo "${PROJECT}${BRANCH_SUFFIX} | ${DOT} ${DISPLAY_NAME} ${PROGRESS_BAR} ${PCT_DISPLAY} | \$${COST_DISPLAY} · ${CO2_DISPLAY}${USAGE_SEGMENT}${UPDATE_SEGMENT}"

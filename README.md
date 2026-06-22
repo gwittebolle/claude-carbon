@@ -22,6 +22,8 @@ claude-carbon ⌥ main | 🟢 Opus 4.7 ▓▓▓░░░░░░░ 35% | $0.5
 
 Segments, left to right: project + git branch, model + context window %, session cost + CO2, 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
 
+> **Terminal and IDE only.** claude-carbon runs through the Claude Code status line and shell hooks, which execute in the terminal CLI and IDE extensions. They do not run in the web app (claude.ai/code) or the desktop app, so no CO2 is displayed or recorded there.
+
 **5h quota source.** The percentage comes directly from Anthropic's `/api/oauth/usage` endpoint (the same data Claude Code displays in `/usage`). No heuristic, no token-limit file to seed. Two sources in order:
 
 1. **stdin** (preferred): if Claude Code injects `rate_limits.five_hour.used_percentage` in the statusline JSON, that value is used straight away.
@@ -33,6 +35,7 @@ Accurate on every plan, including Max 20x.
 
 - `/carbon-report` - text report with totals, equivalences, top sessions
 - `/carbon-card` - generate shareable PNG report cards (requires `playwright-core`, see [Dependencies](#dependencies))
+- `/carbon-update` - update to the latest version and re-price history (see [Updating](#updating))
 
 ## What it does
 
@@ -139,6 +142,7 @@ bash scripts/recompute.sh
 | ---------------- | --------------------------------------------------- |
 | `/carbon-report` | Text report with totals, equivalences, top sessions |
 | `/carbon-card`   | Generate shareable PNG report cards                 |
+| `/carbon-update` | Update to the latest version and re-price history   |
 
 <details>
 <summary>Scripts (run automatically, rarely needed manually)</summary>
@@ -163,17 +167,17 @@ Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), a peer-revi
 
 | Model  | Input (gCO2e/Mtok) | Output (gCO2e/Mtok) | Basis                      |
 | ------ | ------------------ | ------------------- | -------------------------- |
-| Fable  | 1000               | 6000                | Extrapolated (2x Opus)     |
-| Opus   | 500                | 3000                | Extrapolated (3x Sonnet)   |
-| Sonnet | 190                | 1140                | Measured                   |
-| Haiku  | 95                 | 570                 | Extrapolated (0.5x Sonnet) |
+| Fable  | 156                | 3304                | Extrapolated (2x Opus)     |
+| Opus   | 78                 | 1652                | Extrapolated (2x Sonnet)   |
+| Sonnet | 39                 | 826                 | 3-point fit (Jegham v6)    |
+| Haiku  | 20                 | 413                 | Extrapolated (0.5x Sonnet) |
 
 **Important: these are order-of-magnitude estimates, not precise measurements.**
 
-- Sonnet factors are derived from Jegham et al. direct measurements. Fable, Opus and Haiku are extrapolated (no public data from Anthropic on per-model energy consumption).
+- Sonnet factors are a 3-point least-squares fit to the three measured Claude 3.7 Sonnet per-query energies in Jegham et al. v6 (0.950 / 2.989 / 5.671 Wh), giving a ~21:1 output:input ratio. The value is cross-validated against [EcoLogits](https://ecologits.ai): its independent estimate for Sonnet brackets the same range. Fable, Opus and Haiku are extrapolated (no public data from Anthropic on per-model energy consumption); Opus = 2x Sonnet matches both the current EcoLogits Opus 4.5+ parameter ratio and the Anthropic price ratio (honest band 2x-5x).
 - Sessions run on non-Anthropic models (e.g. local models behind `ANTHROPIC_BASE_URL`) are stored with their raw tokens but zero cost/CO2 and excluded from reports - a datacenter factor doesn't apply to them. Add patterns to `exclude_models` in `data/factors.json` to exclude more models by name.
 - Cache read tokens are counted at a reduced factor (default 0.08 of an input token, set in `data/factors.json`). A cached token skips prefill compute but still incurs decode-phase memory reads, so it is cheap but not free. This is an engineering estimate derived from the literature, not Anthropic's 0.1x billing ratio. See [METHODOLOGY.md](METHODOLOGY.md).
-- Carbon intensity uses AWS grid-average (0.287 kgCO2e/kWh), not real-time grid data.
+- Carbon intensity uses the AWS region grid (location-based, 0.287 kgCO2e/kWh), not real-time grid data. This sits at the low end of the location-based range; the US national average is ~380 g/kWh.
 - Anthropic does not publish Scope 1, 2, or 3 emissions. These estimates are independent and based on academic research, not provider data.
 
 Factors are editable in `data/factors.json`. See [METHODOLOGY.md](METHODOLOGY.md) for the full scientific basis, formula, and equivalences.
@@ -181,6 +185,20 @@ Factors are editable in `data/factors.json`. See [METHODOLOGY.md](METHODOLOGY.md
 ### Golden vectors
 
 The methodology is pinned by golden test vectors in [`tests/methodology-vectors.json`](tests/methodology-vectors.json): hand-computed expected CO2/cost values for known token breakdowns, replayed by `bash tests/run-vectors.sh` in CI on every push. Downstream consumers (such as TokenClimate) keep a copy of this file and verify weekly that their implementation produces the same numbers. If you edit `data/factors.json` or `data/prices.json`, update the vectors in the same commit, otherwise CI fails.
+
+## Updating
+
+When a newer version is available, the status line shows a discreet `⬆ /carbon-update` hint. The check runs in the background (at most once a day, never on the status line's hot path); opt out with `CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1`.
+
+To update, run `/carbon-update` in Claude Code, or re-run the installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
+```
+
+- Updating re-prices your stored history with the new factors automatically (CO2 only; cost figures are left intact). Run `scripts/recompute.sh --with-cost` yourself only after a price change.
+- If you edited `data/factors.json` or `data/prices.json` locally, the update keeps your edits; on a conflict with upstream it saves yours to `*.local.bak` and tells you.
+- Installed via the plugin marketplace? Update with Claude Code's built-in `/plugin update` instead.
 
 ## Dependencies
 
@@ -205,7 +223,7 @@ Measuring is step one. Here are concrete levers to reduce your AI carbon footpri
 
 ### Use the right model for the task
 
-Output tokens cost 5x more energy than input tokens. Opus consumes ~3x more than Sonnet per token.
+Output tokens cost ~21x more energy than input tokens (the marginal output:input ratio from Jegham v6). Opus consumes ~2x more than Sonnet per token.
 
 ```json
 {

@@ -1,15 +1,15 @@
 {
-  "_methodology": "Jegham et al. 2025 - AWS PUE 1.14, CIF 0.287 kgCO2e/kWh",
+  "_methodology": "Jegham et al. 2025 (v6) - AWS PUE 1.14, AWS region grid CIF 0.287 kgCO2e/kWh (location-based; US average is ~380). Sonnet input/output are a 3-point OLS fit to the three measured Claude 3.7 Sonnet per-query energies (0.950 / 2.989 / 5.671 Wh); marginal ratio ~21:1 output:input. Cross-validated against EcoLogits (GenAI Impact), bracketing the same range. Opus = 2x Sonnet (EcoLogits Opus 4.5+ params and the Anthropic price ratio both imply ~1.7-2x; band 2x-5x), Haiku = 0.5x, Fable = 2x Opus. Order-of-magnitude estimates.",
   "_units": "gCO2e per million tokens",
   "_source": "https://arxiv.org/abs/2505.09598",
   "_cache_read_factor": "Energy of a cache_read token as a fraction of an uncached input token. Engineering estimate (~0.08, defensible range 0.05-0.15) derived from the decode-phase KV re-read residual. NOT Anthropic's 0.1x billing ratio (a price, not energy). See METHODOLOGY.md.",
   "cache_read_factor": 0.08,
   "_fable": "No published measurement for Fable 5 (claude-fable-5 / claude-mythos-5). Extrapolated from Opus by the list-price ratio (2x, $10/$50 vs $5/$25), same approach as the Opus 3x-Sonnet extrapolation.",
   "models": {
-    "fable": { "input": 1000, "output": 6000 },
-    "opus": { "input": 500, "output": 3000 },
-    "sonnet": { "input": 190, "output": 1140 },
-    "haiku": { "input": 95, "output": 570 }
+    "fable": { "input": 156, "output": 3304 },
+    "opus": { "input": 78, "output": 1652 },
+    "sonnet": { "input": 39, "output": 826 },
+    "haiku": { "input": 20, "output": 413 }
   },
   "_exclude_models": "Sessions whose model string does not contain 'claude' (e.g. local models served behind ANTHROPIC_BASE_URL) are always stored with cost_usd=0, co2_grams=0 and excluded=1, and left out of report aggregates. Add case-insensitive grep -E patterns here to exclude additional models by name.",
   "exclude_models": []

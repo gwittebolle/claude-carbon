@@ -10,10 +10,10 @@
     "cache_write_multiplier": 1.25,
     "cache_read_multiplier": 0.1,
     "factors_gco2e_per_mtok": {
-      "fable": { "input": 1000, "output": 6000 },
-      "opus": { "input": 500, "output": 3000 },
-      "sonnet": { "input": 190, "output": 1140 },
-      "haiku": { "input": 95, "output": 570 }
+      "fable": { "input": 156, "output": 3304 },
+      "opus": { "input": 78, "output": 1652 },
+      "sonnet": { "input": 39, "output": 826 },
+      "haiku": { "input": 20, "output": 413 }
     },
     "prices_usd_per_mtok": {
       "fable": { "input": 10, "output": 50 },
@@ -33,7 +33,7 @@
       "cache_creation_tokens": 200000,
       "cache_read_tokens": 3000000,
       "output_tokens": 30000,
-      "expected_co2_grams": 670.0,
+      "expected_co2_grams": 175.56,
       "expected_cost_usd": 7.5
     },
     {
@@ -44,7 +44,7 @@
       "cache_creation_tokens": 0,
       "cache_read_tokens": 0,
       "output_tokens": 100000,
-      "expected_co2_grams": 800.0,
+      "expected_co2_grams": 243.2,
       "expected_cost_usd": 7.5
     },
     {
@@ -55,7 +55,7 @@
       "cache_creation_tokens": 150000,
       "cache_read_tokens": 12000000,
       "output_tokens": 80000,
-      "expected_co2_grams": 305.9,
+      "expected_co2_grams": 110.15,
       "expected_cost_usd": 5.4225
     },
     {
@@ -66,7 +66,7 @@
       "cache_creation_tokens": 10000,
       "cache_read_tokens": 500000,
       "output_tokens": 20000,
-      "expected_co2_grams": 19.95,
+      "expected_co2_grams": 10.06,
       "expected_cost_usd": 0.2025
     },
     {
@@ -77,7 +77,7 @@
       "cache_creation_tokens": 100000,
       "cache_read_tokens": 0,
       "output_tokens": 0,
-      "expected_co2_grams": 50.0,
+      "expected_co2_grams": 7.8,
       "expected_cost_usd": 0.625
     },
     {
@@ -88,7 +88,7 @@
       "cache_creation_tokens": 0,
       "cache_read_tokens": 1000000,
       "output_tokens": 0,
-      "expected_co2_grams": 15.2,
+      "expected_co2_grams": 3.12,
       "expected_cost_usd": 0.3
     },
     {
@@ -122,7 +122,7 @@
       "cache_creation_tokens": 0,
       "cache_read_tokens": 0,
       "output_tokens": 10000,
-      "expected_co2_grams": 70.0,
+      "expected_co2_grams": 34.6,
       "expected_cost_usd": 0.6
     },
     {
@@ -133,7 +133,7 @@
       "cache_creation_tokens": 400000,
       "cache_read_tokens": 8000000,
       "output_tokens": 60000,
-      "expected_co2_grams": 715.0,
+      "expected_co2_grams": 182.58,
       "expected_cost_usd": 8.15
     },
     {
@@ -144,7 +144,7 @@
       "cache_creation_tokens": 0,
       "cache_read_tokens": 0,
       "output_tokens": 10000,
-      "expected_co2_grams": 6.65,
+      "expected_co2_grams": 4.33,
       "expected_cost_usd": 0.06
     },
     {
@@ -155,7 +155,7 @@
       "cache_creation_tokens": 0,
       "cache_read_tokens": 10000000,
       "output_tokens": 0,
-      "expected_co2_grams": 76.0,
+      "expected_co2_grams": 16.0,
       "expected_cost_usd": 1.0
     }
   ]
