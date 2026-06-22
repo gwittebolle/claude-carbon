@@ -6,10 +6,20 @@ Emissions are estimated from token counts using per-token factors derived from p
 
 ## Source
 
-Jegham et al. (2025), "Measuring the Carbon Footprint of AI Inference"
+Jegham et al. (2025), "How Hungry is AI? Benchmarking the Energy, Water, and Carbon Footprint of LLM Inference" (v6)
 [arxiv.org/abs/2505.09598](https://arxiv.org/abs/2505.09598)
 
-The paper measures inference energy consumption on AWS infrastructure for a range of models, then converts to CO2e using grid-average carbon intensity.
+The paper measures inference energy consumption on AWS infrastructure for a range of models, then converts to CO2e using grid-average carbon intensity. For Claude 3.7 Sonnet it reports three per-query energies (Table 4, PUE included): **0.950 Wh** (100 input / 300 output), **2.989 Wh** (1k / 1k) and **5.671 Wh** (10k input / 1.5k output).
+
+### Deriving the Sonnet input/output factors
+
+The three measured points are fit with an ordinary least-squares regression through the origin in (energy per input token, energy per output token), matching the per-token model below (no per-query constant). That gives ~1.35e-4 Wh per input token and ~2.88e-3 Wh per output token. At CIF 0.287 gCO2e/Wh (= 0.287 kgCO2e/kWh) that is **~39 gCO2e/Mtok input** and **~826 gCO2e/Mtok output**, a marginal ratio of ~21:1. The fit matches the two high-token configurations (1k/1k, 10k/1.5k) to within 1%, the regime real Claude Code sessions live in.
+
+These are the best available data to date and will keep being refined as measurements improve. Earlier releases used 190/1140, calibrated against an earlier revision of the same preprint; the move to v6's three measured points refines that.
+
+### Cross-validation against EcoLogits
+
+[EcoLogits](https://ecologits.ai) (GenAI Impact / Data For Good) estimates inference impact by a completely independent route: model parameter counts plus a full lifecycle model, rather than measured AWS telemetry. Its estimate for Claude 3.7 Sonnet brackets **~565-1385 gCO2e/Mtok output** (parameter range, USA grid, full lifecycle), with a usage-only central value near ~630. The Jegham-derived **826** sits inside that band. Two unrelated methodologies agreeing is strong corroboration. Note one structural difference: EcoLogits charges zero energy to input tokens, whereas Jegham's measurements show a small but real input cost (the 10k-input query consumes more), which this tool keeps via the input factor.
 
 ## Formula
 
@@ -25,34 +35,37 @@ Factors are in gCO2e per million tokens. `cache_write_tokens` (`cache_creation_i
 
 ## Infrastructure parameters
 
-| Parameter | Value            | Description                                      |
-| --------- | ---------------- | ------------------------------------------------ |
-| PUE       | 1.14             | AWS datacenter power usage effectiveness         |
-| CIF       | 0.287 kgCO2e/kWh | Carbon intensity factor (US grid average)        |
-| WUE       | 0.18 L/kWh       | Water usage effectiveness (not used in CO2 calc) |
+| Parameter      | Value            | Description                                                                   |
+| -------------- | ---------------- | ----------------------------------------------------------------------------- |
+| PUE            | 1.14             | AWS datacenter power usage effectiveness                                      |
+| CIF            | 0.287 kgCO2e/kWh | AWS region grid CIF, location-based (Jegham et al.); US average is ~380 g/kWh |
+| WUE (on-site)  | 0.18 L/kWh       | Water for datacenter cooling (not used in CO2 calc)                           |
+| WUE (off-site) | 5.11 L/kWh       | Water for electricity generation (not used in CO2 calc)                       |
 
 ## Per-model factors (gCO2e per million tokens)
 
-| Model family | Input | Output | Source                     |
-| ------------ | ----- | ------ | -------------------------- |
-| Fable        | 1000  | 6000   | Extrapolated (2x Opus)     |
-| Opus         | 500   | 3000   | Extrapolated (3x Sonnet)   |
-| Sonnet       | 190   | 1140   | Measured (Jegham et al.)   |
-| Haiku        | 95    | 570    | Extrapolated (0.5x Sonnet) |
+| Model family | Input | Output | Source                         |
+| ------------ | ----- | ------ | ------------------------------ |
+| Fable        | 156   | 3304   | Extrapolated (2x Opus)         |
+| Opus         | 78    | 1652   | Extrapolated (2x Sonnet)       |
+| Sonnet       | 39    | 826    | 3-point fit (Jegham et al. v6) |
+| Haiku        | 20    | 413    | Extrapolated (0.5x Sonnet)     |
 
 ## Why input and output factors differ
 
-Output tokens are ~6x more expensive than input tokens in terms of compute. During prefill (input processing), the model processes all input tokens in parallel. During decoding (output generation), each token requires a full forward pass through the model sequentially. This autoregressive step dominates energy consumption.
+Output tokens are far more energy-intensive per token than input tokens. During prefill (input processing), the model processes all input tokens in parallel in one batched forward pass. During decoding (output generation), each token requires its own sequential forward pass through the model. This autoregressive step dominates energy consumption.
+
+The exact ratio is not assumed, it is recovered from the three measured Sonnet points (see Deriving the Sonnet input/output factors above): the fit yields a marginal output:input ratio of ~21:1 (826 vs 39 gCO2e/Mtok). A large input (long context) adds little energy relative to the same number of generated tokens, which a flat low ratio would miss.
 
 ## Why Fable, Opus and Haiku are extrapolated
 
 The Jegham paper measured Sonnet-class models directly. The other families are estimated by scaling:
 
+- Opus = 2x Sonnet. The current EcoLogits parameter assumptions for Opus 4.5+ (670B vs Sonnet 4.x 440B, active ~133B vs ~88B) and the Anthropic list-price ratio ($5/$25 vs $3/$15) both imply roughly 1.7-2x, not the 3x used in earlier releases. Honest band: 2x-5x Sonnet (Opus is unmeasured; EcoLogits' absolute Opus number is unstable across model generations).
+- Haiku = 0.5x Sonnet (smaller model, lighter compute). Wide band: Jegham's measured 3.5 Haiku reads higher than Sonnet (a serving/latency artifact), while EcoLogits' modern dense Haiku reads far lower; 0.5x is a physically-plausible middle.
 - Fable = 2x Opus (no published measurement for Fable 5 / Mythos 5; the list-price ratio, $10/$50 vs $5/$25, is used as a compute proxy)
-- Opus = 3x Sonnet (larger model, roughly proportional parameter count)
-- Haiku = 0.5x Sonnet (smaller model, lighter compute)
 
-These are order-of-magnitude estimates. Actual values depend on Anthropic's specific hardware configuration and batching strategies, which are not publicly available.
+These are order-of-magnitude estimates. Actual values depend on Anthropic's specific hardware configuration and batching strategies, which are not publicly available. Only Sonnet is measured; the others carry the uncertainty bands noted above.
 
 ## Excluded models (non-Anthropic)
 
@@ -68,7 +81,7 @@ Claude Code purges JSONL transcripts after about 30 days, so the SQLite DB is th
 
 1. **Capture before purge.** The `Stop` hook (`persist-session.sh`) writes each session to the DB when it ends, while the JSONL still exists. A throttled `SessionStart` hook (`safety-rescan.sh`) re-runs `backfill.sh` once a day in the background to catch any session the `Stop` hook missed (crash, kill, hook disabled), as long as its transcript is still within the 30-day window. The only unavoidable gaps are history older than the install date and downtime longer than 30 days.
 
-2. **Store raw tokens, derive on demand.** Each row stores the raw token breakdown: `input_tokens` (regular input + cache write), `cache_creation_tokens` (cache write), `cache_read_tokens`, and `output_tokens`. Cost and CO2 are pure functions of these counts plus `data/factors.json` and `data/prices.json`, so they can be regenerated at any time with `recompute.sh` without re-reading the (purged) JSONL. When Anthropic changes a price, or a factor is revised, edit the config and run `recompute.sh`. Rows are tagged `methodology_version`; only version >= 2 carries the full raw-token breakdown, so older rows captured before this change are left untouched as legacy.
+2. **Store raw tokens, derive on demand.** Each row stores the raw token breakdown: `input_tokens` (regular input + cache write), `cache_creation_tokens` (cache write), `cache_read_tokens`, and `output_tokens`. Cost and CO2 are pure functions of these counts plus `data/factors.json` and `data/prices.json`, so they can be regenerated at any time with `recompute.sh` without re-reading the (purged) JSONL. When a CO2 factor is revised, run `recompute.sh` (CO2-only by default); when a price changes, run `recompute.sh --with-cost` (cost re-pricing collapses mixed-model rows to the dominant model, ~6% high on subagent sessions, so it is opt-in). Rows are tagged `methodology_version`; only version >= 2 carries the full raw-token breakdown, so older rows captured before this change are left untouched as legacy.
 
 `recompute.sh` recomputes a mixed-model session (subagents on a different model) at the row's dominant model, a small approximation; the original insert is model-accurate per subagent.
 
@@ -84,7 +97,9 @@ Sources: GreenCache (arXiv:2505.23970), TokenPowerBench (arXiv:2512.03024), Solo
 
 ## Cost estimate
 
-The `cost_usd` column is the theoretical API list value of the usage (what it would cost on pay-as-you-go), not the subscription price actually paid. It uses current Anthropic list pricing per million tokens: Opus 4.6+ at $5 input / $25 output (not the retired $15/$75 of Opus 4.0/4.1), Sonnet at $3/$15, Haiku at $1/$5. Cache write is billed at 1.25x input and cache read at 0.1x input. On deduplicated data this reconciles to within a few percent of ccusage.
+The `cost_usd` column is the theoretical API list value of the usage (what it would cost on pay-as-you-go), not the subscription price actually paid. It uses current Anthropic list pricing per million tokens (reconfirmed 2026-06-22): Opus 4.6+ at $5 input / $25 output (not the retired $15/$75 of Opus 4.0/4.1), Sonnet at $3/$15, Haiku at $1/$5, Fable 5 at $10/$50. Cache write is billed at 1.25x input (the 5-minute tier, Claude Code's default; the 1-hour tier is 2x) and cache read at 0.1x input. On deduplicated data this reconciles to within a few percent of ccusage.
+
+For EUR, `data/prices.json` carries `eur_per_usd` (ECB euro reference rate, 0.8729 as of 2026-06-22); convert `cost_usd` at display time rather than storing EUR amounts, so a single dated rate stays the only source of truth and historical rows never need re-conversion. The recent USD/EUR range is tight (~±1%), so a monthly refresh keeps EUR accurate well within the CO2/cost uncertainty.
 
 ## Limitations
 
@@ -92,7 +107,7 @@ The `cost_usd` column is the theoretical API list value of the usage (what it wo
 - Inference only. Training costs, hardware manufacturing, and cooling water are not included.
 - Cache read energy is a derived estimate, not a measurement (see Cache read energy below). Cache reads are 90%+ of tokens in Claude Code, so the chosen factor (default 0.08) is the single biggest lever on the headline number.
 - Status line is approximate. Claude Code does not expose `cache_read_input_tokens` separately in the statusline hook JSON, and parsing JSONL incrementally at each turn would be too slow. The live display uses `context_window.total_input_tokens` (current context size, includes cache reads, no subagents). This is not used in reports.
-- Grid-average, not real-time. The CIF is a static US grid average. Actual emissions depend on Anthropic's datacenter location, energy mix, and time of day.
+- Grid-average, not real-time. The CIF is the static AWS region grid intensity (location-based, 0.287); the US national average is higher (~380 g/kWh). Actual emissions depend on Anthropic's datacenter location, energy mix, and time of day.
 - No multi-region awareness. AWS runs inference in multiple regions with different grid intensities.
 
 ## Equivalences used in reports

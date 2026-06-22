@@ -14,7 +14,7 @@
         "url": "https://github.com/gwittebolle/claude-carbon.git"
       },
       "description": "Track the carbon footprint of your Claude Code sessions",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": {
         "name": "Gaetan Wittebolle"
       },

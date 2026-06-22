@@ -24,8 +24,8 @@ sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN methodology_version INTEGER 
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN excluded INTEGER DEFAULT 0;" 2>/dev/null || true
 
 # Load emission factors once (gCO2e per million tokens)
-FACTOR_FABLE_IN="$(jq -r '.models.fable.input // 1000' "$FACTORS_FILE")"
-FACTOR_FABLE_OUT="$(jq -r '.models.fable.output // 6000' "$FACTORS_FILE")"
+FACTOR_FABLE_IN="$(jq -r '.models.fable.input // 156' "$FACTORS_FILE")"
+FACTOR_FABLE_OUT="$(jq -r '.models.fable.output // 3304' "$FACTORS_FILE")"
 FACTOR_OPUS_IN="$(jq -r '.models.opus.input' "$FACTORS_FILE")"
 FACTOR_OPUS_OUT="$(jq -r '.models.opus.output' "$FACTORS_FILE")"
 FACTOR_SONNET_IN="$(jq -r '.models.sonnet.input' "$FACTORS_FILE")"

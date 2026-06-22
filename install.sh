@@ -25,10 +25,32 @@ for cmd in jq sqlite3 git; do
   fi
 done
 
-# 2. Clone or update
+# 2. Clone (fresh) or update (existing, dirty-safe against locally-edited data files)
+WAS_UPDATE=0
 if [ -d "$INSTALL_DIR/.git" ]; then
   echo "Updating existing installation at $INSTALL_DIR..."
-  git -C "$INSTALL_DIR" pull --ff-only --quiet
+  WAS_UPDATE=1
+  export GIT_TERMINAL_PROMPT=0 GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=20
+  # The README invites editing data/factors.json, which breaks `git pull --ff-only`.
+  # Stash just those two tracked files, pull, restore; on conflict keep upstream + back up theirs.
+  STASHED=0
+  if [ -n "$(git -C "$INSTALL_DIR" status --porcelain -- data/factors.json data/prices.json 2>/dev/null || true)" ]; then
+    if git -C "$INSTALL_DIR" stash push --quiet -m "claude-carbon-install" -- data/factors.json data/prices.json 2>/dev/null; then
+      STASHED=1
+    fi
+  fi
+  git -C "$INSTALL_DIR" pull --ff-only --quiet \
+    || echo "  WARNING: could not fast-forward. Resolve with: cd $INSTALL_DIR && git status"
+  if [ "$STASHED" = "1" ]; then
+    if ! git -C "$INSTALL_DIR" stash pop --quiet 2>/dev/null; then
+      for f in data/factors.json data/prices.json; do
+        git -C "$INSTALL_DIR" show "stash@{0}:$f" > "${INSTALL_DIR}/${f}.local.bak" 2>/dev/null || true
+      done
+      git -C "$INSTALL_DIR" checkout --quiet HEAD -- data/factors.json data/prices.json 2>/dev/null || true
+      git -C "$INSTALL_DIR" stash drop --quiet 2>/dev/null || true
+      echo "  Your local factors/prices edits were saved to *.local.bak (re-apply manually)."
+    fi
+  fi
 else
   echo "Cloning to $INSTALL_DIR..."
   mkdir -p "$(dirname "$INSTALL_DIR")"
@@ -38,6 +60,14 @@ fi
 # 3. Run setup (creates DB, backfills history)
 echo ""
 CLAUDE_CARBON_INSTALLER=1 bash "$INSTALL_DIR/scripts/setup.sh"
+
+# 3b. On update, re-price stored history with the new factors (CO2-only; cost left intact).
+if [ "$WAS_UPDATE" = "1" ]; then
+  DB_PATH="${CLAUDE_CARBON_DB:-${HOME}/.claude/claude-carbon/carbon.db}"
+  if [ -f "$DB_PATH" ]; then
+    bash "$INSTALL_DIR/scripts/recompute.sh" || echo "  (history not re-priced; see message above)"
+  fi
+fi
 
 # 4. Configure Claude Code settings
 echo ""
@@ -109,7 +139,7 @@ SKILL_SOURCE="${INSTALL_DIR}/skills/carbon-report/SKILL.md"
 SKILL_LINK="${COMMANDS_DIR}/carbon-report.md"
 
 mkdir -p "$COMMANDS_DIR"
-for SKILL_NAME in carbon-report carbon-card; do
+for SKILL_NAME in carbon-report carbon-card carbon-update; do
   SKILL_SRC="${INSTALL_DIR}/skills/${SKILL_NAME}/SKILL.md"
   SKILL_LNK="${COMMANDS_DIR}/${SKILL_NAME}.md"
   if [ -L "$SKILL_LNK" ] || [ -f "$SKILL_LNK" ]; then

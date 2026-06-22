@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-06-22
+
+### feat: "update available" notice, one-command `/carbon-update`, and auto re-price on update
+
+Existing installs had no way to know a new version shipped, and updating was a manual curl re-run that `git pull --ff-only` would break for anyone who had edited `data/factors.json` (which the README invites). Added a full update flow:
+
+- **Notice**: a backgrounded, once-a-day version check (`scripts/check-update.sh`, run detached from the SessionStart hook) compares the local vs remote `plugin.json` version and writes a cached flag. The status line reads that flag locally (no network on the hot path) and shows a discreet `⬆ /carbon-update` when behind, with a 7-day staleness gate. Opt out via `CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1`. Marketplace-cache installs are skipped (they use Claude Code's native auto-update).
+- **Update**: a `/carbon-update` slash command (and a hardened `install.sh`) run `scripts/update.sh`, a dirty-safe `git pull` that stashes only the two user-editable data files and, on conflict, preserves the user's version to `*.local.bak`.
+- **Recompute on update**: after a pull, history is re-priced with the new factors automatically. `recompute.sh` now defaults to **CO2-only** (idempotent, no mixed-model cost drift); cost re-pricing is opt-in via `--with-cost`. Added a 5s SQLite busy-timeout (`sqlite3 -cmd ".timeout 5000"`) so a concurrent Stop-hook write doesn't fail the recompute, and the recompute now refuses non-numeric config values (they are interpolated into SQL).
+- Bumped the plugin version to **1.1.0** (`plugin.json` + `marketplace.json`) so marketplace users are offered the update.
+
+### Refine emission factors and pricing to the best available data to date (multi-source, cross-validated)
+
+Triangulated the per-model CO2 factors and Anthropic pricing across independent sources (Jegham et al. v6 empirical AWS measurements, EcoLogits parametric LCA, third-party inference-energy studies, AWS regional grid data), with adversarial verification of the load-bearing numbers.
+
+- CO2 (gCO2e/Mtok, usage-only, AWS region grid 0.287): **Sonnet 39/826** - a 3-point OLS fit to Jegham v6's three measured Claude 3.7 Sonnet energies (0.950 / 2.989 / 5.671 Wh), cross-validated by EcoLogits which brackets the same range. **Opus 78/1652** (2x Sonnet): the current EcoLogits Opus 4.5+ parameter ratio and the Anthropic price ratio both imply ~1.7-2x, replacing the earlier 3x; honest band 2x-5x. **Haiku 20/413** (0.5x). **Fable 156/3304** (2x Opus). Bands and unmeasured-extrapolation caveats are documented in `METHODOLOGY.md`.
+- Relabeled the 0.287 kgCO2e/kWh carbon intensity as the AWS region grid (location-based), not a "US average" (the US average is ~380); kept 0.287 as the Jegham-consistent basis.
+- Pricing: all USD list prices reconfirmed current (Opus $5/$25, Sonnet $3/$15, Haiku $1/$5, Fable $10/$50; cache write 1.25x 5-min tier, read 0.1x) - no drift. Added `eur_per_usd` (ECB reference rate 2026-06-22, 0.8729) for EUR display, and documented the 2x 1-hour cache-write tier.
+
+These remain order-of-magnitude estimates and will keep being refined as measurements improve. Updated `data/factors.json`, `data/prices.json`, script fallbacks, `METHODOLOGY.md`, `README.md` and the golden vectors. Run `scripts/recompute.sh` to re-price stored rows.
+
+### docs: note terminal/IDE-only compatibility in README
+
+The status line and shell hooks only run in the Claude Code terminal CLI and IDE extensions, not the web (claude.ai/code) or desktop app. Added an explicit note under the install steps so users on the app don't expect CO2 tracking there.
+
 ## 2026-06-12
 
 ### feat: exclude non-Anthropic models from cost/CO2 accounting (#7)
