@@ -110,6 +110,14 @@ Restart Claude Code.
 
 </details>
 
+## For teams
+
+claude-carbon measures one developer's sessions, locally. If the question comes from your CTO, a client RFP or a CSR committee, the same methodology exists as a hosted layer:
+
+- [Free calculator and per-model factor sheets](https://tokenclimate.com/calculator) - the exact versioned factors of this repo, browsable.
+- [Bilan IA](https://tokenclimate.com/bilan) - a self-serve, shareable report of your organisation's real Claude usage (cost, CO2e, water, energy), generated in minutes from an Anthropic admin key. The key is never stored; the methodology annex is citation-ready.
+- [TokenClimate](https://tokenclimate.com) - hosted team dashboards. Both sides share this repo's golden vectors, verified weekly in CI.
+
 ## How it works
 
 ![Data flow](docs/data-flow.png)
