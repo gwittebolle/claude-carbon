@@ -96,4 +96,6 @@ while IFS='|' read -r project co2 sessions cost; do
   printf "%-25s | %-8s | %-8s | \$%s\n" "$project" "$co2" "$sessions" "$cost"
 done <<< "$BY_PROJECT"
 echo ""
+echo "Team view (same methodology): tokenclimate.com"
+echo ""
 ```

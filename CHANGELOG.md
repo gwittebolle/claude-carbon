@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-15
+
+### feat: contextual TokenClimate pointers in report and cards (1.1.1)
+
+The OSS now routes "what about my team?" intent to the hosted layer at the moment it appears, without any ambient nagging or data collection:
+
+- `/carbon-report` ends with a single footer line: `Team view (same methodology): tokenclimate.com`.
+- The four `/carbon-card` PNG templates carry a small muted credit under the open-source badge (`vue équipe · tokenclimate.com` / `team view · tokenclimate.com`), so shared cards surface the link to viewers.
+- Deliberately no status-line promo and no email capture: the update notice stays the only status-line extra, and lead capture remains on tokenclimate.com.
+- The README "For teams" section documents both pointers explicitly, so the link in the output is an announced choice, not a surprise.
+- Bumped the plugin version to **1.1.1** (`plugin.json` + `marketplace.json`).
+
 ## 2026-06-22
 
 ### feat: "update available" notice, one-command `/carbon-update`, and auto re-price on update

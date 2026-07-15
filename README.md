@@ -118,6 +118,8 @@ claude-carbon measures one developer's sessions, locally. If the question comes 
 - [Bilan IA](https://tokenclimate.com/bilan) - a self-serve, shareable report of your organisation's real Claude usage (cost, CO2e, water, energy), generated in minutes from an Anthropic admin key. The key is never stored; the methodology annex is citation-ready.
 - [TokenClimate](https://tokenclimate.com) - hosted team dashboards. Both sides share this repo's golden vectors, verified weekly in CI.
 
+The only places the OSS points there are a one-line footer in `/carbon-report` and a small credit on the `/carbon-card` PNGs. No status-line promo, no email capture: nothing leaves your machine.
+
 ## How it works
 
 ![Data flow](docs/data-flow.png)
