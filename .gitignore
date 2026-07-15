@@ -4,3 +4,4 @@ exports/
 docs/private/
 .DS_Store
 .playwright-mcp/
+canva-*.png
