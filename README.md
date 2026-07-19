@@ -12,7 +12,13 @@ Track the carbon footprint of your Claude Code sessions.
 curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
 ```
 
-Same command to install and to update to the latest version.
+Or, if you have Node.js:
+
+```bash
+npx claude-carbon
+```
+
+Same command to install and to update to the latest version (both run the same installer).
 
 **2. Restart Claude Code.** Your CO2 appears in the status line:
 

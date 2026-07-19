@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-19
+
+### feat: npm wrapper package (`npx claude-carbon`)
+
+Published claude-carbon to npm as a thin wrapper so the package page and the registry-derived links (Socket.dev, ecosyste.ms, libraries.io, unpkg) exist, without changing the git-based distribution:
+
+- `package.json` at the repo root (name `claude-carbon`, version synced with `plugin.json`, `files` limited to `bin/` - npm adds README/LICENSE itself; tarball is 4 files, ~8 kB).
+- `bin/claude-carbon.js`: downloads `install.sh` from `main` and runs it through bash, propagating the installer's exit code. Flags: `--dry-run` (download only), `--version`, `--help`. `CLAUDE_CARBON_INSTALL_URL` overrides the source (pin a branch/fork, used by tests). Refuses Windows (the installer needs bash) and requires Node >= 18 (global `fetch`).
+- README install section now offers `npx claude-carbon` next to the curl one-liner.
+- Verified end-to-end against a local stub server (exit-code propagation included) and with `--dry-run` against the real GitHub URL; `npm pack --dry-run` checked for tarball contents.
+
+Publishing (`npm publish`) is manual for now; a GitHub Action on tag can automate it later. Version bumps must keep `package.json` in sync with `plugin.json`/`marketplace.json`.
+
 ## 2026-07-15
 
 ### feat: contextual TokenClimate pointers in report and cards (1.1.1)

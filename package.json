@@ -1,0 +1,30 @@
+{
+  "name": "claude-carbon",
+  "version": "1.1.1",
+  "description": "Track the carbon footprint of your Claude Code sessions",
+  "bin": {
+    "claude-carbon": "bin/claude-carbon.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "homepage": "https://github.com/gwittebolle/claude-carbon#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gwittebolle/claude-carbon.git"
+  },
+  "bugs": "https://github.com/gwittebolle/claude-carbon/issues",
+  "author": "Gaetan Wittebolle (https://github.com/gwittebolle)",
+  "license": "MIT",
+  "keywords": [
+    "carbon-footprint",
+    "sustainability",
+    "claude-code",
+    "claude",
+    "green-it",
+    "co2"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
