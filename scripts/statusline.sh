@@ -3,6 +3,11 @@ set -euo pipefail
 
 # statusline.sh — Reads Claude Code status JSON from stdin, outputs formatted CO2 status line.
 # Usage: echo '{"session_id":...}' | statusline.sh
+#        ... | statusline.sh --segment   (cost + CO2 only, for embedding in
+#        another status line, e.g. a ccstatusline custom command widget)
+
+SEGMENT_MODE=0
+[ "${1:-}" = "--segment" ] && SEGMENT_MODE=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
@@ -54,6 +59,13 @@ fi
 
 # Round cost to 2 decimals
 COST_DISPLAY="$(echo "$COST_USD" | LC_ALL=C awk '{printf "%.2f", $1}')"
+
+# Segment mode stops here: no progress bar, no quota lookup (and so no
+# network fallback), no git call. The host status line owns the rest.
+if [ "$SEGMENT_MODE" = "1" ]; then
+  echo "\$${COST_DISPLAY} · ${CO2_DISPLAY}"
+  exit 0
+fi
 
 # Build progress bar (10 blocks)
 FILLED=$(( USED_PCT * 10 / 100 ))

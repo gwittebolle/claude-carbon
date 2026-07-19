@@ -2,6 +2,10 @@
 
 ## 2026-07-19
 
+### feat: `--segment` mode for embedding in other status lines
+
+`statusline.sh --segment` prints only the cost + CO2 pair (`$0.68 · 35g CO₂`) and exits before the progress bar, the 5h-quota lookup (so never any network call) and the git branch call. Built for [ccstatusline](https://github.com/sirmalloc/ccstatusline) custom command widgets, which pass the same status JSON on stdin; documented in the README ("Using with ccstatusline"). Full mode output is byte-identical to before.
+
 ### docs: mid-2026 evidence sweep in METHODOLOGY.md
 
 Literature check (July 2026): Jegham et al. still at v6, EcoLogits now a published paper but still parametric for Claude, no official Anthropic disclosure. Two documentation additions, no factor changes, golden vectors untouched:
