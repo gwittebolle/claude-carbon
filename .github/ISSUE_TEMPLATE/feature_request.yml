@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose an improvement or a new capability
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      description: Describe the situation where you miss this feature, not just the feature itself.
+      placeholder: When I ..., I can't ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      placeholder: A /carbon-... command that ...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you use today, or other shapes this could take.
+    validations:
+      required: false
+  - type: checkboxes
+    id: methodology
+    attributes:
+      label: Methodology impact
+      options:
+        - label: This proposal changes how CO2 or cost is computed (factors, prices, formulas)

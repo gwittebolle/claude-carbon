@@ -2,6 +2,16 @@
 
 ## 2026-07-19
 
+### docs: complete the GitHub community standards checklist
+
+Added the five files the Community Standards page flagged as missing:
+
+- `CODE_OF_CONDUCT.md`: Contributor Covenant 2.1, contact email for enforcement.
+- `CONTRIBUTING.md`: project layout, `bash tests/run-vectors.sh`, the golden-vector rule for any `data/factors.json` / `data/prices.json` change, PR conventions, release manifest sync.
+- `SECURITY.md`: private reporting (GitHub advisory or email), explicit scope (OAuth token, transcripts, installer/hooks execution, no unexpected network calls).
+- `.github/ISSUE_TEMPLATE/`: bug report and feature request as YAML forms (version, install method, runtime environment fields), plus a contact link routing security reports away from public issues.
+- `.github/PULL_REQUEST_TEMPLATE.md`: checklist mirroring CONTRIBUTING, with a dedicated section for methodology changes.
+
 ### feat: npm wrapper package (`npx claude-carbon`)
 
 Published claude-carbon to npm as a thin wrapper so the package page and the registry-derived links (Socket.dev, ecosyste.ms, libraries.io, unpkg) exist, without changing the git-based distribution:

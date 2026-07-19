@@ -1,0 +1,69 @@
+name: Bug report
+description: Something is broken or a number looks wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead. If a CO2 or cost number looks wrong, paste it and say why you expected something else.
+      placeholder: The status line shows ... but I expected ...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Install with ...
+        2. Restart Claude Code
+        3. ...
+    validations:
+      required: false
+  - type: input
+    id: claude-carbon-version
+    attributes:
+      label: claude-carbon version
+      description: Shown by /carbon-report, or check ~/.claude/claude-carbon
+      placeholder: 1.1.1
+    validations:
+      required: true
+  - type: input
+    id: claude-code-version
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`
+      placeholder: 2.x.x
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      options:
+        - curl install.sh
+        - npx claude-carbon
+        - plugin marketplace
+        - other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where does Claude Code run
+      description: The status line and hooks only run in the terminal CLI and IDE extensions, not the web or desktop app.
+      options:
+        - Terminal CLI (macOS)
+        - Terminal CLI (Linux)
+        - IDE extension (VS Code / JetBrains)
+        - Web or desktop app
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Status line output or logs
+      description: Paste the status line as displayed, or any error output. Redact anything sensitive.
+      render: text
+    validations:
+      required: false
