@@ -2,6 +2,10 @@
 
 ## 2026-07-19
 
+### feat: weekly traffic snapshot (stats/)
+
+GitHub's traffic API only keeps a 14-day rolling window, so `scripts/traffic-snapshot.sh` merges per-day views/clones into `stats/traffic.json` (latest fetch wins on overlapping days) and appends dated referrer/path snapshots as JSONL. Runs Mondays via `.github/workflows/traffic.yml` (workflow_dispatch too); needs a `TRAFFIC_TOKEN` fine-grained PAT secret with repository Administration read, because the traffic endpoints reject the default Actions token. Seeded with the current window: unique cloners ≈ real installs (install.sh and npx both end in `git clone`; updates are `git pull` and don't count).
+
 ### feat: `--segment` mode for embedding in other status lines
 
 `statusline.sh --segment` prints only the cost + CO2 pair (`$0.68 · 35g CO₂`) and exits before the progress bar, the 5h-quota lookup (so never any network call) and the git branch call. Built for [ccstatusline](https://github.com/sirmalloc/ccstatusline) custom command widgets, which pass the same status JSON on stdin; documented in the README ("Using with ccstatusline"). Full mode output is byte-identical to before.

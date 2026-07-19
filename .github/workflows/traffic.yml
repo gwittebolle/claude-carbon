@@ -1,0 +1,36 @@
+name: traffic
+
+# Persists the GitHub traffic API's 14-day rolling window into stats/.
+# Weekly is enough (2x margin on the window). The TRAFFIC_TOKEN secret must
+# be a fine-grained PAT with repository Administration read permission:
+# the traffic endpoints reject the default Actions GITHUB_TOKEN.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Snapshot traffic API into stats/
+        env:
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "TRAFFIC_TOKEN secret is missing (fine-grained PAT, Administration: read)"; exit 1; }
+          bash scripts/traffic-snapshot.sh
+
+      - name: Commit snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stats/
+          git diff --cached --quiet || git commit -m "chore: weekly traffic snapshot"
+          git push
