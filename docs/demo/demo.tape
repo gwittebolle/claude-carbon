@@ -6,7 +6,7 @@ Output docs/demo.gif
 
 Set FontSize 24
 Set Width 1500
-Set Height 280
+Set Height 200
 Set Padding 24
 Set WindowBar Colorful
 Set Theme { "background": "#0d0d0d", "foreground": "#dcdcdc", "black": "#0d0d0d", "brightBlack": "#6a6a6a" }
@@ -17,4 +17,4 @@ Enter
 Sleep 500ms
 Show
 
-Sleep 12s
+Sleep 8s

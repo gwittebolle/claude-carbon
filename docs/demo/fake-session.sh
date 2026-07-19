@@ -33,6 +33,7 @@ trap 'printf "\033[?25h"' EXIT
 
 printf '\033[2m> recalibrate the emission factors and replay the golden vectors\033[0m\n\n'
 
+FIRST=1
 for step in "${STEPS[@]}"; do
   read -r IN OUT COST CTX USE <<<"$step"
   LINE="$(jq -n \
@@ -49,7 +50,12 @@ for step in "${STEPS[@]}"; do
       rate_limits: {five_hour: {used_percentage: $use, resets_at: $reset}}}' \
     | bash "$STATUSLINE")"
   printf '\r\033[K%s' "$LINE"
-  sleep 1.1
+  if [ "$FIRST" = "1" ]; then
+    sleep 1.2
+    FIRST=0
+  else
+    sleep 0.6
+  fi
 done
 
 printf '\n'
