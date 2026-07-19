@@ -2,6 +2,13 @@
 
 ## 2026-07-19
 
+### docs: mid-2026 evidence sweep in METHODOLOGY.md
+
+Literature check (July 2026): Jegham et al. still at v6, EcoLogits now a published paper but still parametric for Claude, no official Anthropic disclosure. Two documentation additions, no factor changes, golden vectors untouched:
+
+- Cross-validation: added Couch (Jan 2026) as a third independent route (Epoch AI per-query estimate scaled by API price ratios, ~1,950 Wh/Mtok output vs ~2,880 here, within ~1.5x).
+- Limitations: replaced the multi-region bullet with a fleet-mix limitation covering the tri-hardware fleet (AWS Trainium/GPU, Google TPU 1+ GW in 2026, Nvidia) and the ~300 MW gas-powered Memphis Colossus 1 lease (SpaceX S-1, May 2026). Weighted CIF effect ~+5-10%, flagged as a watch item.
+
 ### docs: demo GIF, social preview template, npm + CI badges
 
 - `docs/demo.gif` at the top of the README: a scripted session replayed through the real `scripts/statusline.sh` (driver: `docs/demo/fake-session.sh`, recorder: `docs/demo/demo.tape` via vhs). Every frame is the actual renderer output; only the JSON snapshots are fabricated.

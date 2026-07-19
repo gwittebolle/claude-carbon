@@ -21,6 +21,10 @@ These are the best available data to date and will keep being refined as measure
 
 [EcoLogits](https://ecologits.ai) (GenAI Impact / Data For Good) estimates inference impact by a completely independent route: model parameter counts plus a full lifecycle model, rather than measured AWS telemetry. Its estimate for Claude 3.7 Sonnet brackets **~565-1385 gCO2e/Mtok output** (parameter range, USA grid, full lifecycle), with a usage-only central value near ~630. The Jegham-derived **826** sits inside that band. Two unrelated methodologies agreeing is strong corroboration. Note one structural difference: EcoLogits charges zero energy to input tokens, whereas Jegham's measurements show a small but real input cost (the 10k-input query consumes more), which this tool keeps via the input factor.
 
+### A third independent estimate (Couch, 2026)
+
+[Simon Couch's January 2026 analysis of AI coding agents](https://simonpcouch.com/blog/2026-01-20-cc-impact/) derives Claude per-token energy by yet another route: Epoch AI's GPT-4o per-query estimate scaled by Anthropic's API price ratios. His self-described pessimistic figures are ~390 Wh/Mtok input and ~1,950 Wh/Mtok output. The Jegham-derived Sonnet factors used here are equivalent to ~136 Wh/Mtok input and ~2,880 Wh/Mtok output. Three unrelated routes (measured AWS telemetry, parameter-count lifecycle modeling, price-ratio scaling) landing within ~1.5x of each other on output tokens is about as much corroboration as public data allows today.
+
 ## Formula
 
 ```
@@ -108,7 +112,7 @@ For EUR, `data/prices.json` carries `eur_per_usd` (ECB euro reference rate, 0.87
 - Cache read energy is a derived estimate, not a measurement (see Cache read energy below). Cache reads are 90%+ of tokens in Claude Code, so the chosen factor (default 0.08) is the single biggest lever on the headline number.
 - Status line is approximate. Claude Code does not expose `cache_read_input_tokens` separately in the statusline hook JSON, and parsing JSONL incrementally at each turn would be too slow. The live display uses `context_window.total_input_tokens` (current context size, includes cache reads, no subagents). This is not used in reports.
 - Grid-average, not real-time. The CIF is the static AWS region grid intensity (location-based, 0.287); the US national average is higher (~380 g/kWh). Actual emissions depend on Anthropic's datacenter location, energy mix, and time of day.
-- No multi-region awareness. AWS runs inference in multiple regions with different grid intensities.
+- Single-fleet assumption. Since 2026 Anthropic serves Claude from a mixed fleet: AWS (Trainium and GPUs, the infrastructure Jegham measured), Google Cloud TPUs (1+ GW coming online during 2026), and, per SpaceX's May 2026 S-1 filing, the leased ~300 MW Colossus 1 site in Memphis, largely powered by gas turbines (~350-450 gCO2e/kWh vs the 287 used here). A single CIF and a single per-model energy cannot capture per-request routing across hardware and grids. The weighted effect of Memphis alone is roughly +5-10% on the CIF, within this tool's order-of-magnitude uncertainty; the TPU share pulls the other way. Watch item: revisit the CIF if the fleet mix shifts further toward gas-powered capacity.
 
 ## Equivalences used in reports
 
