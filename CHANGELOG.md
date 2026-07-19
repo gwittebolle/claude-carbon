@@ -2,6 +2,13 @@
 
 ## 2026-07-19
 
+### docs: demo GIF, social preview template, npm + CI badges
+
+- `docs/demo.gif` at the top of the README: a scripted session replayed through the real `scripts/statusline.sh` (driver: `docs/demo/fake-session.sh`, recorder: `docs/demo/demo.tape` via vhs). Every frame is the actual renderer output; only the JSON snapshots are fabricated.
+- `templates/social-preview.html`: 1280x640 GitHub social preview in the report-card visual style, rendered to `exports/social-preview.png` (local, exports/ is gitignored) for manual upload in Settings > General.
+- README badges: npm version and CI workflow status next to the existing three.
+- `.gitignore`: `promo/` (local marketing drafts stay out of the repo).
+
 ### docs: complete the GitHub community standards checklist
 
 Added the five files the Community Standards page flagged as missing:

@@ -2,6 +2,7 @@
 *.db-journal
 exports/
 docs/private/
+promo/
 .DS_Store
 .playwright-mcp/
 canva-*.png
