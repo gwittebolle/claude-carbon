@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # generate-report.sh — Generate Claude Carbon Report PNGs from DB stats.
-# Usage: generate-report.sh [--since YYYY-MM-DD] [--all]
-# Default: since January 1st of current year.
+# Usage: generate-report.sh [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--all]
+# Default: since January 1st of current year, up to now.
+# --until takes an exclusive upper bound, so --until 2026-07-01 stops at June 30th.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,6 +17,7 @@ YEAR="$(date +%Y)"
 SINCE="${YEAR}-01-01"
 SINCE_LABEL_FR="janvier ${YEAR}"
 SINCE_LABEL_EN="January ${YEAR}"
+UNTIL="" # exclusive upper bound; empty = up to now
 LANG_FILTER="" # empty = both
 LABEL_AUTO=1   # default mode: derive the "since" label from the earliest real session
 
@@ -32,6 +34,10 @@ while [[ $# -gt 0 ]]; do
       LABEL_AUTO=0
       shift 2
       ;;
+    --until)
+      UNTIL="$2"
+      shift 2
+      ;;
     --all)
       SINCE=""
       SINCE_LABEL_FR="le début"
@@ -44,7 +50,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     *)
-      echo "Usage: generate-report.sh [--since YYYY-MM-DD] [--all] [--lang fr|en]" >&2
+      echo "Usage: generate-report.sh [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--all] [--lang fr|en]" >&2
       exit 1
       ;;
   esac
@@ -53,10 +59,39 @@ done
 SINCE_LABEL="$SINCE_LABEL_FR"
 
 # Build SQL WHERE clause (always filters out excluded sessions, e.g. non-Anthropic models)
+WHERE="WHERE COALESCE(excluded, 0) = 0"
 if [ -n "$SINCE" ]; then
-  WHERE="WHERE COALESCE(excluded, 0) = 0 AND started_at >= '${SINCE}'"
+  WHERE="${WHERE} AND started_at >= '${SINCE}'"
+fi
+if [ -n "$UNTIL" ]; then
+  WHERE="${WHERE} AND started_at < '${UNTIL}'"
+fi
+
+# Anchor date for every "how long has this been running" computation: the upper
+# bound when the period is closed, today otherwise.
+if [ -n "$UNTIL" ]; then
+  PERIOD_END_SQL="$UNTIL"
+  LAST_DAY="$(date -j -v-1d -f "%Y-%m-%d" "$UNTIL" +%Y-%m-%d 2>/dev/null || date -d "${UNTIL} -1 day" +%Y-%m-%d 2>/dev/null || echo "$UNTIL")"
 else
-  WHERE="WHERE COALESCE(excluded, 0) = 0"
+  PERIOD_END_SQL="now"
+  LAST_DAY="$TODAY"
+fi
+PERIOD_END_EPOCH="$(date -j -f "%Y-%m-%d" "$LAST_DAY" +%s 2>/dev/null || date -d "$LAST_DAY" +%s 2>/dev/null || date +%s)"
+
+# Filename carries the window when it is closed, so two runs of the same period
+# don't overwrite each other with different numbers.
+if [ -n "$UNTIL" ]; then
+  FILE_TAG="${SINCE:-start}_${LAST_DAY}"
+else
+  FILE_TAG="$TODAY"
+fi
+
+# On a closed period, the generation date says nothing useful and contradicts the
+# window shown under the headline. The period itself is the timestamp.
+if [ -n "$UNTIL" ]; then
+  DATE_STAMP=""
+else
+  DATE_STAMP="$TODAY"
 fi
 
 # ── Deps check ──────────────────────────────────────────────
@@ -117,6 +152,16 @@ if [ "$LABEL_AUTO" = "1" ] && [ -n "$FIRST_DATE" ]; then
   fi
 fi
 
+# A closed period must say so, otherwise "823 sessions depuis janvier" reads as
+# "up to today" and the headline number no longer matches the window.
+if [ -n "$UNTIL" ]; then
+  _um="$(echo "$LAST_DAY" | cut -c6-7 | sed 's/^0//')"
+  _ud="$(echo "$LAST_DAY" | cut -c9-10 | sed 's/^0//')"
+  _uy="$(echo "$LAST_DAY" | cut -c1-4)"
+  SINCE_LABEL_FR="${SINCE_LABEL_FR}, jusqu'au ${_ud} ${MONTHS_FR[$_um]} ${_uy}"
+  SINCE_LABEL_EN="${SINCE_LABEL_EN}, up to ${MONTHS_EN[$_um]} ${_ud}, ${_uy}"
+fi
+
 # Format tokens (M)
 TOTAL_TOKENS="$(echo "$TOTAL_TOKENS_RAW" | LC_ALL=C awk '{printf "%.0f", $1/1000000}')"
 
@@ -125,7 +170,7 @@ TOTAL_TOKENS="$(echo "$TOTAL_TOKENS_RAW" | LC_ALL=C awk '{printf "%.0f", $1/1000
 ACTUAL_FIRST="$(echo "$FIRST_DATE" | cut -c1-10)"
 _FIRST_EPOCH="$(date -j -f "%Y-%m-%d" "${ACTUAL_FIRST}" +%s 2>/dev/null || date -d "${ACTUAL_FIRST}" +%s 2>/dev/null || echo "")"
 if [ -n "$_FIRST_EPOCH" ]; then
-  DAYS_ELAPSED="$(( ( $(date +%s) - _FIRST_EPOCH ) / 86400 ))"
+  DAYS_ELAPSED="$(( ( PERIOD_END_EPOCH - _FIRST_EPOCH ) / 86400 ))"
 else
   DAYS_ELAPSED=0
 fi
@@ -135,9 +180,9 @@ if [ "$DAYS_ELAPSED" -gt 0 ]; then
 
   # Trend: last 30 days daily rate extrapolated
   if [ -n "$WHERE" ]; then
-    LAST_MONTH_DATA="$(sqlite3 "$DB_PATH" "SELECT SUM(co2_grams), MIN(started_at), MAX(started_at) FROM sessions ${WHERE} AND started_at >= date('now', '-30 days');" | tr '|' ' ')"
+    LAST_MONTH_DATA="$(sqlite3 "$DB_PATH" "SELECT SUM(co2_grams), MIN(started_at), MAX(started_at) FROM sessions ${WHERE} AND started_at >= date('${PERIOD_END_SQL}', '-30 days');" | tr '|' ' ')"
   else
-    LAST_MONTH_DATA="$(sqlite3 "$DB_PATH" "SELECT SUM(co2_grams), MIN(started_at), MAX(started_at) FROM sessions WHERE started_at >= date('now', '-30 days');" | tr '|' ' ')"
+    LAST_MONTH_DATA="$(sqlite3 "$DB_PATH" "SELECT SUM(co2_grams), MIN(started_at), MAX(started_at) FROM sessions WHERE started_at >= date('${PERIOD_END_SQL}', '-30 days');" | tr '|' ' ')"
   fi
   LAST_MONTH_CO2="$(echo "$LAST_MONTH_DATA" | LC_ALL=C awk '{print $1}')"
   LAST_MONTH_START="$(echo "$LAST_MONTH_DATA" | LC_ALL=C awk '{print $2}' | cut -c1-10)"
@@ -203,7 +248,7 @@ echo "Generating HTML variants..."
 inject_common() {
   local src="$1" dst="$2"
   sed \
-    -e "s|{{TODAY}}|${TODAY}|g" \
+    -e "s|{{TODAY}}|${DATE_STAMP}|g" \
     -e "s|{{SINCE_LABEL}}|${SINCE_LABEL}|g" \
     -e "s|{{TOTAL_CO2_VALUE}}|${TOTAL_CO2_VALUE}|g" \
     -e "s|{{TOTAL_CO2_UNIT}}|${TOTAL_CO2_UNIT}|g" \
@@ -391,13 +436,13 @@ const { chromium } = require('${PW_PATH}');
 }
 
 if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "fr" ]; then
-  export_png "$TMP_SUMMARY_FR" "$EXPORT_DIR/claude-carbon-summary-fr-${TODAY}.png" "Summary FR"
-  export_png "$TMP_DETAILED_FR" "$EXPORT_DIR/claude-carbon-detailed-fr-${TODAY}.png" "Detailed FR"
+  export_png "$TMP_SUMMARY_FR" "$EXPORT_DIR/claude-carbon-summary-fr-${FILE_TAG}.png" "Summary FR"
+  export_png "$TMP_DETAILED_FR" "$EXPORT_DIR/claude-carbon-detailed-fr-${FILE_TAG}.png" "Detailed FR"
 fi
 
 if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "en" ]; then
-  export_png "$TMP_SUMMARY_EN" "$EXPORT_DIR/claude-carbon-summary-en-${TODAY}.png" "Summary EN"
-  export_png "$TMP_DETAILED_EN" "$EXPORT_DIR/claude-carbon-detailed-en-${TODAY}.png" "Detailed EN"
+  export_png "$TMP_SUMMARY_EN" "$EXPORT_DIR/claude-carbon-summary-en-${FILE_TAG}.png" "Summary EN"
+  export_png "$TMP_DETAILED_EN" "$EXPORT_DIR/claude-carbon-detailed-en-${FILE_TAG}.png" "Detailed EN"
 fi
 
 echo ""
