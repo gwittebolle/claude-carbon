@@ -57,16 +57,16 @@ Factors are in gCO2e per million tokens. `cache_write_tokens` (`cache_creation_i
 
 ## Why input and output factors differ
 
-Output tokens are far more energy-intensive per token than input tokens. During prefill (input processing), the model processes all input tokens in parallel in one batched forward pass. During decoding (output generation), each token requires its own sequential forward pass through the model. This autoregressive step dominates energy consumption.
+Output tokens are far more energy-intensive per token than input tokens, but not because they need more math: FLOPs per token are similar in prefill and decode (~2x parameters either way for a dense model). The difference is hardware utilization. Prefill processes the whole prompt in parallel and saturates compute; each decode step re-reads the model weights and the KV cache to produce a single token, so decoding is memory-bandwidth-bound and burns far more energy per token. The exact multiple depends on batch size and serving stack.
 
-The exact ratio is not assumed, it is recovered from the three measured Sonnet points (see Deriving the Sonnet input/output factors above): the fit yields a marginal output:input ratio of ~21:1 (826 vs 39 gCO2e/Mtok). A large input (long context) adds little energy relative to the same number of generated tokens, which a flat low ratio would miss.
+The ratio used here is not assumed, it is recovered from the three measured Sonnet points (see Deriving the Sonnet input/output factors above): the fit yields a marginal output:input ratio of ~21:1 (826 vs 39 gCO2e/Mtok). Three points and two coefficients leave one degree of freedom, so 21:1 is a point estimate without error bars: the direction is robust, the exact multiple is not. A large input (long context) adds little energy relative to the same number of generated tokens, which a flat low ratio would miss.
 
 ## Why Fable, Opus and Haiku are extrapolated
 
 The Jegham paper measured Sonnet-class models directly. The other families are estimated by scaling:
 
 - Opus = 2x Sonnet. The current EcoLogits parameter assumptions for Opus 4.5+ (670B vs Sonnet 4.x 440B, active ~133B vs ~88B) and the Anthropic list-price ratio ($5/$25 vs $3/$15) both imply roughly 1.7-2x, not the 3x used in earlier releases. Honest band: 2x-5x Sonnet (Opus is unmeasured; EcoLogits' absolute Opus number is unstable across model generations).
-- Haiku = 0.5x Sonnet (smaller model, lighter compute). Wide band: Jegham's measured 3.5 Haiku reads higher than Sonnet (a serving/latency artifact), while EcoLogits' modern dense Haiku reads far lower; 0.5x is a physically-plausible middle.
+- Haiku = 0.5x Sonnet (smaller model, lighter compute). Wide band: Jegham's measured 3.5 Haiku reads higher than Sonnet (a serving/latency artifact), while EcoLogits' modern dense Haiku reads far lower; 0.5x is a physically-plausible middle. Taken at face value instead, the Haiku measurement would put Haiku ≈ Sonnet and erase most of the gain from routing tasks to smaller models; the artifact reading is better supported, but the unfavorable reading exists and this is the widest band in the tool.
 - Fable = 2x Opus (no published measurement for Fable 5 / Mythos 5; the list-price ratio, $10/$50 vs $5/$25, is used as a compute proxy)
 
 These are order-of-magnitude estimates. Actual values depend on Anthropic's specific hardware configuration and batching strategies, which are not publicly available. Only Sonnet is measured; the others carry the uncertainty bands noted above.
