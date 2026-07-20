@@ -71,6 +71,9 @@ bash ~/code/claude-carbon/scripts/generate-report.sh --since 2026-03-01
 
 # All time
 bash ~/code/claude-carbon/scripts/generate-report.sh --all
+
+# A closed period (--until is an exclusive upper bound: this one stops at June 30th)
+bash ~/code/claude-carbon/scripts/generate-report.sh --since 2026-01-01 --until 2026-07-01
 ```
 
 </details>
@@ -175,7 +178,7 @@ bash scripts/recompute.sh
 | `safety-rescan.sh`   | SessionStart hook (throttled background re-scan, catches missed sessions)                 |
 | `backfill.sh`        | Re-parse all historical JSONL transcripts (incl. subagents)                               |
 | `recompute.sh`       | Re-derive cost/CO2 from stored tokens after a price/factor change (no transcripts needed) |
-| `generate-report.sh` | Export PNG report cards (CLI, with `--since` / `--all`)                                   |
+| `generate-report.sh` | Export PNG report cards (CLI, with `--since` / `--until` / `--all`)                                   |
 
 Note: backfill now derives project names from the transcript's `cwd` (matching the live hook). Sessions backfilled before this change keep their old, possibly truncated names; delete those rows and re-run `backfill.sh` to normalize them.
 

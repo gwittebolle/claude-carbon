@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-07-20
+
+### feat: `--until` for closed reporting periods
+
+`generate-report.sh` could only report from a start date up to today, so a card for a finished period (a semester, a quarter) was impossible: the headline number always swept in the current month. `--until` takes an exclusive upper bound, and everything that implicitly meant "now" is re-anchored on it.
+
+- SQL window gets an upper bound (`started_at < UNTIL`).
+- The annual projection and the trailing-30-day trend measure to the period end instead of today. Without this, a January-June card extrapolated its run rate from July sessions.
+- The label under the headline states the bound. "823 sessions depuis janvier" otherwise reads as "up to now" while the number says otherwise.
+- The filename carries the window (`claude-carbon-summary-fr-2026-01-01_2026-06-30.png`), so two runs over different periods no longer overwrite each other.
+- The generation date in the top-right corner is dropped on a closed period: it says nothing useful and contradicts the stated window.
+
+Default behaviour is unchanged when `--until` is absent.
+
 ## 2026-07-19
 
 ### feat: weekly traffic snapshot (stats/)
