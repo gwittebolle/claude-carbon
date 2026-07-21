@@ -5,7 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
-DB_DIR="${HOME}/.claude/claude-carbon"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
+DB_DIR="${CONFIG_DIR}/claude-carbon"
 DB_PATH="${DB_DIR}/carbon.db"
 
 echo "🌿 claude-carbon setup"
@@ -101,7 +102,7 @@ if [ "${CLAUDE_CARBON_INSTALLER:-}" != "1" ]; then
   echo "─────────────────────────────"
   echo "Next steps:"
   echo ""
-  echo "1. Add to ~/.claude/settings.json:"
+  echo "1. Add to ${CONFIG_DIR}/settings.json:"
   echo ""
   cat <<EOF
 {

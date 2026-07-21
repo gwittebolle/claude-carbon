@@ -6,7 +6,7 @@
 # Must exit 0 immediately and never block session start.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DB_DIR="${HOME}/.claude/claude-carbon"
+DB_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"
 DB_PATH="${CLAUDE_CARBON_DB:-${DB_DIR}/carbon.db}"
 STAMP="${DB_DIR}/.last-rescan"
 

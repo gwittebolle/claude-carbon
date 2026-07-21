@@ -82,8 +82,29 @@ bash ~/code/claude-carbon/scripts/generate-report.sh --since 2026-01-01 --until 
 <summary>Custom install directory</summary>
 
 ```bash
-CLAUDE_CARBON_DIR=~/my-path/claude-carbon curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | CLAUDE_CARBON_DIR=~/my-path/claude-carbon bash
 ```
+
+The env var has to sit on the `bash` side of the pipe, not the `curl` side, or the installer never sees it.
+
+</details>
+
+<details>
+<summary>Second Claude environment (CLAUDE_CONFIG_DIR)</summary>
+
+If you run a second Claude Code environment out of its own config directory, e.g.
+
+```bash
+alias claude-work="CLAUDE_CONFIG_DIR=~/.claude-work claude"
+```
+
+install claude-carbon into that same directory by passing `CLAUDE_CONFIG_DIR` to the installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | CLAUDE_CONFIG_DIR=~/.claude-work bash
+```
+
+The status line, the Stop hook, the database and the `/carbon-*` commands all live under that config dir, so each environment tracks its own sessions independently. When `CLAUDE_CONFIG_DIR` is unset everything falls back to `~/.claude` as before.
 
 </details>
 

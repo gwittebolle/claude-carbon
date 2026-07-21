@@ -7,7 +7,7 @@ set -uo pipefail   # NOT -e: each git step is handled explicitly
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-STATE_DIR="${HOME}/.claude/claude-carbon"
+STATE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"
 
 [ -d "${REPO_DIR}/.git" ] || { echo "Not a git-clone install; nothing to update." >&2; exit 0; }
 case "$REPO_DIR" in

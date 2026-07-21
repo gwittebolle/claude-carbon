@@ -6,7 +6,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-STATE_DIR="${HOME}/.claude/claude-carbon"
+STATE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"
 OUT="${STATE_DIR}/update-check.json"
 
 # Opt-out (mirrors npm/gh NO_UPDATE_NOTIFIER convention)

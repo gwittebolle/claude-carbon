@@ -11,7 +11,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
 PRICES_FILE="${SCRIPT_DIR}/../data/prices.json"
-DB_PATH="${CLAUDE_CARBON_DB:-${HOME}/.claude/claude-carbon/carbon.db}"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
+DB_PATH="${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}"
 
 # Rows written by this version of the methodology (raw-token columns populated).
 METHODOLOGY_VERSION=2
@@ -196,7 +197,7 @@ compute_co2_cost() {
   echo "$total_input $cw $cr $out $co2 $cost"
 }
 
-# Scan all JSONL files under ~/.claude/projects/, max 2 levels deep
+# Scan all JSONL files under $CONFIG_DIR/projects/, max 2 levels deep
 # Exclude subagents/ and vercel-plugin/ directories (subagents are handled per session)
 while IFS= read -r JSONL_FILE; do
   # Skip files in excluded directories
@@ -294,6 +295,6 @@ while IFS= read -r JSONL_FILE; do
 
   ADDED=$((ADDED + 1))
 
-done < <(find "${HOME}/.claude/projects" -maxdepth 2 -name "*.jsonl" 2>/dev/null)
+done < <(find "${CONFIG_DIR}/projects" -maxdepth 2 -name "*.jsonl" 2>/dev/null)
 
 echo "  Backfill complete: ${ADDED} sessions added, ${SKIPPED} skipped, ${ERRORS} errors."

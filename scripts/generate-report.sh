@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE_DIR="$PROJECT_DIR/templates"
 EXPORT_DIR="$PROJECT_DIR/exports"
-DB_PATH="${HOME}/.claude/claude-carbon/carbon.db"
+DB_PATH="${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon/carbon.db}"
 TODAY="$(date +%Y-%m-%d)"
 YEAR="$(date +%Y)"
 

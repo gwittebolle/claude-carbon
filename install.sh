@@ -5,7 +5,10 @@ set -euo pipefail
 # Usage: curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
 
 INSTALL_DIR="${CLAUDE_CARBON_DIR:-$HOME/code/claude-carbon}"
-SETTINGS_FILE="${HOME}/.claude/settings.json"
+# Honour Claude Code's own CLAUDE_CONFIG_DIR so a second environment
+# (e.g. CLAUDE_CONFIG_DIR=~/.claude-work claude) installs into its own dir.
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+SETTINGS_FILE="${CONFIG_DIR}/settings.json"
 
 echo ""
 echo "  claude-carbon installer"
@@ -63,7 +66,7 @@ CLAUDE_CARBON_INSTALLER=1 bash "$INSTALL_DIR/scripts/setup.sh"
 
 # 3b. On update, re-price stored history with the new factors (CO2-only; cost left intact).
 if [ "$WAS_UPDATE" = "1" ]; then
-  DB_PATH="${CLAUDE_CARBON_DB:-${HOME}/.claude/claude-carbon/carbon.db}"
+  DB_PATH="${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}"
   if [ -f "$DB_PATH" ]; then
     bash "$INSTALL_DIR/scripts/recompute.sh" || echo "  (history not re-priced; see message above)"
   fi
@@ -73,7 +76,7 @@ fi
 echo ""
 echo "Configuring Claude Code..."
 
-mkdir -p "${HOME}/.claude"
+mkdir -p "$CONFIG_DIR"
 
 STATUSLINE_CMD="${INSTALL_DIR}/scripts/statusline.sh"
 HOOK_CMD="${INSTALL_DIR}/scripts/persist-session.sh"
@@ -134,7 +137,7 @@ else
 fi
 
 # 5. Install /carbon-report slash command
-COMMANDS_DIR="${HOME}/.claude/commands"
+COMMANDS_DIR="${CONFIG_DIR}/commands"
 SKILL_SOURCE="${INSTALL_DIR}/skills/carbon-report/SKILL.md"
 SKILL_LINK="${COMMANDS_DIR}/carbon-report.md"
 
