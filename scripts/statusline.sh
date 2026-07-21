@@ -11,6 +11,7 @@ SEGMENT_MODE=0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 
 # Read stdin
 INPUT="$(cat)"
@@ -99,7 +100,7 @@ if command -v jq &>/dev/null; then
 
   # Priority 2: fallback to GET /api/oauth/usage with 60s cache.
   if [ -z "$FIVE_PCT" ]; then
-    USAGE_CACHE_DIR="${HOME}/.claude/claude-carbon"
+    USAGE_CACHE_DIR="${CONFIG_DIR}/claude-carbon"
     USAGE_CACHE_FILE="${USAGE_CACHE_DIR}/oauth-usage.json"
     USAGE_CACHE_TTL=60
     mkdir -p "$USAGE_CACHE_DIR"
@@ -120,7 +121,7 @@ if command -v jq &>/dev/null; then
         [ -n "$BLOB" ] && TOKEN="$(echo "$BLOB" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)"
       fi
       if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-        CREDS="${HOME}/.claude/.credentials.json"
+        CREDS="${CONFIG_DIR}/.credentials.json"
         [ -f "$CREDS" ] && TOKEN="$(jq -r '.claudeAiOauth.accessToken // empty' "$CREDS" 2>/dev/null)"
       fi
 
@@ -201,7 +202,7 @@ fi
 # (SessionStart hook → check-update.sh) and writes a cached flag; here we only read it. A 7-day
 # staleness gate means an abandoned flag (background check stopped) self-clears.
 UPDATE_SEGMENT=""
-UPD_FILE="${HOME}/.claude/claude-carbon/update-check.json"
+UPD_FILE="${CONFIG_DIR}/claude-carbon/update-check.json"
 if [ -z "${CLAUDE_CARBON_NO_UPDATE_NOTIFIER:-}" ] && [ -f "$UPD_FILE" ] && command -v jq &>/dev/null; then
   if [ "$(jq -r '.behind // false' "$UPD_FILE" 2>/dev/null)" = "true" ]; then
     UPD_AT="$(jq -r '.checked_at // 0' "$UPD_FILE" 2>/dev/null || echo 0)"

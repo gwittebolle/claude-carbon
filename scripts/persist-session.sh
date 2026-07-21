@@ -10,7 +10,8 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
 PRICES_FILE="${SCRIPT_DIR}/../data/prices.json"
-DB_PATH="${CLAUDE_CARBON_DB:-${HOME}/.claude/claude-carbon/carbon.db}"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
+DB_PATH="${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}"
 
 METHODOLOGY_VERSION=2
 
@@ -171,7 +172,7 @@ JSONL_FILE=""
 if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
   JSONL_FILE="$TRANSCRIPT_PATH"
 else
-  for DIR in "${HOME}/.claude/projects"/*; do
+  for DIR in "${CONFIG_DIR}/projects"/*; do
     [ -d "$DIR" ] || continue
     CANDIDATE="${DIR}/${SESSION_ID}.jsonl"
     if [ -f "$CANDIDATE" ]; then

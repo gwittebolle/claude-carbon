@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-21
+
+### feat: honour `CLAUDE_CONFIG_DIR` for second Claude environments (#15)
+
+Claude Code can run out of an alternate config dir (`CLAUDE_CONFIG_DIR=~/.claude-work claude`), but every path in claude-carbon was hardcoded to `~/.claude`, so a second environment could not track itself. All state now resolves against `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`: the settings merge and `/carbon-*` command symlinks (install.sh), the database dir (setup.sh, safety-rescan.sh), the transcript scan and inserts (backfill.sh, persist-session.sh), the re-price and report reads (recompute.sh, generate-report.sh), and the usage cache, credentials lookup and update-notice flag (statusline.sh, check-update.sh, update.sh). Install into the alternate dir by putting the var on the `bash` side of the pipe. Because the hooks and status line inherit `CLAUDE_CONFIG_DIR` from the environment that launched `claude`, each environment writes its own DB. Default behaviour is unchanged when the var is unset. As a side effect `generate-report.sh` now also honours `CLAUDE_CARBON_DB` like the other scripts (previously it ignored it).
+
+### fix: `CLAUDE_CARBON_DIR` install example passed the var to `curl`, not `bash` (#16)
+
+The documented custom-directory one-liner set `CLAUDE_CARBON_DIR=... curl ... | bash`, which scopes the variable to `curl`; the piped `bash` never saw it and installed to the default location. Moved the assignment to the `bash` side of the pipe.
+
 ## 2026-07-20
 
 ### feat: `--until` for closed reporting periods
