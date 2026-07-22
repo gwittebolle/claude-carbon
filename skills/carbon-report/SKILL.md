@@ -12,11 +12,11 @@ Run the following bash script exactly as written and present the output to the u
 # "431.7045" as 431 and print "431,0" instead of "431.7"
 export LC_ALL=C
 
-DB_PATH="${HOME}/.claude/claude-carbon/carbon.db"
+DB_PATH="${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-carbon/carbon.db}"
 
 if [ ! -f "$DB_PATH" ]; then
   echo "Database not found. Run setup.sh first:"
-  echo "  bash ~/code/claude-carbon/scripts/setup.sh"
+  echo "  bash ${CLAUDE_CARBON_DIR:-$HOME/code/claude-carbon}/scripts/setup.sh"
   exit 1
 fi
 
