@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-22
+
+### fix: skill invocations ignored `CLAUDE_CONFIG_DIR` / `CLAUDE_CARBON_DIR` (#15, #16)
+
+The path sweep that taught the installer and scripts to honour `CLAUDE_CONFIG_DIR` and `CLAUDE_CARBON_DIR` never touched `skills/`, so the bash embedded in three SKILL.md files still pointed at the default `~/.claude` and `~/code/claude-carbon`. On a second environment (`CLAUDE_CONFIG_DIR=~/.claude-work`) or a custom install dir, `/carbon-card`, `/carbon-report` and `/carbon-update` read or wrote the wrong location. They now resolve paths the same way the scripts do: `carbon-report` reads the DB from `${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-carbon/carbon.db}` and points its setup hint at `${CLAUDE_CARBON_DIR:-$HOME/code/claude-carbon}`; `carbon-update` reads `settings.json` from `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`; `carbon-card` locates the install from the status-line command (falling back to `CLAUDE_PLUGIN_ROOT`, then `CLAUDE_CARBON_DIR`) instead of the hardcoded default. Default behaviour is unchanged when neither variable is set.
+
 ## 2026-07-21
 
 ### feat: honour `CLAUDE_CONFIG_DIR` for second Claude environments (#15)

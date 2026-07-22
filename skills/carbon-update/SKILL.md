@@ -9,7 +9,7 @@ Run the following bash script exactly as written and present its output to the u
 #!/usr/bin/env bash
 # Locate the install that is actually wired into the status line, then run its updater.
 REPO_DIR=""
-SETTINGS="${HOME}/.claude/settings.json"
+SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
 if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS" ]; then
   SL_CMD="$(jq -r '.statusLine.command // empty' "$SETTINGS" 2>/dev/null)"
   if [ -n "$SL_CMD" ] && [ -f "$SL_CMD" ]; then
