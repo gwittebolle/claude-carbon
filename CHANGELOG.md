@@ -11,6 +11,7 @@ An external reader's critique prompted a full audit of the public docs against p
 - The "1.3-51.8%" KV-cache amplification figure comes from Solovyeva & Castor, not From Prompts to Power; attribution fixed inline and From Prompts to Power dropped from the source list. The "single biggest lever" limitation now quantifies the swing (~0.65x-1.5x across the 0-0.20 bound) and notes output tokens dominate at the default.
 - Report equivalences refreshed with current primary sources: car 120 -> 142 gCO2e/km (ADEME Impact CO2, 2025 model, lifecycle), Google search at 0.2 g (a 2009 blog figure misattributed to the 2023 environmental report) replaced by the median Gemini prompt at 0.03 g (Google, Aug 2025), TGV 2.4 -> 3.5 g/km (SNCF open data 2024, full scope), email 19 g (ADEME 2011, withdrawn; current reference ~2.5 g) removed. Applied in `/carbon-report`, `generate-report.sh` and METHODOLOGY; the old values are documented under the new table.
 - README reduction percentages (-60/-70/-80) are now labeled indicative estimates, with the RTK self-reported figure and the Haiku 0.5x dependency called out.
+- Follow-up: the "-80% on exploration" Haiku routing claim was inconsistent with the tool's own factors (Haiku = 0.5x Sonnet = 0.25x Opus per token implies -50% vs Sonnet subagents, -75% vs Opus). The table now derives the gain from the factors and states both baselines, and warns that a Haiku-dominated total rides entirely on the widest band in the tool.
 
 ## 2026-07-22
 

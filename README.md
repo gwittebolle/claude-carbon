@@ -334,15 +334,15 @@ Output tokens are the most expensive in both cost and energy.
 
 ### Combined impact
 
-These reductions are indicative estimates, not measurements on a benchmark workload. The RTK figure comes from RTK's own documentation, and the Haiku figures depend on the extrapolated 0.5x factor (the widest uncertainty band in this tool, see METHODOLOGY.md).
+These reductions are indicative estimates, not measurements on a benchmark workload. The RTK figure comes from RTK's own documentation. The Haiku rows follow from this tool's own factors (Haiku = 0.5x Sonnet = 0.25x Opus per token): -50% when your subagents would otherwise run Sonnet, -75% when they would run Opus. They inherit the 0.5x extrapolation, the widest uncertainty band in the tool (see METHODOLOGY.md); if most of your usage is already Haiku, your absolute total rides on that band, so read it as an order of magnitude.
 
-| Lever                | Estimated reduction     |
-| -------------------- | ----------------------- |
-| Right model per task | -60% vs all-Opus        |
-| RTK                  | -70% on CLI tokens      |
-| Thinking cap at 10k  | -70% on thinking tokens |
-| Haiku subagents      | -80% on exploration     |
-| **All combined**     | **-50 to 70% total**    |
+| Lever                | Estimated reduction          |
+| -------------------- | ---------------------------- |
+| Right model per task | -60% vs all-Opus             |
+| RTK                  | -70% on CLI tokens           |
+| Thinking cap at 10k  | -70% on thinking tokens      |
+| Haiku subagents      | -75% vs Opus, -50% vs Sonnet |
+| **All combined**     | **-50 to 70% total**         |
 
 ### Further reading
 
