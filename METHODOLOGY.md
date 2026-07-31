@@ -107,7 +107,7 @@ For EUR, `data/prices.json` carries `eur_per_usd` (ECB euro reference rate, 0.87
 
 ## Limitations
 
-- Order of magnitude only. Do not use these numbers for regulatory reporting or lifecycle assessments.
+- Order of magnitude only. Do not use these numbers for regulatory reporting or lifecycle assessments. Reports show a single point estimate by design; combining the documented bands (Opus 2x-5x, cache read 0-0.20, the low-end CIF, usage-only scope), the plausible range around any displayed total is roughly 0.7x to 3x, and the excluded items (embodied hardware, amortized training) make the true location-based value more likely above the displayed figure than below it.
 - The primary source is an arXiv preprint, and its method has been publicly criticized: a [November 2025 analysis](https://mementohumani.com/an-analysis-of-how-hungry-is-ai-benchmarking-energy-water-and-carbon-footprint-of-llm-inference/) argues the paper conflates API speed with hardware efficiency, ignores queueing, and that its absolute values are best used as a relative benchmark between models. The cross-checks above (EcoLogits, Couch) mitigate this but do not remove it.
 - Inference only. Training costs, hardware manufacturing, and cooling water are not included.
 - Cache read energy is a derived estimate, not a measurement (see Cache read energy below). Cache reads are 90%+ of tokens in Claude Code, and across its hard bound (0-0.20) the chosen factor (default 0.08) swings the headline number from ~0.65x to ~1.5x, the widest single-parameter lever in the tool. At the default, output tokens still dominate the CO2 total.
