@@ -139,7 +139,8 @@ format_co2() {
 read -r TOTAL_CO2_VALUE TOTAL_CO2_UNIT <<< "$(format_co2 "$TOTAL_CO2_RAW")"
 TOTAL_COST="$(echo "$TOTAL_COST_RAW" | LC_ALL=C awk '{printf "%.0f", $1}')"
 FIRST_DATE="$(echo "$FIRST_DATE_RAW" | cut -c1-10)"
-EQUIV_KM="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk '{printf "%.1f", $1/120}')"
+# Car equivalence factor: METHODOLOGY.md "Equivalences used in reports" (ADEME 2025, lifecycle)
+EQUIV_KM="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk '{printf "%.1f", $1/142}')"
 
 # In default mode, label the report with the actual earliest session month, not Jan 1st
 # (transcripts older than ~30 days are purged, so the real data rarely starts in January).

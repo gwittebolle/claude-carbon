@@ -40,9 +40,10 @@ ALL_SESSIONS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE ${NOT_EX
 ALL_COST="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(cost_usd), 0) FROM sessions WHERE ${NOT_EXCLUDED};" | awk '{printf "%.2f", $1}')"
 
 # --- Equivalences (all-time total) ---
-KM_CAR="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 120}')"
-GOOGLE="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 0.2}')"
-KM_TGV="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 2.4}')"
+# Factors and sources: METHODOLOGY.md "Equivalences used in reports"
+KM_CAR="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 142}')"
+GEMINI="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 0.03}')"
+KM_TGV="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 3.5}')"
 
 # --- Top 5 sessions by CO2 ---
 TOP5="$(sqlite3 -separator '|' "$DB_PATH" \
@@ -78,9 +79,9 @@ echo "  Sessions  : ${ALL_SESSIONS}"
 echo "  Cost      : \$${ALL_COST}"
 echo ""
 echo "--- Equivalences (all-time) ---"
-echo "  ${KM_CAR} km en voiture        (120 gCO2e/km)"
-echo "  ${GOOGLE} recherches Google     (0.2 gCO2e)"
-echo "  ${KM_TGV} km en TGV             (2.4 gCO2e/km)"
+echo "  ${KM_CAR} km en voiture        (142 gCO2e/km, ADEME 2025)"
+echo "  ${GEMINI} prompts Gemini       (0.03 gCO2e, Google 2025)"
+echo "  ${KM_TGV} km en TGV             (3.5 gCO2e/km, SNCF 2024)"
 echo ""
 echo "--- Top 5 sessions by CO2 ---"
 echo "Date        | Project                 | CO2 (g) | Model                          | Cost"

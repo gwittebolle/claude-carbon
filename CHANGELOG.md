@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-31
+
+### docs: correct source framing and refresh report equivalences
+
+An external reader's critique prompted a full audit of the public docs against primary sources. None of these changes touch the emission factors or any computed CO2 number.
+
+- Jegham et al. is an arXiv preprint, never published in a peer-reviewed venue, and it estimates energy from public API performance data (latency, throughput) via Monte Carlo over inferred hardware configurations rather than measuring it. README and METHODOLOGY called it "a peer-reviewed study" that "measures" energy / "measured AWS telemetry". Reworded throughout, and the published critique of the paper's absolute values (Memento Humani, Nov 2025) is now cited in Limitations.
+- Corroboration claims toned down: the EcoLogits band spans ~2.5x, so landing inside it is a consistency check, not "strong corroboration"; the three routes share assumptions (price proxy, parameter-count models) and do not corroborate the input factor at all (0 to ~390 Wh/Mtok across routes); Couch's figures are Opus-anchored while compared against Sonnet factors.
+- The "1.3-51.8%" KV-cache amplification figure comes from Solovyeva & Castor, not From Prompts to Power; attribution fixed inline and From Prompts to Power dropped from the source list. The "single biggest lever" limitation now quantifies the swing (~0.65x-1.5x across the 0-0.20 bound) and notes output tokens dominate at the default.
+- Report equivalences refreshed with current primary sources: car 120 -> 142 gCO2e/km (ADEME Impact CO2, 2025 model, lifecycle), Google search at 0.2 g (a 2009 blog figure misattributed to the 2023 environmental report) replaced by the median Gemini prompt at 0.03 g (Google, Aug 2025), TGV 2.4 -> 3.5 g/km (SNCF open data 2024, full scope), email 19 g (ADEME 2011, withdrawn; current reference ~2.5 g) removed. Applied in `/carbon-report`, `generate-report.sh` and METHODOLOGY; the old values are documented under the new table.
+- README reduction percentages (-60/-70/-80) are now labeled indicative estimates, with the RTK self-reported figure and the Haiku 0.5x dependency called out.
+
 ## 2026-07-22
 
 ### fix: skill invocations ignored `CLAUDE_CONFIG_DIR` / `CLAUDE_CARBON_DIR` (#15, #16)

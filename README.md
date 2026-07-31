@@ -217,7 +217,7 @@ Claude Code accepts a single `statusLine` command, so claude-carbon's full statu
 
 ## Emission factors
 
-Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), a peer-reviewed study measuring energy consumption of LLM inference on AWS infrastructure.
+Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), an arXiv preprint that estimates the energy consumption of LLM inference on AWS infrastructure from public API performance data (latency, throughput) over inferred hardware configurations.
 
 | Model  | Input (gCO2e/Mtok) | Output (gCO2e/Mtok) | Basis                      |
 | ------ | ------------------ | ------------------- | -------------------------- |
@@ -228,7 +228,7 @@ Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), a peer-revi
 
 **Important: these are order-of-magnitude estimates, not precise measurements.**
 
-- Sonnet factors are a 3-point least-squares fit to the three measured Claude 3.7 Sonnet per-query energies in Jegham et al. v6 (0.950 / 2.989 / 5.671 Wh), giving a ~21:1 output:input ratio. The value is cross-validated against [EcoLogits](https://ecologits.ai): its independent estimate for Sonnet brackets the same range. Fable, Opus and Haiku are extrapolated (no public data from Anthropic on per-model energy consumption); Opus = 2x Sonnet matches both the current EcoLogits Opus 4.5+ parameter ratio and the Anthropic price ratio (honest band 2x-5x).
+- Sonnet factors are a 3-point least-squares fit to the three Claude 3.7 Sonnet per-query energies estimated in Jegham et al. v6 (0.950 / 2.989 / 5.671 Wh), giving a ~21:1 output:input ratio. The value is consistent with [EcoLogits](https://ecologits.ai): its independent estimate for Sonnet brackets the same range (a wide band, so this is a consistency check, not proof). Fable, Opus and Haiku are extrapolated (no public data from Anthropic on per-model energy consumption); Opus = 2x Sonnet matches both the current EcoLogits Opus 4.5+ parameter ratio and the Anthropic price ratio (honest band 2x-5x).
 - Sessions run on non-Anthropic models (e.g. local models behind `ANTHROPIC_BASE_URL`) are stored with their raw tokens but zero cost/CO2 and excluded from reports - a datacenter factor doesn't apply to them. Add patterns to `exclude_models` in `data/factors.json` to exclude more models by name.
 - Cache read tokens are counted at a reduced factor (default 0.08 of an input token, set in `data/factors.json`). A cached token skips prefill compute but still incurs decode-phase memory reads, so it is cheap but not free. This is an engineering estimate derived from the literature, not Anthropic's 0.1x billing ratio. See [METHODOLOGY.md](METHODOLOGY.md).
 - Carbon intensity uses the AWS region grid (location-based, 0.287 kgCO2e/kWh), not real-time grid data. This sits at the low end of the location-based range; the US national average is ~380 g/kWh.
@@ -277,7 +277,7 @@ Measuring is step one. Here are concrete levers to reduce your AI carbon footpri
 
 ### Use the right model for the task
 
-Output tokens cost ~21x more energy than input tokens (the marginal output:input ratio from Jegham v6). Opus consumes ~2x more than Sonnet per token.
+Output tokens cost ~21x more energy than input tokens (the marginal output:input ratio fit on Jegham v6). Opus is estimated at ~2x Sonnet per token (uncertainty band 2x-5x, see METHODOLOGY.md).
 
 ```json
 {
@@ -287,7 +287,7 @@ Output tokens cost ~21x more energy than input tokens (the marginal output:input
 }
 ```
 
-Use Opus for architecture and planning. Sonnet for daily work. Haiku for subagents (exploration, file reading, reviews). This alone can cut your emissions by 60%.
+Use Opus for architecture and planning. Sonnet for daily work. Haiku for subagents (exploration, file reading, reviews). As an indicative estimate with this tool's factors, this alone can cut your emissions by up to ~60% vs all-Opus.
 
 ### Install RTK (Rust Token Killer)
 
@@ -334,6 +334,8 @@ Output tokens are the most expensive in both cost and energy.
 
 ### Combined impact
 
+These reductions are indicative estimates, not measurements on a benchmark workload. The RTK figure comes from RTK's own documentation, and the Haiku figures depend on the extrapolated 0.5x factor (the widest uncertainty band in this tool, see METHODOLOGY.md).
+
 | Lever                | Estimated reduction     |
 | -------------------- | ----------------------- |
 | Right model per task | -60% vs all-Opus        |
@@ -345,7 +347,7 @@ Output tokens are the most expensive in both cost and energy.
 ### Further reading
 
 - [IEA - Energy and AI (2025)](https://www.iea.org/reports/energy-and-ai/) - data center projections
-- [Jegham et al. - How Hungry is AI?](https://arxiv.org/abs/2505.09598) - per-model energy measurements
+- [Jegham et al. - How Hungry is AI?](https://arxiv.org/abs/2505.09598) - per-model energy estimates
 - [UCL/UNESCO - 90% AI energy reduction](https://www.ucl.ac.uk/news/2025/jul/practical-changes-could-reduce-ai-energy-demand-90) - frugal AI approaches
 - [GreenIT.fr - AI impacts 2025-2030](https://www.greenit.fr/impacts-ia-monde-2025-2030-rapport/) - French data
 
