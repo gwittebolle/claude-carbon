@@ -2,6 +2,10 @@
 
 ## 2026-08-02
 
+### docs: MCP servers lever in Reduce your footprint
+
+New subsection after Compact earlier: disconnecting unused MCP servers cuts the tool schemas re-sent with every request. Deliberately unquantified (no row in the Combined impact table): the overhead is mostly cache reads, whose energy factor is the methodology's widest band, so any percentage would be false precision. Mechanism plus `claude mcp list` / `claude mcp remove` only.
+
 ### docs: Related projects section in the README
 
 Four entries before Further reading, tools rather than papers: EcoLogits, CodeCarbon, ImpactIA (link only, its CC-BY-NC-SA license keeps its data out of the factors), green-claude. ImpactIA already cites claude-carbon as an integration target, so the link closes the cross-reference.

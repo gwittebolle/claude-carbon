@@ -322,6 +322,16 @@ By default, Claude Code compacts context at 95% usage. Compacting earlier keeps 
 }
 ```
 
+### Disconnect unused MCP servers
+
+Every connected MCP server ships its full tool schemas into the context window with every request, whether the session uses them or not. Most of that overhead is served from prompt cache after the first turn, and cache reads carry a much lower energy factor (see METHODOLOGY.md), so the saving per turn is modest; the gain comes from repetition across every turn of every session.
+
+```bash
+claude mcp list
+```
+
+Keep the servers the project actually uses, remove the rest with `claude mcp remove <name>`.
+
 ### Write concise instructions
 
 Add to your project's CLAUDE.md:
