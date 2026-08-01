@@ -13,7 +13,9 @@ OUT="${STATE_DIR}/update-check.json"
 [ -n "${CLAUDE_CARBON_NO_UPDATE_NOTIFIER:-}" ] && exit 0
 
 # Only a real git-clone install, and NOT Claude Code's managed marketplace cache clone
-# (marketplace users get native auto-update; we must never mutate or false-nag that clone).
+# (we must never mutate that clone; marketplace installs update via `claude plugin update`,
+# auto-update being OPT-IN for third-party marketplaces — a stale cache is detected by the
+# statusline's install-sync check instead).
 [ -d "${REPO_DIR}/.git" ] || exit 0
 case "$REPO_DIR" in */.claude/plugins/*) exit 0 ;; esac
 command -v jq  >/dev/null 2>&1 || exit 0

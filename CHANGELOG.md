@@ -1,6 +1,14 @@
 # Changelog
 
-## 2026-07-31
+## 2026-08-01
+
+### feat: install-sync check in the statusline (stale plugin cache detection)
+
+Incident behind it: on a machine running both a git clone (statusline, manual scripts) and a marketplace install (the Stop/SessionStart hooks that write carbon.db), the marketplace cache stayed at v1.0.0 while the clone moved to v1.1.1. Six weeks of sessions were persisted with pre-v6 factors, and Fable sessions fell back to the sonnet family (no fable support in 1.0.0): CO2 overstated 2.8x overall, fable costs understated 2.25x. Every check (golden vectors, fact-checks, update notice) ran green because they all looked at the current copy; auto-update is opt-in for third-party marketplaces, so the cache never moved. Fixed operationally with `claude plugin update` + `recompute.sh`.
+
+- statusline.sh now compares its own `data/factors.json` and `data/prices.json` byte-for-byte against the newest plugin cache copy (`~/.claude/plugins/cache/*/claude-carbon/<latest>/`) and appends `≠ install drift` when they differ. Local-only (two `cmp` calls per render, no state file, no network), self-skips when the statusline runs from that cache copy (single-install machines never see it), ignores superseded version dirs, opt-out via `CLAUDE_CARBON_NO_UPDATE_NOTIFIER`-style env `CLAUDE_CARBON_NO_DRIFT_CHECK`.
+- Chosen over recomputing recent db rows against current factors: subagent tokens are folded into the session row with per-model CO2 (persist-session.sh), so a math check would false-positive on cross-model subagent sessions (e.g. Haiku routing), while an install comparison has no false positives and fires the day the copies diverge.
+- check-update.sh: corrected the comment claiming marketplace users get native auto-update (it is opt-in for third-party marketplaces); the notice itself still targets git-clone installs only.
 
 ### docs: correct source framing and refresh report equivalences
 

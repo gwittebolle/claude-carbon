@@ -212,4 +212,36 @@ if [ -z "${CLAUDE_CARBON_NO_UPDATE_NOTIFIER:-}" ] && [ -f "$UPD_FILE" ] && comma
   fi
 fi
 
-echo "${PROJECT}${BRANCH_SUFFIX} | ${DOT} ${DISPLAY_NAME} ${PROGRESS_BAR} ${PCT_DISPLAY} | \$${COST_DISPLAY} · ${CO2_DISPLAY}${USAGE_SEGMENT}${UPDATE_SEGMENT}"
+# Install-sync check — local-only, two cmp calls, no state file. On machines with TWO installs
+# (a git clone hosting this statusline + a marketplace install running the hooks, the
+# plugin-author topology), a stale plugin cache silently writes carbon.db with outdated
+# factors while every check runs green on the current copy (incident of 2026-08-01: six weeks
+# of sessions persisted with pre-v6 factors). Auto-update is opt-in for third-party
+# marketplaces, so the cache CAN lag. Here we compare this install's factors/prices against
+# the newest cached copy of the plugin; any byte difference means the two installs disagree.
+# Self-skips when this statusline IS the newest cache copy (single-install machines).
+DRIFT_SEGMENT=""
+if [ -z "${CLAUDE_CARBON_NO_DRIFT_CHECK:-}" ] && printf '1.0\n1.0.1\n' | sort -V >/dev/null 2>&1; then
+  CACHE_LATEST=""
+  for D in "${CONFIG_DIR}/plugins/cache"/*/claude-carbon/*/; do
+    [ -d "$D" ] || continue
+    if [ -z "$CACHE_LATEST" ] || [ "$(printf '%s\n%s\n' "$CACHE_LATEST" "$D" | sort -V | tail -1)" = "$D" ]; then
+      CACHE_LATEST="$D"
+    fi
+  done
+  if [ -n "$CACHE_LATEST" ]; then
+    OWN_ROOT="$(cd "${SCRIPT_DIR}/.." 2>/dev/null && pwd || echo "")"
+    CACHE_ROOT="$(cd "$CACHE_LATEST" 2>/dev/null && pwd || echo "")"
+    if [ -n "$OWN_ROOT" ] && [ -n "$CACHE_ROOT" ] && [ "$OWN_ROOT" != "$CACHE_ROOT" ]; then
+      for F in data/factors.json data/prices.json; do
+        if [ -f "${CACHE_ROOT}/${F}" ] && [ -f "${OWN_ROOT}/${F}" ] \
+           && ! cmp -s "${CACHE_ROOT}/${F}" "${OWN_ROOT}/${F}"; then
+          DRIFT_SEGMENT=" | ≠ install drift"
+          break
+        fi
+      done
+    fi
+  fi
+fi
+
+echo "${PROJECT}${BRANCH_SUFFIX} | ${DOT} ${DISPLAY_NAME} ${PROGRESS_BAR} ${PCT_DISPLAY} | \$${COST_DISPLAY} · ${CO2_DISPLAY}${USAGE_SEGMENT}${UPDATE_SEGMENT}${DRIFT_SEGMENT}"
