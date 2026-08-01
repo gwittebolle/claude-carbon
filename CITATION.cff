@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software or its methodology in your work, please cite it as below."
+title: claude-carbon
+type: software
+authors:
+  - family-names: Wittebolle
+    given-names: "Gaëtan"
+repository-code: "https://github.com/gwittebolle/claude-carbon"
+url: "https://tokenclimate.com"
+license: MIT
+version: 1.1.1
+date-released: "2026-07-19"
+abstract: "Carbon footprint tracker for Claude Code sessions. Estimates CO2e and theoretical API cost per session from raw token counts, with emission factors anchored on Jegham et al. 2025 (arXiv:2505.09598)."
+keywords:
+  - claude-code
+  - carbon-footprint
+  - co2e
+  - ai-sustainability

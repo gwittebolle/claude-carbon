@@ -355,6 +355,14 @@ These reductions are indicative estimates, not measurements on a benchmark workl
 
 Every Claude Code session uses real compute, real energy, real emissions. The number is small per query, but it adds up. Making it visible is the first step to owning it.
 
+## Citing
+
+If claude-carbon's numbers or methodology end up in your article, talk or product, a citation is appreciated. GitHub's "Cite this repository" button generates BibTeX/APA from [CITATION.cff](CITATION.cff). Short form:
+
+> Wittebolle, G. (2026). claude-carbon: carbon footprint tracker for Claude Code sessions. https://github.com/gwittebolle/claude-carbon
+
+The shareable report cards already carry this attribution in their footer, so reposting a card as-is credits the tool.
+
 ## Open source
 
 claude-carbon is free and open source under the [MIT license](LICENSE). Contributions welcome.

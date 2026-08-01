@@ -10,6 +10,10 @@ Incident behind it: on a machine running both a git clone (statusline, manual sc
 - Chosen over recomputing recent db rows against current factors: subagent tokens are folded into the session row with per-model CO2 (persist-session.sh), so a math check would false-positive on cross-model subagent sessions (e.g. Haiku routing), while an install comparison has no false positives and fires the day the copies diverge.
 - check-update.sh: corrected the comment claiming marketplace users get native auto-update (it is opt-in for third-party marketplaces); the notice itself still targets git-clone installs only.
 
+### docs: CITATION.cff and a Citing section in the README
+
+License stays plain MIT. Citation is encouraged, not required: CITATION.cff enables GitHub's "Cite this repository" button, the README documents the short form, and the report cards keep carrying the repo + tokenclimate.com attribution in their footer (the highest-reach citation channel).
+
 ### docs: correct source framing and refresh report equivalences
 
 An external reader's critique prompted a full audit of the public docs against primary sources. None of these changes touch the emission factors or any computed CO2 number.
