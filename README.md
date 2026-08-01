@@ -344,6 +344,13 @@ These reductions are indicative estimates, not measurements on a benchmark workl
 | Haiku subagents      | -75% vs Opus, -50% vs Sonnet |
 | **All combined**     | **-50 to 70% total**         |
 
+### Related projects
+
+- [EcoLogits](https://ecologits.ai) - Python library estimating the footprint of GenAI API calls across providers.
+- [CodeCarbon](https://github.com/mlco2/codecarbon) - measures the emissions of compute you run yourself (training, local inference).
+- [ImpactIA](https://github.com/SNCFdevelopers/ImpactIA) - AI impact calculator and guide by SNCF, Wavestone and Resilio.
+- [green-claude](https://github.com/Institut-du-Numerique-Responsable/green-claude) - Claude Code skill that steers generated code toward eco-design rules (RGESN, GR491).
+
 ### Further reading
 
 - [IEA - Energy and AI (2025)](https://www.iea.org/reports/energy-and-ai/) - data center projections

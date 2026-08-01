@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-02
+
+### docs: Related projects section in the README
+
+Four entries before Further reading, tools rather than papers: EcoLogits, CodeCarbon, ImpactIA (link only, its CC-BY-NC-SA license keeps its data out of the factors), green-claude. ImpactIA already cites claude-carbon as an integration target, so the link closes the cross-reference.
+
 ## 2026-08-01
 
 ### feat: install-sync check in the statusline (stale plugin cache detection)
