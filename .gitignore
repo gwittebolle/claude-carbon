@@ -6,3 +6,4 @@ promo/
 .DS_Store
 .playwright-mcp/
 canva-*.png
+.claude/settings.local.json

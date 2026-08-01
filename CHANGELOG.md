@@ -2,6 +2,10 @@
 
 ## 2026-08-02
 
+### chore: gitignore .claude/settings.local.json
+
+Per-machine Claude Code permission file, was sitting untracked. Last gap flagged by a repo hygiene pass against the GitHub community checklist (health score 100%, everything else already in place).
+
 ### docs: MCP servers lever in Reduce your footprint
 
 New subsection after Compact earlier: disconnecting unused MCP servers cuts the tool schemas re-sent with every request. Deliberately unquantified (no row in the Combined impact table): the overhead is mostly cache reads, whose energy factor is the methodology's widest band, so any percentage would be false precision. Mechanism plus `claude mcp list` / `claude mcp remove` only.
