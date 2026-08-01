@@ -12,6 +12,8 @@ REPO_DIR=""
 SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
 if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS" ]; then
   SL_CMD="$(jq -r '.statusLine.command // empty' "$SETTINGS" 2>/dev/null)"
+  # statusLine.command stores a shell-escaped path: expand ~ and unescape spaces
+  SL_CMD="${SL_CMD//\\ / }"; SL_CMD="${SL_CMD/#\~/$HOME}"
   if [ -n "$SL_CMD" ] && [ -f "$SL_CMD" ]; then
     REPO_DIR="$(cd "$(dirname "$SL_CMD")/.." 2>/dev/null && pwd)"
   fi

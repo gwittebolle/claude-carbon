@@ -244,4 +244,38 @@ if [ -z "${CLAUDE_CARBON_NO_DRIFT_CHECK:-}" ] && printf '1.0\n1.0.1\n' | sort -V
   fi
 fi
 
-echo "${PROJECT}${BRANCH_SUFFIX} | ${DOT} ${DISPLAY_NAME} ${PROGRESS_BAR} ${PCT_DISPLAY} | \$${COST_DISPLAY} · ${CO2_DISPLAY}${USAGE_SEGMENT}${UPDATE_SEGMENT}${DRIFT_SEGMENT}"
+# Monthly share nudge — shown to the first N distinct sessions of each month
+# (N = CLAUDE_CARBON_CARD_NUDGE_SESSIONS, default 3), then quiet until next month.
+# A session admitted to the set keeps the nudge for its whole lifetime. Generating
+# a card clears it immediately (generate-report.sh stamps last-card-month).
+# Local-only; opt-out via CLAUDE_CARBON_NO_CARD_NUDGE (or N=0).
+CARD_SEGMENT=""
+if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
+  THIS_MONTH="$(date +%Y-%m)"
+  CARD_STAMP="$(cat "${CONFIG_DIR}/claude-carbon/last-card-month" 2>/dev/null || true)"
+  if [ "$CARD_STAMP" != "$THIS_MONTH" ]; then
+    NUDGE_MAX="${CLAUDE_CARBON_CARD_NUDGE_SESSIONS:-3}"
+    SEEN_FILE="${CONFIG_DIR}/claude-carbon/card-nudge-seen"
+    SID="$(echo "$INPUT" | jq -r '.session_id // ""')"
+    SEEN_MONTH=""
+    if [ -f "$SEEN_FILE" ]; then
+      SEEN_MONTH="$(head -1 "$SEEN_FILE" 2>/dev/null || true)"
+    fi
+    if [ "$SEEN_MONTH" != "$THIS_MONTH" ]; then
+      # new month: reset the seen-set (line 1 = month, then one session id per line)
+      mkdir -p "${CONFIG_DIR}/claude-carbon" 2>/dev/null || true
+      printf '%s\n' "$THIS_MONTH" > "$SEEN_FILE" 2>/dev/null || true
+    fi
+    if [ -n "$SID" ] && grep -qxF "$SID" "$SEEN_FILE" 2>/dev/null; then
+      CARD_SEGMENT=" | 📊 /carbon-card"
+    else
+      SEEN_COUNT="$(($(wc -l < "$SEEN_FILE" 2>/dev/null || echo 1) - 1))"
+      if [ "$SEEN_COUNT" -lt "$NUDGE_MAX" ] 2>/dev/null; then
+        [ -n "$SID" ] && printf '%s\n' "$SID" >> "$SEEN_FILE" 2>/dev/null || true
+        CARD_SEGMENT=" | 📊 /carbon-card"
+      fi
+    fi
+  fi
+fi
+
+echo "${PROJECT}${BRANCH_SUFFIX} | ${DOT} ${DISPLAY_NAME} ${PROGRESS_BAR} ${PCT_DISPLAY} | \$${COST_DISPLAY} · ${CO2_DISPLAY}${USAGE_SEGMENT}${UPDATE_SEGMENT}${DRIFT_SEGMENT}${CARD_SEGMENT}"

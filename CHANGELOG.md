@@ -10,6 +10,12 @@ Incident behind it: on a machine running both a git clone (statusline, manual sc
 - Chosen over recomputing recent db rows against current factors: subagent tokens are folded into the session row with per-model CO2 (persist-session.sh), so a math check would false-positive on cross-model subagent sessions (e.g. Haiku routing), while an install comparison has no false positives and fires the day the copies diverge.
 - check-update.sh: corrected the comment claiming marketplace users get native auto-update (it is opt-in for third-party marketplaces); the notice itself still targets git-clone installs only.
 
+### feat: monthly share nudge and post draft in /carbon-card
+
+- statusline.sh shows `📊 /carbon-card` to the first 3 distinct sessions of each month (tunable via `CLAUDE_CARBON_CARD_NUDGE_SESSIONS`), then goes quiet until next month, so it never nags: generate-report.sh stamps the month in `last-card-month` (clears the nudge immediately) and prints a `Totals since ...` summary line. Opt-out via `CLAUDE_CARBON_NO_CARD_NUDGE`. No auto-posting anywhere: the action stays human.
+- /carbon-card now offers a paste-ready social post draft built only from the printed totals, factual register enforced (numbers and equivalences, no self-congratulation); attribution stays in the card footer, not in the draft.
+- skills: fixed REPO_DIR resolution when `statusLine.command` contains a shell-escaped path (e.g. `~/Claude\ OS/...`): tilde and escaped spaces are now expanded, so /carbon-card and /carbon-update run the install actually wired into the statusline instead of falling back to `~/code/claude-carbon` or the plugin cache.
+
 ### docs: CITATION.cff and a Citing section in the README
 
 License stays plain MIT. Citation is encouraged, not required: CITATION.cff enables GitHub's "Cite this repository" button, the README documents the short form, and the report cards keep carrying the repo + tokenclimate.com attribution in their footer (the highest-reach citation channel).

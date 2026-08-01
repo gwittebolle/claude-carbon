@@ -447,4 +447,11 @@ if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "en" ]; then
 fi
 
 echo ""
+echo "Totals since ${SINCE_LABEL}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} km by car (${TOTAL_SESSIONS} sessions)"
+
+# Stamp the month so the statusline's monthly share nudge clears
+STATE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"
+mkdir -p "$STATE_DIR" 2>/dev/null || true
+date +%Y-%m > "${STATE_DIR}/last-card-month" 2>/dev/null || true
+
 echo "Done. ${EXPORT_DIR}/"

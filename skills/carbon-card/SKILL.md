@@ -13,6 +13,8 @@ CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 REPO_DIR=""
 if command -v jq >/dev/null 2>&1 && [ -f "$CFG/settings.json" ]; then
   SL_CMD="$(jq -r '.statusLine.command // empty' "$CFG/settings.json" 2>/dev/null)"
+  # statusLine.command stores a shell-escaped path: expand ~ and unescape spaces
+  SL_CMD="${SL_CMD//\\ / }"; SL_CMD="${SL_CMD/#\~/$HOME}"
   [ -n "$SL_CMD" ] && [ -f "$SL_CMD" ] && REPO_DIR="$(cd "$(dirname "$SL_CMD")/.." 2>/dev/null && pwd)"
 fi
 [ -z "$REPO_DIR" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && REPO_DIR="$CLAUDE_PLUGIN_ROOT"
@@ -21,4 +23,6 @@ fi
 bash "$REPO_DIR/scripts/generate-report.sh"
 ```
 
-The script prints the export directory on its final line (`Done. <dir>/`). Show that path to the user so they can share the PNGs.
+The script prints the export directory on its final line (`Done. <dir>/`) and a `Totals since ...` line just above it. Show the export path to the user so they can share the PNGs.
+
+Then offer a ready-to-paste social post draft (LinkedIn or X) built ONLY from the numbers on the `Totals since ...` line: CO2e total, cost, the car-km equivalence, session count. Write it in the user's working language. Keep the register strictly factual: numbers and equivalences, no self-congratulation, no green-virtue framing, no hashtag pile (two at most). Do not add a credit line for the tool in the draft; the card's footer already carries the repo and tokenclimate.com attribution. If the user asks for changes, iterate on the draft, never on the numbers.
