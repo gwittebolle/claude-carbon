@@ -8,6 +8,8 @@
 
 The settings and slash-command wiring moves out of `install.sh` into `scripts/configure-settings.sh`, called by both `install.sh` and `update.sh`, so an install predating a hook is repaired on the next `/carbon-update` instead of staying half-wired. `update.sh` previously delegated to `setup.sh` under a comment claiming it refreshed settings; `setup.sh` only ever touched the database. The merge stays additive and idempotent (third-party `SessionStart` hooks and a foreign `statusLine` are preserved), and now writes through tmp + mv: the old truncating redirect would have destroyed the user's `settings.json` if `jq` had failed mid-write.
 
+The README's manual-install block had the same hole, so anyone wiring it by hand reproduced the bug: it now shows both hooks and says what each one does, and points at `configure-settings.sh` for people who would rather not hand-edit JSON (the manual path also never installed the `/carbon-*` commands).
+
 ## 2026-08-02
 
 ### chore: gitignore .claude/settings.local.json

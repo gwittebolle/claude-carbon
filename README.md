@@ -104,7 +104,7 @@ install claude-carbon into that same directory by passing `CLAUDE_CONFIG_DIR` to
 curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | CLAUDE_CONFIG_DIR=~/.claude-work bash
 ```
 
-The status line, the Stop hook, the database and the `/carbon-*` commands all live under that config dir, so each environment tracks its own sessions independently. When `CLAUDE_CONFIG_DIR` is unset everything falls back to `~/.claude` as before.
+The status line, the hooks, the database and the `/carbon-*` commands all live under that config dir, so each environment tracks its own sessions independently. When `CLAUDE_CONFIG_DIR` is unset everything falls back to `~/.claude` as before.
 
 </details>
 
@@ -114,9 +114,10 @@ The status line, the Stop hook, the database and the `/carbon-*` commands all li
 ```bash
 git clone https://github.com/gwittebolle/claude-carbon.git ~/code/claude-carbon
 bash ~/code/claude-carbon/scripts/setup.sh
+bash ~/code/claude-carbon/scripts/configure-settings.sh
 ```
 
-Then add to `~/.claude/settings.json`:
+The second script merges the block below into `~/.claude/settings.json` (additively: an existing status line or third-party hooks are left alone) and symlinks the `/carbon-*` commands. To wire it by hand instead, skip it and add:
 
 ```json
 {
@@ -135,10 +136,23 @@ Then add to `~/.claude/settings.json`:
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/code/claude-carbon/scripts/safety-rescan.sh"
+          }
+        ]
+      }
     ]
   }
 }
 ```
+
+The `Stop` hook records the session that just ended. The `SessionStart` one re-scans for sessions that hook missed (crash, kill) and drives the daily update check the status line reads; without it you are never told a new version exists.
 
 Restart Claude Code.
 
