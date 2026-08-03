@@ -28,6 +28,8 @@ The update notice is keyed on the version in `.claude-plugin/plugin.json`, so sh
 
 `scripts/release.sh patch|minor|major|X.Y.Z` refuses to run off main, on a dirty tree or out of sync with the remote, checks the three manifests already agree, bumps them together (plus the lockfile), re-reads them to confirm the write landed, commits, tags, pushes, and opens the GitHub release as a draft pre-filled with the CHANGELOG lines added since the last tag. It also reports whether any runtime file actually changed, so a docs-only release that would nag users for nothing is visible before it goes out. `--dry-run` prints every step and writes nothing; npm publishing stays opt-in behind `--npm` since the tarball only carries `bin/`.
 
+Exercised for real against a throwaway local origin, not just in `--dry-run`: the bump lands on all three manifests, the commit and both pushes go through, and a failing `gh release create` no longer aborts silently under `set -e` after the tag is already pushed. It now says what is already published, that nothing is inconsistent, and prints the command plus the kept notes file to finish by hand.
+
 `scripts/check-versions.sh` runs in CI. It fails when the three manifests disagree, which always means one of npm, the marketplace or the notice is lying. It warns, without failing, when files under `scripts/`, `hooks/`, `skills/`, `data/`, `install.sh` or `bin/` changed since the last tag while the version did not: batching commits into one release is normal, silently forgetting for six weeks is not.
 
 ### fix: SessionStart hook never wired by install.sh

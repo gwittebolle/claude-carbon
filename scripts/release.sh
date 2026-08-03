@@ -192,13 +192,29 @@ run git tag -a "$TAG" -m "${TAG}"
 run git push origin main
 run git push origin "$TAG"
 
-if [ "$DRAFT" = "1" ]; then
-  run gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE" --draft
-  echo ""
-  echo "GitHub release created as a DRAFT. Edit the notes, then publish:"
-  echo "  gh release edit ${TAG} --draft=false"
+create_release() {
+  if [ "$DRAFT" = "1" ]; then
+    run gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE" --draft
+  else
+    run gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"
+  fi
+}
+
+# `if !` rather than a bare call: under `set -e` a gh failure would abort here, after the
+# commit and tag are already pushed, without saying what state things are in.
+if create_release; then
+  if [ "$DRAFT" = "1" ]; then
+    echo ""
+    echo "GitHub release created as a DRAFT. Edit the notes, then publish:"
+    echo "  gh release edit ${TAG} --draft=false"
+  fi
 else
-  run gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"
+  echo "" >&2
+  echo "The bump, the commit and the tag ${TAG} are pushed; only the GitHub release failed." >&2
+  echo "Nothing is inconsistent. Create it when ready with:" >&2
+  echo "  gh release create ${TAG} --title ${TAG} --notes-file ${NOTES_FILE}" >&2
+  echo "(draft notes kept at ${NOTES_FILE})" >&2
+  exit 1
 fi
 
 if [ "$DO_NPM" = "1" ]; then
