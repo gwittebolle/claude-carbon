@@ -53,7 +53,11 @@ if [ "$PULL_OK" != "1" ]; then
   exit 1
 fi
 
-# Refresh symlinks/settings, then re-price history (CO2-only by default: cheap, idempotent,
+# Re-run the settings/commands wiring: it is additive and idempotent, and it repairs installs
+# made before a hook existed (setup.sh only touches the DB, it never writes settings.json).
+bash "${SCRIPT_DIR}/configure-settings.sh" >/dev/null 2>&1 || true
+
+# Refresh the DB schema, then re-price history (CO2-only by default: cheap, idempotent,
 # no mixed-model cost drift).
 CLAUDE_CARBON_INSTALLER=1 bash "${SCRIPT_DIR}/setup.sh" >/dev/null 2>&1 || true
 DB_PATH="${CLAUDE_CARBON_DB:-${STATE_DIR}/carbon.db}"

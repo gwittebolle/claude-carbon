@@ -8,7 +8,6 @@ INSTALL_DIR="${CLAUDE_CARBON_DIR:-$HOME/code/claude-carbon}"
 # Honour Claude Code's own CLAUDE_CONFIG_DIR so a second environment
 # (e.g. CLAUDE_CONFIG_DIR=~/.claude-work claude) installs into its own dir.
 CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-SETTINGS_FILE="${CONFIG_DIR}/settings.json"
 
 echo ""
 echo "  claude-carbon installer"
@@ -72,86 +71,11 @@ if [ "$WAS_UPDATE" = "1" ]; then
   fi
 fi
 
-# 4. Configure Claude Code settings
+# 4. Configure Claude Code settings and install the /carbon-* commands
 echo ""
 echo "Configuring Claude Code..."
 
-mkdir -p "$CONFIG_DIR"
-
-STATUSLINE_CMD="${INSTALL_DIR}/scripts/statusline.sh"
-HOOK_CMD="${INSTALL_DIR}/scripts/persist-session.sh"
-
-if [ -f "$SETTINGS_FILE" ]; then
-  # Merge into existing settings
-  EXISTING="$(cat "$SETTINGS_FILE")"
-
-  # Add statusLine if not present
-  HAS_STATUSLINE="$(echo "$EXISTING" | jq 'has("statusLine")' 2>/dev/null)" || HAS_STATUSLINE="false"
-  if [ "$HAS_STATUSLINE" = "true" ]; then
-    CURRENT_SL="$(echo "$EXISTING" | jq -r '.statusLine.command // ""' 2>/dev/null)"
-    if echo "$CURRENT_SL" | grep -q "claude-carbon"; then
-      echo "  statusLine: already configured (skipped)"
-    else
-      echo "  statusLine: skipped (already set to another tool)"
-      echo "    To switch, replace the command in ~/.claude/settings.json with:"
-      echo "    $STATUSLINE_CMD"
-    fi
-  else
-    EXISTING="$(echo "$EXISTING" | jq --arg cmd "$STATUSLINE_CMD" '. + {statusLine: {type: "command", command: $cmd}}')"
-    echo "  statusLine: added"
-  fi
-
-  # Add Stop hook if not present
-  HAS_HOOK="$(echo "$EXISTING" | jq --arg cmd "$HOOK_CMD" '
-    .hooks.Stop // [] |
-    map(.hooks // []) | flatten |
-    any(.command == $cmd)
-  ' 2>/dev/null)" || HAS_HOOK="false"
-
-  if [ "$HAS_HOOK" = "true" ]; then
-    echo "  Stop hook: already configured (skipped)"
-  else
-    EXISTING="$(echo "$EXISTING" | jq --arg cmd "$HOOK_CMD" '
-      .hooks = (.hooks // {}) |
-      .hooks.Stop = ((.hooks.Stop // []) + [{
-        matcher: "",
-        hooks: [{type: "command", command: $cmd}]
-      }])
-    ')"
-    echo "  Stop hook: added"
-  fi
-
-  echo "$EXISTING" | jq '.' > "$SETTINGS_FILE"
-else
-  # Create new settings file
-  jq -n --arg sl "$STATUSLINE_CMD" --arg hk "$HOOK_CMD" '{
-    statusLine: {type: "command", command: $sl},
-    hooks: {
-      Stop: [{
-        matcher: "",
-        hooks: [{type: "command", command: $hk}]
-      }]
-    }
-  }' > "$SETTINGS_FILE"
-  echo "  Created $SETTINGS_FILE"
-fi
-
-# 5. Install /carbon-report slash command
-COMMANDS_DIR="${CONFIG_DIR}/commands"
-SKILL_SOURCE="${INSTALL_DIR}/skills/carbon-report/SKILL.md"
-SKILL_LINK="${COMMANDS_DIR}/carbon-report.md"
-
-mkdir -p "$COMMANDS_DIR"
-for SKILL_NAME in carbon-report carbon-card carbon-update; do
-  SKILL_SRC="${INSTALL_DIR}/skills/${SKILL_NAME}/SKILL.md"
-  SKILL_LNK="${COMMANDS_DIR}/${SKILL_NAME}.md"
-  if [ -L "$SKILL_LNK" ] || [ -f "$SKILL_LNK" ]; then
-    echo "  /${SKILL_NAME}: already installed (skipped)"
-  else
-    ln -s "$SKILL_SRC" "$SKILL_LNK"
-    echo "  /${SKILL_NAME}: installed"
-  fi
-done
+bash "$INSTALL_DIR/scripts/configure-settings.sh"
 
 echo ""
 echo "Done. Restart Claude Code to see your CO2 in the status line."

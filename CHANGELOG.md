@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-03
+
+### fix: SessionStart hook never wired by install.sh
+
+`install.sh` wrote only `statusLine` and the `Stop` hook, so every curl/npx install has been missing `SessionStart` → `safety-rescan.sh` since the beginning (`git log -S SessionStart -- install.sh` is empty). Two things were silently off for those users: the throttled safety rescan that catches sessions the Stop hook missed (crash, kill, hook disabled), and the update notifier, since `check-update.sh` is launched from `safety-rescan.sh` and the status line only ever reads the flag it writes. They were never told a new version existed. Marketplace installs were unaffected, `hooks/hooks.json` declares the hook.
+
+The settings and slash-command wiring moves out of `install.sh` into `scripts/configure-settings.sh`, called by both `install.sh` and `update.sh`, so an install predating a hook is repaired on the next `/carbon-update` instead of staying half-wired. `update.sh` previously delegated to `setup.sh` under a comment claiming it refreshed settings; `setup.sh` only ever touched the database. The merge stays additive and idempotent (third-party `SessionStart` hooks and a foreign `statusLine` are preserved), and now writes through tmp + mv: the old truncating redirect would have destroyed the user's `settings.json` if `jq` had failed mid-write.
+
 ## 2026-08-02
 
 ### chore: gitignore .claude/settings.local.json
