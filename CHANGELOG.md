@@ -2,6 +2,14 @@
 
 ## 2026-08-03
 
+### chore: release script and a CI guard on the version manifests
+
+The update notice is keyed on the version in `.claude-plugin/plugin.json`, so shipping to `main` without bumping reaches nobody: today's SessionStart fix sat behind that exact gap. Two additions make the bump mechanical rather than remembered.
+
+`scripts/release.sh patch|minor|major|X.Y.Z` refuses to run off main, on a dirty tree or out of sync with the remote, checks the three manifests already agree, bumps them together (plus the lockfile), re-reads them to confirm the write landed, commits, tags, pushes, and opens the GitHub release as a draft pre-filled with the CHANGELOG lines added since the last tag. It also reports whether any runtime file actually changed, so a docs-only release that would nag users for nothing is visible before it goes out. `--dry-run` prints every step and writes nothing; npm publishing stays opt-in behind `--npm` since the tarball only carries `bin/`.
+
+`scripts/check-versions.sh` runs in CI. It fails when the three manifests disagree, which always means one of npm, the marketplace or the notice is lying. It warns, without failing, when files under `scripts/`, `hooks/`, `skills/`, `data/`, `install.sh` or `bin/` changed since the last tag while the version did not: batching commits into one release is normal, silently forgetting for six weeks is not.
+
 ### fix: SessionStart hook never wired by install.sh
 
 `install.sh` wrote only `statusLine` and the `Stop` hook, so every curl/npx install has been missing `SessionStart` → `safety-rescan.sh` since the beginning (`git log -S SessionStart -- install.sh` is empty). Two things were silently off for those users: the throttled safety rescan that catches sessions the Stop hook missed (crash, kill, hook disabled), and the update notifier, since `check-update.sh` is launched from `safety-rescan.sh` and the status line only ever reads the flag it writes. They were never told a new version existed. Marketplace installs were unaffected, `hooks/hooks.json` declares the hook.

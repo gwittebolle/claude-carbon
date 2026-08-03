@@ -53,9 +53,25 @@ PRs that change factors or prices without both of these will not be merged.
 
 ### Releases (maintainer notes)
 
-A release bumps the version in three manifests, which must stay in sync:
-`package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`.
-Then: npm publish, git tag, GitHub release.
+```bash
+bash scripts/release.sh patch --dry-run   # see what would happen
+bash scripts/release.sh patch             # bump, tag, push, open a draft release
+```
+
+The script bumps the three manifests that must stay in sync (`package.json`,
+`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`), commits, tags,
+pushes, and opens the GitHub release as a draft pre-filled with the CHANGELOG
+lines added since the last tag. Edit those notes, then
+`gh release edit vX.Y.Z --draft=false`. Pass `--npm` to publish to npm as well;
+the tarball only carries `bin/`, so that is only needed when `bin/` changed.
+
+**When to bump.** The update notice users see compares the version in
+`.claude-plugin/plugin.json` against `origin/main`, not commits. So anything
+that runs on their machine (`scripts/`, `hooks/`, `skills/`, `data/`,
+`install.sh`, `bin/`) stays invisible to every installed user until a release
+bumps it. Docs, CHANGELOG, stats and CI changes deliberately do not nag anyone
+and need no bump. `scripts/check-versions.sh` (run in CI) fails on a manifest
+mismatch and warns when runtime changes have piled up unreleased.
 
 ## Reporting bugs and proposing features
 

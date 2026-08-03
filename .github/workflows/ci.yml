@@ -20,3 +20,18 @@ jobs:
       # jq is preinstalled on ubuntu-latest; the runner only needs bash + jq + awk.
       - name: Replay golden vectors against data/factors.json + data/prices.json
         run: bash tests/run-vectors.sh
+
+  version-manifests:
+    name: version manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Full history + tags: the unreleased-changes check diffs against the last tag.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Fails on a manifest mismatch (the update notice would lie); warns, without failing,
+      # when runtime files have piled up since the last tag with no version bump.
+      - name: Check the three version manifests agree
+        run: bash scripts/check-versions.sh
