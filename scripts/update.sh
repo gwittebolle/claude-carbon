@@ -75,3 +75,4 @@ if command -v jq >/dev/null 2>&1 && [ -n "$NEW_V" ]; then
 fi
 
 echo "claude-carbon updated to ${NEW_V:-latest}."
+echo "What changed: https://github.com/gwittebolle/claude-carbon/blob/main/CHANGELOG.md"

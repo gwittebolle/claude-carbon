@@ -28,13 +28,44 @@ STATUSLINE_CMD="${INSTALL_DIR}/scripts/statusline.sh"
 STOP_CMD="${INSTALL_DIR}/scripts/persist-session.sh"
 SESSIONSTART_CMD="${INSTALL_DIR}/scripts/safety-rescan.sh"
 
-# Append a hook to an event array, unless that exact command is already registered.
-# Mutates $EXISTING (the settings JSON held in memory).
+# Resolve a hook command to a comparable form. The same script reaches settings.json spelled
+# several ways: the README's manual block uses `~/code/claude-carbon/...`, this script writes
+# the expanded absolute path, and Claude Code accepts shell-escaped spaces (`~/Claude\ OS/...`).
+# Comparing the raw strings would register a second copy of a hook that is already there.
+# Commands whose directory does not exist (a third-party hook) are left as written.
+normalize_cmd() {
+  local c="$1" dir base
+  c="${c//\\ / }"
+  # SC2088: the tilde here is data, not a path being expanded — we are matching a literal "~/"
+  # prefix inside a string read from settings.json and expanding it ourselves.
+  # shellcheck disable=SC2088
+  case "$c" in "~/"*) c="${HOME}/${c#\~/}" ;; esac
+  case "$c" in
+    */*)
+      dir="${c%/*}"
+      base="${c##*/}"
+      if [ -d "$dir" ]; then
+        dir="$(cd "$dir" 2>/dev/null && pwd -P)" || dir="${c%/*}"
+        c="${dir}/${base}"
+      fi
+      ;;
+  esac
+  printf '%s' "$c"
+}
+
+# Append a hook to an event array, unless that command is already registered under any
+# spelling. Mutates $EXISTING (the settings JSON held in memory).
 add_hook() {
-  local event="$1" cmd="$2" has
-  has="$(echo "$EXISTING" | jq --arg e "$event" --arg c "$cmd" '
-    (.hooks[$e] // []) | map(.hooks // []) | flatten | any(.command == $c)
-  ' 2>/dev/null)" || has="false"
+  local event="$1" cmd="$2" has="false" target existing
+  target="$(normalize_cmd "$cmd")"
+
+  # Here-doc rather than a pipe: `while read` must run in this shell to keep `has`.
+  while IFS= read -r existing; do
+    [ -n "$existing" ] || continue
+    if [ "$(normalize_cmd "$existing")" = "$target" ]; then has="true"; break; fi
+  done <<EOF
+$(echo "$EXISTING" | jq -r --arg e "$event" '[.hooks[$e][]?.hooks[]?.command] | .[]' 2>/dev/null)
+EOF
 
   if [ "$has" = "true" ]; then
     echo "  ${event} hook: already configured (skipped)"

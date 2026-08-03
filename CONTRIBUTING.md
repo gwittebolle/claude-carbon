@@ -16,19 +16,31 @@ README).
 | `skills/`           | The `/carbon-report`, `/carbon-card`, `/carbon-update` slash commands |
 | `data/factors.json` | Emission factors (per-model energy, PUE, carbon intensity)            |
 | `data/prices.json`  | Per-model token prices                                                |
-| `tests/`            | Golden vectors for the methodology + the runner                       |
+| `tests/`            | Golden vectors for the methodology, plus the install/update wiring     |
 | `install.sh`        | The installer (also what `npx claude-carbon` runs)                    |
 | `METHODOLOGY.md`    | How every number is derived                                           |
 
 ## Running the tests
 
 ```bash
-bash tests/run-vectors.sh
+bash tests/run-vectors.sh         # the methodology maths
+bash tests/run-install-tests.sh   # the settings.json wiring and the update repair path
+bash scripts/check-versions.sh    # the three version manifests agree
+shellcheck --severity=warning $(find . -name '*.sh' -not -path './.git/*')
 ```
 
-This replays the golden vectors in `tests/methodology-vectors.json` against
-`data/factors.json` and `data/prices.json`. CI runs the same script on every
-push and pull request. It only needs bash, jq, and awk.
+`run-vectors.sh` replays the golden vectors in `tests/methodology-vectors.json`
+against `data/factors.json` and `data/prices.json`. It only needs bash, jq and
+awk.
+
+`run-install-tests.sh` covers what a user's `settings.json` ends up looking like:
+cold start, an install that predates a hook, a foreign status line or third-party
+hooks that must survive untouched, repeated runs, paths spelled differently
+(`~/…` versus expanded), the marketplace-cache guard, and the repair `update.sh`
+performs. Every case runs under its own throwaway `CLAUDE_CONFIG_DIR`, so your
+real `~/.claude` is never touched, and nothing hits the network.
+
+CI runs all four on every push and pull request.
 
 ## Changing the methodology (factors or prices)
 

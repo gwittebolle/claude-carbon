@@ -182,7 +182,11 @@ echo ""
 
 # ---------------------------------------------------------------- commit, tag, push
 
-run git add "$PKG" "$PLUGIN" "$MARKET" $([ -f package-lock.json ] && echo package-lock.json || true)
+if [ -f package-lock.json ]; then
+  run git add "$PKG" "$PLUGIN" "$MARKET" package-lock.json
+else
+  run git add "$PKG" "$PLUGIN" "$MARKET"
+fi
 run git commit -q -m "chore: release ${NEW}"
 run git tag -a "$TAG" -m "${TAG}"
 run git push origin main

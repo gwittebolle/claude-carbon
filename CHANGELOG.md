@@ -2,6 +2,26 @@
 
 ## 2026-08-03
 
+### fix: a hook already present under a different spelling was added twice
+
+The wiring compared hook commands as raw strings, so the same script reached `settings.json` twice whenever the two spellings differed. That is not hypothetical: the README's manual block writes `~/code/claude-carbon/scripts/persist-session.sh` while the installer writes the expanded absolute path, and Claude Code also accepts escaped spaces (`~/Claude\ OS/…`). Anyone who wired it by hand and later ran the installer ended up persisting every session twice and running the rescan twice. Commands are now compared on what they resolve to (tilde expanded, escaped spaces unescaped, directory resolved with `pwd -P`), while the entry already in the file is left spelled exactly as the user wrote it. A third-party hook whose directory does not exist is compared literally, as before.
+
+Found by the new install tests rather than by a user, which is the point of them.
+
+### test: the install and update wiring now has a suite
+
+`tests/run-install-tests.sh`, 22 assertions covering cold start, an install predating a hook, a foreign status line and third-party hooks that must survive untouched, repeated runs, equivalent path spellings, the marketplace-cache guard, the repair `update.sh` performs on a local clone, and a corrupt `settings.json` that must be left alone rather than truncated. Each case runs under its own throwaway `CLAUDE_CONFIG_DIR` and nothing touches the network. Removing the spelling fix makes three of them fail, so they are not decorative.
+
+The SessionStart bug fixed earlier today would have been caught by the first case.
+
+### ci: shellcheck on every shell script
+
+2421 lines of bash had no linter. Warnings and errors now gate the build, style notes stay advisory. The pass fixed a `cd` without a guard, a trap that unquoted its temp paths and would have skipped cleanup when the server had already exited, two `local x="$(…)"` masking return values, and an unquoted command substitution in the release script. Two tilde matches are deliberate and carry a justified `shellcheck disable`.
+
+### feat: the update notice names the version
+
+`⬆ /carbon-update` became `⬆ 1.1.3 /carbon-update`, so a patch and a minor can be told apart before deciding to interrupt what you were doing. The three fields are read in a single `jq` call rather than three, since the status line runs on every turn. A flag file written by an older version, without the field, falls back to the bare command. `update.sh` now prints the CHANGELOG URL after updating.
+
 ### chore: release script and a CI guard on the version manifests
 
 The update notice is keyed on the version in `.claude-plugin/plugin.json`, so shipping to `main` without bumping reaches nobody: today's SessionStart fix sat behind that exact gap. Two additions make the bump mechanical rather than remembered.

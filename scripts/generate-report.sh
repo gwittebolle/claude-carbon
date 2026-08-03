@@ -402,13 +402,22 @@ PORT=8799
 cp -f "$TEMPLATE_DIR/logo.png" /tmp/logo.png 2>/dev/null || true
 python3 -m http.server "$PORT" --directory /tmp &>/dev/null &
 SERVER_PID=$!
-trap "kill $SERVER_PID 2>/dev/null; rm -f $TMP_SUMMARY_FR $TMP_DETAILED_FR $TMP_SUMMARY_EN $TMP_DETAILED_EN" EXIT
+# A function rather than a quoted trap string: the paths stay quoted, so a temp dir containing
+# a space cannot split them into separate arguments to rm.
+cleanup_server() {
+  # `|| true`: the script runs under `set -e`, and a server that already exited would abort
+  # the handler before the temp files are removed.
+  kill "$SERVER_PID" 2>/dev/null || true
+  rm -f "$TMP_SUMMARY_FR" "$TMP_DETAILED_FR" "$TMP_SUMMARY_EN" "$TMP_DETAILED_EN"
+}
+trap cleanup_server EXIT
 sleep 0.5
 
 export_png() {
   local html_file="$1" output="$2" label="$3"
-  local filename="$(basename "$html_file")"
-  local url="http://localhost:${PORT}/${filename}"
+  local filename url
+  filename="$(basename "$html_file")"
+  url="http://localhost:${PORT}/${filename}"
 
   node -e "
 const { chromium } = require('${PW_PATH}');
@@ -429,7 +438,8 @@ const { chromium } = require('${PW_PATH}');
 " 2>&1
 
   if [ -f "$output" ]; then
-    local size="$(du -h "$output" | cut -f1 | tr -d ' ')"
+    local size
+    size="$(du -h "$output" | cut -f1 | tr -d ' ')"
     echo "  ${label}: ${output} (${size})"
   else
     echo "  ${label}: FAILED" >&2

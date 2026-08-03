@@ -21,6 +21,32 @@ jobs:
       - name: Replay golden vectors against data/factors.json + data/prices.json
         run: bash tests/run-vectors.sh
 
+  install-wiring:
+    name: install and update wiring
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Runs entirely under throwaway CLAUDE_CONFIG_DIRs; the update case clones this checkout
+      # from disk, so no network is involved.
+      - name: Exercise the settings.json merge and the update repair path
+        run: bash tests/run-install-tests.sh
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure shellcheck is available
+        run: command -v shellcheck >/dev/null || sudo apt-get install -y shellcheck
+
+      # Warnings and errors gate the build; style notes are advisory and stay out of the way.
+      - name: Lint every shell script
+        run: find . -name '*.sh' -not -path './.git/*' -print0 | sort -z | xargs -0 shellcheck --severity=warning
+
   version-manifests:
     name: version manifests
     runs-on: ubuntu-latest

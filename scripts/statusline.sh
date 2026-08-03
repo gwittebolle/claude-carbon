@@ -204,11 +204,15 @@ fi
 UPDATE_SEGMENT=""
 UPD_FILE="${CONFIG_DIR}/claude-carbon/update-check.json"
 if [ -z "${CLAUDE_CARBON_NO_UPDATE_NOTIFIER:-}" ] && [ -f "$UPD_FILE" ] && command -v jq &>/dev/null; then
-  if [ "$(jq -r '.behind // false' "$UPD_FILE" 2>/dev/null)" = "true" ]; then
-    UPD_AT="$(jq -r '.checked_at // 0' "$UPD_FILE" 2>/dev/null || echo 0)"
-    if [ "$UPD_AT" -gt 0 ] 2>/dev/null && [ "$(( $(date +%s) - UPD_AT ))" -lt 604800 ] 2>/dev/null; then
-      UPDATE_SEGMENT=" | ⬆ /carbon-update"
-    fi
+  # One jq call for the three fields: this runs on every turn, so each spawn is felt.
+  UPD_BEHIND=""; UPD_AT=0; UPD_REMOTE=""
+  IFS="$(printf '\t')" read -r UPD_BEHIND UPD_AT UPD_REMOTE <<EOF
+$(jq -r '[(.behind // false), (.checked_at // 0), (.remote // "")] | @tsv' "$UPD_FILE" 2>/dev/null)
+EOF
+  if [ "$UPD_BEHIND" = "true" ] && [ "${UPD_AT:-0}" -gt 0 ] 2>/dev/null && [ "$(( $(date +%s) - UPD_AT ))" -lt 604800 ] 2>/dev/null; then
+    # Naming the target version turns "something changed" into a judgeable call: a patch and a
+    # minor deserve different urgency. Falls back to the bare command if the flag predates it.
+    UPDATE_SEGMENT=" | ⬆ ${UPD_REMOTE:+${UPD_REMOTE} }/carbon-update"
   fi
 fi
 

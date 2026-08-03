@@ -19,7 +19,7 @@ set -uo pipefail
 # Exit 0 on warnings, 1 on a real mismatch.
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_DIR"
+cd "$REPO_DIR" || { echo "ERROR: cannot enter $REPO_DIR" >&2; exit 1; }
 
 PKG=package.json
 PLUGIN=.claude-plugin/plugin.json
