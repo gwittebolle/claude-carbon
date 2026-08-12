@@ -117,10 +117,11 @@ For EUR, `data/prices.json` carries `eur_per_usd` (ECB euro reference rate, 0.87
 
 ## Equivalences used in reports
 
-| Activity                 | Emission factor | Source                                             |
-| ------------------------ | --------------- | -------------------------------------------------- |
-| Car (thermal, lifecycle) | 142 gCO2e/km    | ADEME Impact CO2, 2025 car footprint model         |
-| Median Gemini prompt     | 0.03 gCO2e      | Google, Aug 2025 (arXiv:2508.15734)                |
-| TGV (full scope)         | 3.5 gCO2e/km    | SNCF open data 2024, per passenger-km              |
+| Activity                 | Emission factor  | Source                                     |
+| ------------------------ | ---------------- | ------------------------------------------ |
+| Car (thermal, lifecycle) | 142 gCO2e/km     | ADEME Impact CO2, 2025 car footprint model |
+| Median Gemini prompt     | 0.03 gCO2e       | Google, Aug 2025 (arXiv:2508.15734)        |
+| TGV (full scope)         | 3.5 gCO2e/km     | SNCF open data 2024, per passenger-km      |
+| Beef steak (150g)        | 4340 gCO2e/steak | ADEME Impact CO2 (Agribalyse 3.2), 2025    |
 
-Car and TGV factors are lifecycle values while this tool's CO2 is usage-only; the equivalences are illustrative, not scope-matched. Refreshed 2026-07-31: earlier releases used 120 g/km (car, close to the EU new-vehicle homologation average, misattributed to ADEME), 0.2 g per Google search (a 2009 blog figure misattributed to the 2023 environmental report), 19 g per email with attachment (ADEME 2011, withdrawn; the current ADEME reference email is ~2.5 g) and 2.4 g/km (TGV, untraceable).
+Car, TGV, and steak factors are lifecycle values while this tool's CO2 is usage-only; the equivalences are illustrative, not scope-matched. Refreshed 2026-07-31: earlier releases used 120 g/km (car, close to the EU new-vehicle homologation average, misattributed to ADEME), 0.2 g per Google search (a 2009 blog figure misattributed to the 2023 environmental report), 19 g per email with attachment (ADEME 2011, withdrawn; the current ADEME reference email is ~2.5 g) and 2.4 g/km (TGV, untraceable).
