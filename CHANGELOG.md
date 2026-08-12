@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-12
+
+### feat: add beef steak equivalence
+
+Meat, and especially red meat, is one of the worst pollution sources.
+Add steak equivalence to give another comparison, offer a broader representation of the order of magnitude, and promote vegetarian diets.
+
 ## 2026-08-03
 
 ### fix: a hook already present under a different spelling was added twice
