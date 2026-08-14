@@ -44,7 +44,7 @@ ALL_COST="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(cost_usd), 0) FROM sessions 
 KM_CAR="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 142}')"
 GEMINI="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 0.03}')"
 KM_TGV="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 3.5}')"
-STEAKS="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 4340}')"
+STEAKS="$(echo "$ALL_CO2" | awk '{printf "%.1f", $1 / 4200}')"
 
 # --- Top 5 sessions by CO2 ---
 TOP5="$(sqlite3 -separator '|' "$DB_PATH" \
@@ -83,7 +83,7 @@ echo "--- Equivalences (all-time) ---"
 echo "  ${KM_CAR} km en voiture        (142 gCO2e/km, ADEME 2025)"
 echo "  ${GEMINI} prompts Gemini       (0.03 gCO2e, Google 2025)"
 echo "  ${KM_TGV} km en TGV             (3.5 gCO2e/km, SNCF 2024)"
-echo "  ${STEAKS} steaks de boeuf        (4340 gCO2e/steak 150g, ADEME/Agribalyse 2025)"
+echo "  ${STEAKS} steak(s) de boeuf    (4200 gCO2e/steak 150g, ADEME Impact CO2 2025)"
 echo ""
 echo "--- Top 5 sessions by CO2 ---"
 echo "Date        | Project                 | CO2 (g) | Model                          | Cost"

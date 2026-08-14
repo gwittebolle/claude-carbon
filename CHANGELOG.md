@@ -4,8 +4,7 @@
 
 ### feat: add beef steak equivalence
 
-Meat, and especially red meat, is one of the worst pollution sources.
-Add steak equivalence to give another comparison, offer a broader representation of the order of magnitude, and promote vegetarian diets.
+The all-time report gains a fourth equivalence: a 150 g beef steak at 4200 gCO2e (ADEME Impact CO2 beef average, 28.0 kgCO2e/kg from Agribalyse 3.2, times the portion). A food reference reads differently than transport ones, and a typical usage total lands well under one steak, so the line prints one decimal. Report only: the card stays single-metric by design. Contributed by Kévin Dunglas (@dunglas).
 
 ## 2026-08-03
 
