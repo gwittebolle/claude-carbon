@@ -8,6 +8,13 @@ Run the following bash script exactly as written and present the output to the u
 ```bash
 #!/usr/bin/env bash
 
+# Read the user locale before LC_ALL=C below masks it: the equivalence factors are
+# country-specific (a French car and a US car differ by a factor of ~1.7).
+USER_LOCALE="${CLAUDE_CARBON_LOCALE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}"
+if [ -z "$USER_LOCALE" ] && [ "$(uname)" = "Darwin" ]; then
+  USER_LOCALE="$(defaults read -g AppleLocale 2>/dev/null || true)"
+fi
+
 # Force C locale: comma-decimal locales (de_DE, fr_FR) make awk mis-parse
 # "431.7045" as 431 and print "431,0" instead of "431.7"
 export LC_ALL=C
@@ -40,11 +47,36 @@ ALL_SESSIONS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE ${NOT_EX
 ALL_COST="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(cost_usd), 0) FROM sessions WHERE ${NOT_EXCLUDED};" | awk '{printf "%.2f", $1}')"
 
 # --- Equivalences (all-time total) ---
-# Factors and sources: METHODOLOGY.md "Equivalences used in reports"
-KM_CAR="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 142}')"
-GEMINI="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 0.03}')"
-KM_TGV="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 3.5}')"
-STEAKS="$(echo "$ALL_CO2" | awk '{printf "%.1f", $1 / 4200}')"
+# Factors and sources: METHODOLOGY.md "Equivalences used in reports".
+# France gets the ADEME/SNCF factors, a US locale the EPA ones, everyone else the
+# world-average set. A car, a kWh and a kilo of beef each differ by a factor of 2 or
+# more between countries, so a single set would be wrong for most readers.
+case "$USER_LOCALE" in
+  fr | fr.* | fr_FR* | fr-FR*)
+    EQUIV_ROWS="$(echo "$ALL_CO2" | awk '{
+      printf "%.0f|km en voiture|142 gCO2e/km, ADEME 2025\n", $1 / 142
+      printf "%.0f|prompts Gemini|0.03 gCO2e, Google 2025\n", $1 / 0.03
+      printf "%.0f|km en TGV|3.5 gCO2e/km, SNCF 2024\n", $1 / 3.5
+      printf "%.1f|steak(s) de boeuf|4200 gCO2e/steak 150g, ADEME Impact CO2 2025\n", $1 / 4200
+    }')"
+    ;;
+  *_US* | *-US*)
+    EQUIV_ROWS="$(echo "$ALL_CO2" | awk '{
+      printf "%.0f|miles driven by car|393 gCO2e/mile, EPA, US average\n", $1 / 393
+      printf "%.0f|Gemini prompts|0.03 gCO2e, Google 2025\n", $1 / 0.03
+      printf "%.0f|smartphone charges|12.4 gCO2, EPA, US grid\n", $1 / 12.4
+      printf "%.1f|beef steaks|6400 gCO2e/steak 150g, Putman et al. 2023, US\n", $1 / 6400
+    }')"
+    ;;
+  *)
+    EQUIV_ROWS="$(echo "$ALL_CO2" | awk '{
+      printf "%.0f|km driven by car|200 gCO2/km, world average\n", $1 / 200
+      printf "%.0f|Gemini prompts|0.03 gCO2e, Google 2025\n", $1 / 0.03
+      printf "%.0f|smartphone charges|8.7 gCO2e, world grid\n", $1 / 8.7
+      printf "%.1f|beef steaks|14900 gCO2e/steak 150g, Poore & Nemecek 2018\n", $1 / 14900
+    }')"
+    ;;
+esac
 
 # --- Top 5 sessions by CO2 ---
 TOP5="$(sqlite3 -separator '|' "$DB_PATH" \
@@ -80,10 +112,10 @@ echo "  Sessions  : ${ALL_SESSIONS}"
 echo "  Cost      : \$${ALL_COST}"
 echo ""
 echo "--- Equivalences (all-time) ---"
-echo "  ${KM_CAR} km en voiture        (142 gCO2e/km, ADEME 2025)"
-echo "  ${GEMINI} prompts Gemini       (0.03 gCO2e, Google 2025)"
-echo "  ${KM_TGV} km en TGV             (3.5 gCO2e/km, SNCF 2024)"
-echo "  ${STEAKS} steak(s) de boeuf    (4200 gCO2e/steak 150g, ADEME Impact CO2 2025)"
+while IFS='|' read -r count label source; do
+  [ -z "$count" ] && continue
+  printf "  %10s %-20s (%s)\n" "$count" "$label" "$source"
+done <<< "$EQUIV_ROWS"
 echo ""
 echo "--- Top 5 sessions by CO2 ---"
 echo "Date        | Project                 | CO2 (g) | Model                          | Cost"

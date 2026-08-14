@@ -1,6 +1,12 @@
 # Changelog
 
-## 2026-08-12
+## 2026-08-14
+
+### feat: equivalences follow the user's locale
+
+The report compared a US-grid CO2 figure against French factors: an ADEME car, a TGV meaningless outside France, and a French beef average. A car, a kWh and a kilo of beef each differ by a factor of 2 or more between countries, so three sets now ship. Default is world average: 200 gCO2/km by car (GFEI's 167 g/km rated global new-vehicle figure, plus the ~20% ICCT real-world gap, which lands between the EU and US real-world anchors), 8.7 gCO2e per smartphone charge (the EPA per-charge energy at Ember's 458 gCO2e/kWh world grid intensity for 2025) and 14900 gCO2e per 150 g steak (Poore & Nemecek's 99.48 kgCO2e/kg global mean for beef herds, which carries land-use change). A US locale gets published US factors instead, in miles rather than km since that is both what EPA publishes and what a US reader measures a drive in (EPA's 393 gCO2e/mile and 12.4 gCO2 per charge, Putman et al. 2023's 42.7 kgCO2e/kg for a 6400 g steak), a French locale keeps ADEME and SNCF. The Gemini prompt equivalence is unchanged everywhere.
+
+Detection reads `CLAUDE_CARBON_LOCALE`, then `LC_ALL`/`LC_MESSAGES`/`LANG`, then macOS `AppleLocale`, since hooks and GUI-launched shells often carry no `LANG` at all. `fr_CA` counts as non-French. On the PNG cards the FR card always carries the ADEME factor while the EN card follows the locale, so the km it shows and the km `/carbon-report` prints agree; the `Totals since` line matches whichever card was exported.
 
 ### feat: add beef steak equivalence
 

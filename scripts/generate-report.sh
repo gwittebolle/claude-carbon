@@ -139,8 +139,21 @@ format_co2() {
 read -r TOTAL_CO2_VALUE TOTAL_CO2_UNIT <<< "$(format_co2 "$TOTAL_CO2_RAW")"
 TOTAL_COST="$(echo "$TOTAL_COST_RAW" | LC_ALL=C awk '{printf "%.0f", $1}')"
 FIRST_DATE="$(echo "$FIRST_DATE_RAW" | cut -c1-10)"
-# Car equivalence factor: METHODOLOGY.md "Equivalences used in reports" (ADEME 2025, lifecycle)
-EQUIV_KM="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk '{printf "%.1f", $1/142}')"
+# Car equivalence factors: METHODOLOGY.md "Equivalences used in reports". The FR card
+# always uses the ADEME factor in km; the EN card follows the locale, down to the unit,
+# so the distance it shows and the one /carbon-report prints are the same number.
+USER_LOCALE="${CLAUDE_CARBON_LOCALE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}"
+if [ -z "$USER_LOCALE" ] && [ "$(uname)" = "Darwin" ]; then
+  # Hooks and GUI-launched shells often carry no LANG at all
+  USER_LOCALE="$(defaults read -g AppleLocale 2>/dev/null || true)"
+fi
+case "$USER_LOCALE" in
+  # EPA publishes per mile, and a US reader reads miles
+  *_US* | *-US*) EQUIV_FACTOR_EN=393; EQUIV_UNIT_EN="miles" ;;
+  *) EQUIV_FACTOR_EN=200; EQUIV_UNIT_EN="km" ;;
+esac
+EQUIV_KM_FR="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk '{printf "%.1f", $1/142}')"
+EQUIV_KM_EN="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_EN" '{printf "%.1f", $1/f}')"
 
 # In default mode, label the report with the actual earliest session month, not Jan 1st
 # (transcripts older than ~30 days are purged, so the real data rarely starts in January).
@@ -257,6 +270,7 @@ inject_common() {
     -e "s|{{FIRST_DATE}}|${FIRST_DATE}|g" \
     -e "s|{{TOTAL_COST}}|${TOTAL_COST}|g" \
     -e "s|{{EQUIV_KM}}|${EQUIV_KM}|g" \
+    -e "s|{{EQUIV_UNIT}}|${EQUIV_UNIT}|g" \
     -e "s|{{TOP_MODEL}}|${TOP_MODEL_DISPLAY}|g" \
     -e "s|{{TOTAL_TOKENS}}|${TOTAL_TOKENS}|g" \
     -e "s|{{PROJECTION}}|${PROJECTION}|g" \
@@ -280,6 +294,8 @@ inject_common() {
 
 # Generate FR templates
 SINCE_LABEL="$SINCE_LABEL_FR"
+EQUIV_KM="$EQUIV_KM_FR"
+EQUIV_UNIT="km"
 _t=$(mktemp /tmp/claude-carbon-summary-fr-XXXXXX); TMP_SUMMARY_FR="${_t}.html"; mv "$_t" "$TMP_SUMMARY_FR"
 _t=$(mktemp /tmp/claude-carbon-detailed-fr-XXXXXX); TMP_DETAILED_FR="${_t}.html"; mv "$_t" "$TMP_DETAILED_FR"
 inject_common "$TEMPLATE_DIR/report-summary.html" "$TMP_SUMMARY_FR"
@@ -287,6 +303,8 @@ inject_common "$TEMPLATE_DIR/report-detailed.html" "$TMP_DETAILED_FR"
 
 # Generate EN templates
 SINCE_LABEL="$SINCE_LABEL_EN"
+EQUIV_KM="$EQUIV_KM_EN"
+EQUIV_UNIT="$EQUIV_UNIT_EN"
 _t=$(mktemp /tmp/claude-carbon-summary-en-XXXXXX); TMP_SUMMARY_EN="${_t}.html"; mv "$_t" "$TMP_SUMMARY_EN"
 _t=$(mktemp /tmp/claude-carbon-detailed-en-XXXXXX); TMP_DETAILED_EN="${_t}.html"; mv "$_t" "$TMP_DETAILED_EN"
 inject_common "$TEMPLATE_DIR/report-summary-en.html" "$TMP_SUMMARY_EN"
@@ -457,7 +475,13 @@ if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "en" ]; then
 fi
 
 echo ""
-echo "Totals since ${SINCE_LABEL}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} km by car (${TOTAL_SESSIONS} sessions)"
+# The car km must match the card that was exported, since the social draft quotes it.
+if [ "$LANG_FILTER" = "fr" ]; then
+  SINCE_LABEL="$SINCE_LABEL_FR"
+  EQUIV_KM="$EQUIV_KM_FR"
+  EQUIV_UNIT="km"
+fi
+echo "Totals since ${SINCE_LABEL}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${TOTAL_SESSIONS} sessions)"
 
 # Stamp the month so the statusline's monthly share nudge clears
 STATE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"
