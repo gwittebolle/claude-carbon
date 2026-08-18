@@ -95,7 +95,7 @@ else
 fi
 
 # ── Deps check ──────────────────────────────────────────────
-for cmd in sqlite3 node; do
+for cmd in sqlite3 node jq; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "Error: $cmd is required but not found." >&2
     exit 1
@@ -139,20 +139,19 @@ format_co2() {
 read -r TOTAL_CO2_VALUE TOTAL_CO2_UNIT <<< "$(format_co2 "$TOTAL_CO2_RAW")"
 TOTAL_COST="$(echo "$TOTAL_COST_RAW" | LC_ALL=C awk '{printf "%.0f", $1}')"
 FIRST_DATE="$(echo "$FIRST_DATE_RAW" | cut -c1-10)"
-# Car equivalence factors: METHODOLOGY.md "Equivalences used in reports". The FR card
-# always uses the ADEME factor in km; the EN card follows the locale, down to the unit,
-# so the distance it shows and the one /carbon-report prints are the same number.
-USER_LOCALE="${CLAUDE_CARBON_LOCALE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}"
-if [ -z "$USER_LOCALE" ] && [ "$(uname)" = "Darwin" ]; then
-  # Hooks and GUI-launched shells often carry no LANG at all
-  USER_LOCALE="$(defaults read -g AppleLocale 2>/dev/null || true)"
-fi
-case "$USER_LOCALE" in
-  # EPA publishes per mile, and a US reader reads miles
-  *_US* | *-US*) EQUIV_FACTOR_EN=393; EQUIV_UNIT_EN="miles" ;;
-  *) EQUIV_FACTOR_EN=200; EQUIV_UNIT_EN="km" ;;
-esac
-EQUIV_KM_FR="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk '{printf "%.1f", $1/142}')"
+# Car equivalence factors: data/factors.json "equivalences", derivations in
+# METHODOLOGY.md "Equivalences used in reports". The FR card always uses the ADEME
+# factor in km; the EN card follows the locale (ADEME on a French or undetected
+# locale, EPA in miles on a US one, world average otherwise), so the same factor
+# family /carbon-report selects also drives the card.
+# shellcheck source=scripts/equiv-lib.sh
+. "$SCRIPT_DIR/equiv-lib.sh"
+FACTORS_FILE="$PROJECT_DIR/data/factors.json"
+EQUIV_SET="$(detect_equiv_set)"
+read -r EQUIV_FACTOR_EN EQUIV_UNIT_EN <<< \
+  "$(jq -r --arg set "$EQUIV_SET" '.equivalences[$set][] | select(.id == "car") | "\(.divisor) \(.unit)"' "$FACTORS_FILE")"
+EQUIV_FACTOR_FR="$(jq -r '.equivalences.fr[] | select(.id == "car") | .divisor' "$FACTORS_FILE")"
+EQUIV_KM_FR="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_FR" '{printf "%.1f", $1/f}')"
 EQUIV_KM_EN="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_EN" '{printf "%.1f", $1/f}')"
 
 # In default mode, label the report with the actual earliest session month, not Jan 1st
@@ -475,13 +474,17 @@ if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "en" ]; then
 fi
 
 echo ""
-# The car km must match the card that was exported, since the social draft quotes it.
+# The Totals line is quoted by the social draft, so its car figure must match a card
+# that was exported: the locale set (the EN card) by default, the French set when
+# only the FR card was. The label stays English: the line itself is English.
 if [ "$LANG_FILTER" = "fr" ]; then
-  SINCE_LABEL="$SINCE_LABEL_FR"
   EQUIV_KM="$EQUIV_KM_FR"
   EQUIV_UNIT="km"
+else
+  EQUIV_KM="$EQUIV_KM_EN"
+  EQUIV_UNIT="$EQUIV_UNIT_EN"
 fi
-echo "Totals since ${SINCE_LABEL}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${TOTAL_SESSIONS} sessions)"
+echo "Totals since ${SINCE_LABEL_EN}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${TOTAL_SESSIONS} sessions)"
 
 # Stamp the month so the statusline's monthly share nudge clears
 STATE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"
