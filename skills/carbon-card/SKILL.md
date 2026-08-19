@@ -18,7 +18,21 @@ if command -v jq >/dev/null 2>&1 && [ -f "$CFG/settings.json" ]; then
   [ -n "$SL_CMD" ] && [ -f "$SL_CMD" ] && REPO_DIR="$(cd "$(dirname "$SL_CMD")/.." 2>/dev/null && pwd)"
 fi
 [ -z "$REPO_DIR" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && REPO_DIR="$CLAUDE_PLUGIN_ROOT"
-[ -z "$REPO_DIR" ] && REPO_DIR="${CLAUDE_CARBON_DIR:-$HOME/code/claude-carbon}"
+[ -z "$REPO_DIR" ] && [ -n "${CLAUDE_CARBON_DIR:-}" ] && REPO_DIR="$CLAUDE_CARBON_DIR"
+if [ -z "$REPO_DIR" ]; then
+  # Pure marketplace installs reach here: no statusLine.command in settings.json and
+  # no CLAUDE_PLUGIN_ROOT in a skill's bash env. Pick the newest cached plugin copy,
+  # the same scan as statusline.sh CACHE_LATEST.
+  CACHE_LATEST=""
+  for D in "$CFG/plugins/cache"/*/claude-carbon/*/; do
+    [ -f "${D}scripts/generate-report.sh" ] || continue
+    if [ -z "$CACHE_LATEST" ] || [ "$(printf '%s\n%s\n' "$CACHE_LATEST" "$D" | sort -V | tail -1)" = "$D" ]; then
+      CACHE_LATEST="$D"
+    fi
+  done
+  [ -n "$CACHE_LATEST" ] && REPO_DIR="${CACHE_LATEST%/}"
+fi
+[ -z "$REPO_DIR" ] && REPO_DIR="$HOME/code/claude-carbon"
 
 bash "$REPO_DIR/scripts/generate-report.sh"
 ```

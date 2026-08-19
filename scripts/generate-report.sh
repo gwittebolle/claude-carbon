@@ -148,9 +148,15 @@ FIRST_DATE="$(echo "$FIRST_DATE_RAW" | cut -c1-10)"
 . "$SCRIPT_DIR/equiv-lib.sh"
 FACTORS_FILE="$PROJECT_DIR/data/factors.json"
 EQUIV_SET="$(detect_equiv_set)"
+# `|| true` so a jq failure lands in the guard below with a clear message instead of
+# aborting mid-assignment under set -e (here-string read would swallow it anyway).
 read -r EQUIV_FACTOR_EN EQUIV_UNIT_EN <<< \
-  "$(jq -r --arg set "$EQUIV_SET" '.equivalences[$set][] | select(.id == "car") | "\(.divisor) \(.unit)"' "$FACTORS_FILE")"
-EQUIV_FACTOR_FR="$(jq -r '.equivalences.fr[] | select(.id == "car") | .divisor' "$FACTORS_FILE")"
+  "$(jq -r --arg set "$EQUIV_SET" '.equivalences[$set][] | select(.id == "car") | "\(.divisor) \(.unit)"' "$FACTORS_FILE" || true)"
+EQUIV_FACTOR_FR="$(jq -r '.equivalences.fr[] | select(.id == "car") | .divisor' "$FACTORS_FILE" || true)"
+if [ -z "${EQUIV_FACTOR_EN:-}" ] || [ -z "${EQUIV_FACTOR_FR:-}" ]; then
+  echo "Error: no car equivalence for set '$EQUIV_SET' in $FACTORS_FILE" >&2
+  exit 1
+fi
 EQUIV_KM_FR="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_FR" '{printf "%.1f", $1/f}')"
 EQUIV_KM_EN="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_EN" '{printf "%.1f", $1/f}')"
 
