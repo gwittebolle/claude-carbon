@@ -69,6 +69,14 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
   exit 1
 fi
 
+# npm publishes at the very end, after the bump is committed and the tag pushed. An expired
+# npm session there leaves a half-done release, and re-running the script double-bumps
+# (the orphan v1.2.0 tag, 2026-08-19). Fail here instead, before anything is written.
+if [ "$DO_NPM" = "1" ] && [ "$DRY_RUN" = "0" ]; then
+  command -v npm >/dev/null 2>&1 || { echo "ERROR: --npm passed but npm is not installed." >&2; exit 1; }
+  npm whoami >/dev/null 2>&1 || { echo "ERROR: --npm passed but npm is not authenticated. Run 'npm login' first." >&2; exit 1; }
+fi
+
 # The three manifests must already agree; a pre-existing mismatch is a bug to fix by hand,
 # not something to paper over with a bump.
 V_PKG="$(jq -r '.version // empty' "$PKG")"
@@ -218,7 +226,13 @@ else
 fi
 
 if [ "$DO_NPM" = "1" ]; then
-  run npm publish
+  # The commit, tag and GitHub release already exist at this point: on a publish failure,
+  # fix the cause and rerun ONLY `npm publish`, never the whole script (it would re-bump).
+  run npm publish || {
+    echo "ERROR: npm publish failed. The release itself is done (commit, tag, GitHub release)." >&2
+    echo "Fix the cause (npm login?) and run ONLY:  npm publish" >&2
+    exit 1
+  }
 else
   echo ""
   echo "npm not published (the tarball only carries bin/). If bin/ changed, run:"

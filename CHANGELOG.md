@@ -2,6 +2,10 @@
 
 ## 2026-08-19
 
+### chore: release.sh checks npm auth before writing anything
+
+`--npm` publishes at the very end, after the bump is committed and the tag pushed, so an expired npm session left a half-done release; and re-running the whole script double-bumps, which is exactly how the orphan v1.2.0 tag was born today. The script now fails on `npm whoami` up front when `--npm` is passed (skipped in `--dry-run`, which never publishes), and a publish failure late in the run says in so many words to rerun only `npm publish`, never the script.
+
 ### feat: cards and the Totals line name their car factor
 
 With three factor sets in circulation, a shared PNG no longer says which one produced its "car equivalent": two readers comparing cards could be comparing 142 against 200 gCO2/km without seeing it. The card now prints a short factor caption under the figure ("142 g/km, ADEME 2025", "200 g/km, world avg", "393 g/mile, EPA US"; a new `tag` field on the car rows of `data/factors.json`, kept short because the full source string overflowed the metric column), and the `Totals since` line prints the full source after the distance, so the social draft that quotes it names the factor too. No number changes anywhere.
