@@ -13,25 +13,103 @@
   },
   "_exclude_models": "Sessions whose model string does not contain 'claude' (e.g. local models served behind ANTHROPIC_BASE_URL) are always stored with cost_usd=0, co2_grams=0 and excluded=1, and left out of report aggregates. Add case-insensitive grep -E patterns here to exclude additional models by name.",
   "exclude_models": [],
-  "_equivalences": "Report equivalence factors, one set per locale: fr (ADEME/SNCF), us (EPA, in miles), world. Set selection: scripts/equiv-lib.sh detect_equiv_set(); derivations and sources: METHODOLOGY.md 'Equivalences used in reports'. divisor is gCO2e per unit of the labeled activity, decimals the display precision in /carbon-report, unit (car rows) the distance unit shown on the cards. Not covered by the golden vectors (display-only, no effect on stored CO2/cost).",
+  "_equivalences": "Report equivalence factors, one set per locale: fr (ADEME/SNCF), us (EPA, in miles), world. Set selection: scripts/equiv-lib.sh detect_equiv_set(); derivations and sources: METHODOLOGY.md 'Equivalences used in reports'. divisor is gCO2e per unit of the labeled activity, decimals the display precision in /carbon-report, unit (car rows) the distance unit shown on the cards, tag (car rows) the short factor caption printed under the card figure. Not covered by the golden vectors (display-only, no effect on stored CO2/cost).",
   "equivalences": {
     "fr": [
-      { "id": "car", "divisor": 142, "unit": "km", "decimals": 0, "label": "km en voiture", "source": "142 gCO2e/km, ADEME 2025" },
-      { "id": "gemini", "divisor": 0.03, "decimals": 0, "label": "prompts Gemini", "source": "0.03 gCO2e, Google 2025" },
-      { "id": "tgv", "divisor": 3.5, "decimals": 0, "label": "km en TGV", "source": "3.5 gCO2e/km, SNCF 2024" },
-      { "id": "steak", "divisor": 4200, "decimals": 1, "label": "steak(s) de boeuf", "source": "4200 gCO2e/steak 150g, ADEME Impact CO2 2025" }
+      {
+        "id": "car",
+        "divisor": 142,
+        "unit": "km",
+        "tag": "142 g/km, ADEME 2025",
+        "decimals": 0,
+        "label": "km en voiture",
+        "source": "142 gCO2e/km, ADEME 2025"
+      },
+      {
+        "id": "gemini",
+        "divisor": 0.03,
+        "decimals": 0,
+        "label": "prompts Gemini",
+        "source": "0.03 gCO2e, Google 2025"
+      },
+      {
+        "id": "tgv",
+        "divisor": 3.5,
+        "decimals": 0,
+        "label": "km en TGV",
+        "source": "3.5 gCO2e/km, SNCF 2024"
+      },
+      {
+        "id": "steak",
+        "divisor": 4200,
+        "decimals": 1,
+        "label": "steak(s) de boeuf",
+        "source": "4200 gCO2e/steak 150g, ADEME Impact CO2 2025"
+      }
     ],
     "us": [
-      { "id": "car", "divisor": 393, "unit": "miles", "decimals": 0, "label": "miles driven by car", "source": "393 gCO2e/mile, EPA, US average" },
-      { "id": "gemini", "divisor": 0.03, "decimals": 0, "label": "Gemini prompts", "source": "0.03 gCO2e, Google 2025" },
-      { "id": "charge", "divisor": 12.4, "decimals": 0, "label": "smartphone charges", "source": "12.4 gCO2, EPA, US marginal grid rate" },
-      { "id": "steak", "divisor": 6400, "decimals": 1, "label": "beef steaks", "source": "6400 gCO2e/steak 150g, Putman et al. 2023, US" }
+      {
+        "id": "car",
+        "divisor": 393,
+        "unit": "miles",
+        "tag": "393 g/mile, EPA US",
+        "decimals": 0,
+        "label": "miles driven by car",
+        "source": "393 gCO2e/mile, EPA, US average"
+      },
+      {
+        "id": "gemini",
+        "divisor": 0.03,
+        "decimals": 0,
+        "label": "Gemini prompts",
+        "source": "0.03 gCO2e, Google 2025"
+      },
+      {
+        "id": "charge",
+        "divisor": 12.4,
+        "decimals": 0,
+        "label": "smartphone charges",
+        "source": "12.4 gCO2, EPA, US marginal grid rate"
+      },
+      {
+        "id": "steak",
+        "divisor": 6400,
+        "decimals": 1,
+        "label": "beef steaks",
+        "source": "6400 gCO2e/steak 150g, Putman et al. 2023, US"
+      }
     ],
     "world": [
-      { "id": "car", "divisor": 200, "unit": "km", "decimals": 0, "label": "km driven by car", "source": "200 gCO2/km, world average" },
-      { "id": "gemini", "divisor": 0.03, "decimals": 0, "label": "Gemini prompts", "source": "0.03 gCO2e, Google 2025" },
-      { "id": "charge", "divisor": 8.7, "decimals": 0, "label": "smartphone charges", "source": "8.7 gCO2e, world grid" },
-      { "id": "steak", "divisor": 14900, "decimals": 1, "label": "beef steaks", "source": "14900 gCO2e/steak 150g, Poore & Nemecek 2018" }
+      {
+        "id": "car",
+        "divisor": 200,
+        "unit": "km",
+        "tag": "200 g/km, world avg",
+        "decimals": 0,
+        "label": "km driven by car",
+        "source": "200 gCO2/km, world average"
+      },
+      {
+        "id": "gemini",
+        "divisor": 0.03,
+        "decimals": 0,
+        "label": "Gemini prompts",
+        "source": "0.03 gCO2e, Google 2025"
+      },
+      {
+        "id": "charge",
+        "divisor": 8.7,
+        "decimals": 0,
+        "label": "smartphone charges",
+        "source": "8.7 gCO2e, world grid"
+      },
+      {
+        "id": "steak",
+        "divisor": 14900,
+        "decimals": 1,
+        "label": "beef steaks",
+        "source": "14900 gCO2e/steak 150g, Poore & Nemecek 2018"
+      }
     ]
   }
 }

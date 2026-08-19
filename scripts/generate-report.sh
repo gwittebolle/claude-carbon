@@ -157,6 +157,13 @@ if [ -z "${EQUIV_FACTOR_EN:-}" ] || [ -z "${EQUIV_FACTOR_FR:-}" ]; then
   echo "Error: no car equivalence for set '$EQUIV_SET' in $FACTORS_FILE" >&2
   exit 1
 fi
+# The factor is named on the card and on the Totals line: the PNG travels alone,
+# so the same "car equivalent" would otherwise mean three different things.
+# Cards get the short tag (fits under the figure), the Totals line the full source.
+EQUIV_SRC_EN="$(jq -r --arg set "$EQUIV_SET" '.equivalences[$set][] | select(.id == "car") | .source' "$FACTORS_FILE" || true)"
+EQUIV_SRC_FR="$(jq -r '.equivalences.fr[] | select(.id == "car") | .source' "$FACTORS_FILE" || true)"
+EQUIV_TAG_EN="$(jq -r --arg set "$EQUIV_SET" '.equivalences[$set][] | select(.id == "car") | .tag // .source' "$FACTORS_FILE" || true)"
+EQUIV_TAG_FR="$(jq -r '.equivalences.fr[] | select(.id == "car") | .tag // .source' "$FACTORS_FILE" || true)"
 EQUIV_KM_FR="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_FR" '{printf "%.1f", $1/f}')"
 EQUIV_KM_EN="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_EN" '{printf "%.1f", $1/f}')"
 
@@ -276,6 +283,7 @@ inject_common() {
     -e "s|{{TOTAL_COST}}|${TOTAL_COST}|g" \
     -e "s|{{EQUIV_KM}}|${EQUIV_KM}|g" \
     -e "s|{{EQUIV_UNIT}}|${EQUIV_UNIT}|g" \
+    -e "s|{{EQUIV_SRC}}|${EQUIV_SRC}|g" \
     -e "s|{{TOP_MODEL}}|${TOP_MODEL_DISPLAY}|g" \
     -e "s|{{TOTAL_TOKENS}}|${TOTAL_TOKENS}|g" \
     -e "s|{{PROJECTION}}|${PROJECTION}|g" \
@@ -301,6 +309,7 @@ inject_common() {
 SINCE_LABEL="$SINCE_LABEL_FR"
 EQUIV_KM="$EQUIV_KM_FR"
 EQUIV_UNIT="km"
+EQUIV_SRC="$EQUIV_TAG_FR"
 _t=$(mktemp /tmp/claude-carbon-summary-fr-XXXXXX); TMP_SUMMARY_FR="${_t}.html"; mv "$_t" "$TMP_SUMMARY_FR"
 _t=$(mktemp /tmp/claude-carbon-detailed-fr-XXXXXX); TMP_DETAILED_FR="${_t}.html"; mv "$_t" "$TMP_DETAILED_FR"
 inject_common "$TEMPLATE_DIR/report-summary.html" "$TMP_SUMMARY_FR"
@@ -310,6 +319,7 @@ inject_common "$TEMPLATE_DIR/report-detailed.html" "$TMP_DETAILED_FR"
 SINCE_LABEL="$SINCE_LABEL_EN"
 EQUIV_KM="$EQUIV_KM_EN"
 EQUIV_UNIT="$EQUIV_UNIT_EN"
+EQUIV_SRC="$EQUIV_TAG_EN"
 _t=$(mktemp /tmp/claude-carbon-summary-en-XXXXXX); TMP_SUMMARY_EN="${_t}.html"; mv "$_t" "$TMP_SUMMARY_EN"
 _t=$(mktemp /tmp/claude-carbon-detailed-en-XXXXXX); TMP_DETAILED_EN="${_t}.html"; mv "$_t" "$TMP_DETAILED_EN"
 inject_common "$TEMPLATE_DIR/report-summary-en.html" "$TMP_SUMMARY_EN"
@@ -486,11 +496,13 @@ echo ""
 if [ "$LANG_FILTER" = "fr" ]; then
   EQUIV_KM="$EQUIV_KM_FR"
   EQUIV_UNIT="km"
+  EQUIV_SRC="$EQUIV_SRC_FR"
 else
   EQUIV_KM="$EQUIV_KM_EN"
   EQUIV_UNIT="$EQUIV_UNIT_EN"
+  EQUIV_SRC="$EQUIV_SRC_EN"
 fi
-echo "Totals since ${SINCE_LABEL_EN}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${TOTAL_SESSIONS} sessions)"
+echo "Totals since ${SINCE_LABEL_EN}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${EQUIV_SRC}) · ${TOTAL_SESSIONS} sessions"
 
 # Stamp the month so the statusline's monthly share nudge clears
 STATE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"
