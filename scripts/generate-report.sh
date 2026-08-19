@@ -164,8 +164,10 @@ EQUIV_SRC_EN="$(jq -r --arg set "$EQUIV_SET" '.equivalences[$set][] | select(.id
 EQUIV_SRC_FR="$(jq -r '.equivalences.fr[] | select(.id == "car") | .source' "$FACTORS_FILE" || true)"
 EQUIV_TAG_EN="$(jq -r --arg set "$EQUIV_SET" '.equivalences[$set][] | select(.id == "car") | .tag // .source' "$FACTORS_FILE" || true)"
 EQUIV_TAG_FR="$(jq -r '.equivalences.fr[] | select(.id == "car") | .tag // .source' "$FACTORS_FILE" || true)"
-EQUIV_KM_FR="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_FR" '{printf "%.1f", $1/f}')"
-EQUIV_KM_EN="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_EN" '{printf "%.1f", $1/f}')"
+# Whole units: a decimal on thousands of km reads as precision the factors don't
+# carry, and /carbon-report already prints its car row without one.
+EQUIV_KM_FR="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_FR" '{printf "%.0f", $1/f}')"
+EQUIV_KM_EN="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_EN" '{printf "%.0f", $1/f}')"
 
 # In default mode, label the report with the actual earliest session month, not Jan 1st
 # (transcripts older than ~30 days are purged, so the real data rarely starts in January).
