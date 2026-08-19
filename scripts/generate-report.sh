@@ -95,7 +95,7 @@ else
 fi
 
 # ── Deps check ──────────────────────────────────────────────
-for cmd in sqlite3 node; do
+for cmd in sqlite3 node jq; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "Error: $cmd is required but not found." >&2
     exit 1
@@ -139,8 +139,35 @@ format_co2() {
 read -r TOTAL_CO2_VALUE TOTAL_CO2_UNIT <<< "$(format_co2 "$TOTAL_CO2_RAW")"
 TOTAL_COST="$(echo "$TOTAL_COST_RAW" | LC_ALL=C awk '{printf "%.0f", $1}')"
 FIRST_DATE="$(echo "$FIRST_DATE_RAW" | cut -c1-10)"
-# Car equivalence factor: METHODOLOGY.md "Equivalences used in reports" (ADEME 2025, lifecycle)
-EQUIV_KM="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk '{printf "%.1f", $1/142}')"
+# Car equivalence factors: data/factors.json "equivalences", derivations in
+# METHODOLOGY.md "Equivalences used in reports". The FR card always uses the ADEME
+# factor in km; the EN card follows the locale (ADEME on a French or undetected
+# locale, EPA in miles on a US one, world average otherwise), so the same factor
+# family /carbon-report selects also drives the card.
+# shellcheck source=scripts/equiv-lib.sh
+. "$SCRIPT_DIR/equiv-lib.sh"
+FACTORS_FILE="$PROJECT_DIR/data/factors.json"
+EQUIV_SET="$(detect_equiv_set)"
+# `|| true` so a jq failure lands in the guard below with a clear message instead of
+# aborting mid-assignment under set -e (here-string read would swallow it anyway).
+read -r EQUIV_FACTOR_EN EQUIV_UNIT_EN <<< \
+  "$(jq -r --arg set "$EQUIV_SET" '.equivalences[$set][] | select(.id == "car") | "\(.divisor) \(.unit)"' "$FACTORS_FILE" || true)"
+EQUIV_FACTOR_FR="$(jq -r '.equivalences.fr[] | select(.id == "car") | .divisor' "$FACTORS_FILE" || true)"
+if [ -z "${EQUIV_FACTOR_EN:-}" ] || [ -z "${EQUIV_FACTOR_FR:-}" ]; then
+  echo "Error: no car equivalence for set '$EQUIV_SET' in $FACTORS_FILE" >&2
+  exit 1
+fi
+# The factor is named on the card and on the Totals line: the PNG travels alone,
+# so the same "car equivalent" would otherwise mean three different things.
+# Cards get the short tag (fits under the figure), the Totals line the full source.
+EQUIV_SRC_EN="$(jq -r --arg set "$EQUIV_SET" '.equivalences[$set][] | select(.id == "car") | .source' "$FACTORS_FILE" || true)"
+EQUIV_SRC_FR="$(jq -r '.equivalences.fr[] | select(.id == "car") | .source' "$FACTORS_FILE" || true)"
+EQUIV_TAG_EN="$(jq -r --arg set "$EQUIV_SET" '.equivalences[$set][] | select(.id == "car") | .tag // .source' "$FACTORS_FILE" || true)"
+EQUIV_TAG_FR="$(jq -r '.equivalences.fr[] | select(.id == "car") | .tag // .source' "$FACTORS_FILE" || true)"
+# Whole units: a decimal on thousands of km reads as precision the factors don't
+# carry, and /carbon-report already prints its car row without one.
+EQUIV_KM_FR="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_FR" '{printf "%.0f", $1/f}')"
+EQUIV_KM_EN="$(echo "$TOTAL_CO2_RAW" | LC_ALL=C awk -v f="$EQUIV_FACTOR_EN" '{printf "%.0f", $1/f}')"
 
 # In default mode, label the report with the actual earliest session month, not Jan 1st
 # (transcripts older than ~30 days are purged, so the real data rarely starts in January).
@@ -257,6 +284,8 @@ inject_common() {
     -e "s|{{FIRST_DATE}}|${FIRST_DATE}|g" \
     -e "s|{{TOTAL_COST}}|${TOTAL_COST}|g" \
     -e "s|{{EQUIV_KM}}|${EQUIV_KM}|g" \
+    -e "s|{{EQUIV_UNIT}}|${EQUIV_UNIT}|g" \
+    -e "s|{{EQUIV_SRC}}|${EQUIV_SRC}|g" \
     -e "s|{{TOP_MODEL}}|${TOP_MODEL_DISPLAY}|g" \
     -e "s|{{TOTAL_TOKENS}}|${TOTAL_TOKENS}|g" \
     -e "s|{{PROJECTION}}|${PROJECTION}|g" \
@@ -280,6 +309,9 @@ inject_common() {
 
 # Generate FR templates
 SINCE_LABEL="$SINCE_LABEL_FR"
+EQUIV_KM="$EQUIV_KM_FR"
+EQUIV_UNIT="km"
+EQUIV_SRC="$EQUIV_TAG_FR"
 _t=$(mktemp /tmp/claude-carbon-summary-fr-XXXXXX); TMP_SUMMARY_FR="${_t}.html"; mv "$_t" "$TMP_SUMMARY_FR"
 _t=$(mktemp /tmp/claude-carbon-detailed-fr-XXXXXX); TMP_DETAILED_FR="${_t}.html"; mv "$_t" "$TMP_DETAILED_FR"
 inject_common "$TEMPLATE_DIR/report-summary.html" "$TMP_SUMMARY_FR"
@@ -287,6 +319,9 @@ inject_common "$TEMPLATE_DIR/report-detailed.html" "$TMP_DETAILED_FR"
 
 # Generate EN templates
 SINCE_LABEL="$SINCE_LABEL_EN"
+EQUIV_KM="$EQUIV_KM_EN"
+EQUIV_UNIT="$EQUIV_UNIT_EN"
+EQUIV_SRC="$EQUIV_TAG_EN"
 _t=$(mktemp /tmp/claude-carbon-summary-en-XXXXXX); TMP_SUMMARY_EN="${_t}.html"; mv "$_t" "$TMP_SUMMARY_EN"
 _t=$(mktemp /tmp/claude-carbon-detailed-en-XXXXXX); TMP_DETAILED_EN="${_t}.html"; mv "$_t" "$TMP_DETAILED_EN"
 inject_common "$TEMPLATE_DIR/report-summary-en.html" "$TMP_SUMMARY_EN"
@@ -457,7 +492,19 @@ if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "en" ]; then
 fi
 
 echo ""
-echo "Totals since ${SINCE_LABEL}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} km by car (${TOTAL_SESSIONS} sessions)"
+# The Totals line is quoted by the social draft, so its car figure must match a card
+# that was exported: the locale set (the EN card) by default, the French set when
+# only the FR card was. The label stays English: the line itself is English.
+if [ "$LANG_FILTER" = "fr" ]; then
+  EQUIV_KM="$EQUIV_KM_FR"
+  EQUIV_UNIT="km"
+  EQUIV_SRC="$EQUIV_SRC_FR"
+else
+  EQUIV_KM="$EQUIV_KM_EN"
+  EQUIV_UNIT="$EQUIV_UNIT_EN"
+  EQUIV_SRC="$EQUIV_SRC_EN"
+fi
+echo "Totals since ${SINCE_LABEL_EN}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${EQUIV_SRC}) · ${TOTAL_SESSIONS} sessions"
 
 # Stamp the month so the statusline's monthly share nudge clears
 STATE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"

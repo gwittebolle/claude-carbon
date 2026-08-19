@@ -117,11 +117,51 @@ For EUR, `data/prices.json` carries `eur_per_usd` (ECB euro reference rate, 0.87
 
 ## Equivalences used in reports
 
+Equivalences are locale-dependent. A car, a kWh and a kilo of beef each differ by a factor of 2 or more between countries, so a single set is wrong for most readers: ADEME and SNCF factors describe a French fleet and a nuclear-heavy grid (and a TGV means nothing outside France), while EPA factors describe the heaviest car fleet in the OECD. Three sets ship.
+
+### Default (world average)
+
+| Activity                        | Emission factor   | Source                              |
+| ------------------------------- | ----------------- | ----------------------------------- |
+| Car (world average, real-world) | 200 gCO2/km       | Derived, see below                  |
+| Median Gemini prompt            | 0.03 gCO2e        | Google, Aug 2025 (arXiv:2508.15734) |
+| Smartphone charge               | 8.7 gCO2e         | Derived, see below                  |
+| Beef steak (150 g)              | 14900 gCO2e/steak | Derived, see below                  |
+
+The car figure is derived because no institution publishes a real-world global fleet average. The only global number is GFEI/IEA's **167 gCO2/km rated** for new light-duty vehicles (2019), a type-approval value, and rated values understate on-road emissions. The gap used here is ~20%, the EU-average gap in the JRC's OBFCM on-board fuel-consumption data for 2021 (~22%) as reported by [ICCT](https://theicct.org/wp-content/uploads/2024/01/ID-76-%E2%80%93-EU-WLTP_final.pdf); note that the same paper's own spritmonitor-based estimate is lower (14% for 2022 Germany) while the US gap is larger, so ~20% is a middle, not a measurement. 167 x 1.2 = 200, which lands between the two published real-world anchors, EU ~171-180 and US ~215-244, the expected place for a world average. The gap is EU-measured but applied to a global rated figure: one more reason not to read the third digit as meaningful.
+
+The smartphone charge is EPA's published per-charge energy (0.019 kWh) at the world grid intensity: 0.019 kWh x 458 gCO2e/kWh = 8.7 g. The intensity is Ember's [Global Electricity Review 2026](https://ember-energy.org/latest-insights/global-electricity-review-2026/electricity-demand-and-supply-trends/) figure for 2025 (generation-side, so grid transmission losses are not counted). EPA's own 12.4 g US figure runs the unrounded charge energy at 637 g/kWh, which is EPA's national **marginal** (non-baseload) rate for delivered electricity, not the US average delivered intensity (~393 g/kWh on the same EPA page). The US-vs-world gap on this row is therefore mostly marginal-vs-average rate, on top of the grid-mix difference.
+
+The steak is the global mean for beef from dedicated beef herds, [99.48 kgCO2e/kg of product](https://ourworldindata.org/grapher/ghg-per-kg-poore) (Poore & Nemecek, Science 2018, 38,700 farms in 119 countries), times the same 150 g portion the French row uses. It is 3.5x the ADEME figure mainly because the global mean carries land-use change, above all Amazon pasture conversion, which French and US production do not.
+
+### US locale
+
+| Activity                        | Emission factor  | Source                                                     |
+| ------------------------------- | ---------------- | ---------------------------------------------------------- |
+| Car (US average, tailpipe CO2e) | 393 gCO2e/mile   | EPA GHG Equivalencies (3.93e-4 tCO2e/mile, 2022 fleet)     |
+| Median Gemini prompt            | 0.03 gCO2e       | Google, Aug 2025 (arXiv:2508.15734)                        |
+| Smartphone charge               | 12.4 gCO2        | EPA GHG Equivalencies (1.24e-5 tCO2/charge, US marginal grid rate, 2022) |
+| Beef steak (150 g)              | 6400 gCO2e/steak | Putman et al. 2023, 42.7 kgCO2e/kg x the portion           |
+
+Both EPA factors come from the [Greenhouse Gas Equivalencies Calculator references](https://www.epa.gov/energy/greenhouse-gas-equivalencies-calculator-calculations-and-references). The car row stays in miles, the unit EPA publishes and the unit a US reader measures a drive in; converted it is 244 gCO2e/km. The charge row uses EPA's non-baseload marginal electricity rate (see the world-set note above), the rate EPA itself uses for this equivalency. The steak is [Putman et al. 2023](https://www.sciencedirect.com/science/article/pii/S0959652623009241) (Journal of Cleaner Production), a cradle-to-grave assessment of US beef whose functional unit is consumed boneless beef, so it counts processing, distribution, retail and consumption on top of production.
+
+### French locale
+
 | Activity                 | Emission factor  | Source                                                                   |
 | ------------------------ | ---------------- | ------------------------------------------------------------------------ |
 | Car (thermal, lifecycle) | 142 gCO2e/km     | ADEME Impact CO2, 2025 car footprint model                               |
 | Median Gemini prompt     | 0.03 gCO2e       | Google, Aug 2025 (arXiv:2508.15734)                                      |
 | TGV (full scope)         | 3.5 gCO2e/km     | SNCF open data 2024, per passenger-km                                    |
-| Beef steak (150g)        | 4200 gCO2e/steak | [ADEME Impact CO2](https://impactco2.fr/outils/alimentation/boeuf), 2025 |
+| Beef steak (150 g)       | 4200 gCO2e/steak | [ADEME Impact CO2](https://impactco2.fr/outils/alimentation/boeuf), 2025 |
 
-Car, TGV, and steak factors are lifecycle values while this tool's CO2 is usage-only; the equivalences are illustrative, not scope-matched. The steak factor is the Impact CO2 beef average (28.0 kgCO2e/kg, Agribalyse 3.2, page updated 15/01/2025) times a 150 g portion. Refreshed 2026-07-31: earlier releases used 120 g/km (car, close to the EU new-vehicle homologation average, misattributed to ADEME), 0.2 g per Google search (a 2009 blog figure misattributed to the 2023 environmental report), 19 g per email with attachment (ADEME 2011, withdrawn; the current ADEME reference email is ~2.5 g) and 2.4 g/km (TGV, untraceable).
+The steak factor is the Impact CO2 beef average (28.0 kgCO2e/kg, Agribalyse 3.2, page updated 15/01/2025) times a 150 g portion.
+
+### Locale detection
+
+Read in order: `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES`, `LANG`, then macOS `AppleLocale` (hooks and GUI-launched shells often carry no `LANG`). `C` and `POSIX` values are skipped: they are sentinels scripts export to stabilize parsing, not user locales. `fr` and any `fr_FR`/`fr-FR` variant (`fr.UTF-8`, `fr_FR.UTF-8`, ...) select the French set, and so does an undetected locale: the French set is this tool's original default, and a detection failure must reproduce the previous behavior, not silently switch factor sets. Anything containing `_US` or `-US` selects the US set; everything else, including non-France francophone locales (`fr_BE`, `fr_CA`, `fr_CH`), gets the world average. `CLAUDE_CARBON_LOCALE` forces a set (a set name or a locale string). The factors live in `data/factors.json` under `equivalences`; the selection logic is `scripts/equiv-lib.sh`, shared by `/carbon-report` and the card generator.
+
+The PNG cards: the FR card always carries the ADEME factor in km, the EN card follows the detected locale down to the unit (miles on a US locale). The EN card and `/carbon-report` therefore always use the same factor set, but their totals can still differ: `/carbon-report` equivalences run on the all-time total while a card covers its report window. Each card names its car factor under the figure, and the `Totals since` line prints it after the distance: the PNG travels alone, so the same "car equivalent" would otherwise mean three different things depending on the set.
+
+Scope varies across the sets and across rows. The EPA car factor is tailpipe combustion (CO2, CH4, N2O), the world one tailpipe CO2, the ADEME one lifecycle including vehicle manufacture. The three steak factors come from three different LCA traditions and span 4200 to 14900 gCO2e, driven by land-use change and by where the system boundary stops. So the numbers in one row are not comparable across sets, and none is scope-matched against this tool's usage-only compute figure. The equivalences are illustrative.
+
+Refreshed 2026-07-31: earlier releases used 120 g/km (car, close to the EU new-vehicle homologation average, misattributed to ADEME), 0.2 g per Google search (a 2009 blog figure misattributed to the 2023 environmental report), 19 g per email with attachment (ADEME 2011, withdrawn; the current ADEME reference email is ~2.5 g) and 2.4 g/km (TGV, untraceable).

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-19
+
+### feat: cards and the Totals line name their car factor
+
+With three factor sets in circulation, a shared PNG no longer says which one produced its "car equivalent": two readers comparing cards could be comparing 142 against 200 gCO2/km without seeing it. The card now prints a short factor caption under the figure ("142 g/km, ADEME 2025", "200 g/km, world avg", "393 g/mile, EPA US"; a new `tag` field on the car rows of `data/factors.json`, kept short because the full source string overflowed the metric column), and the `Totals since` line prints the full source after the distance, so the social draft that quotes it names the factor too. No number changes anywhere.
+
+## 2026-08-18
+
+### feat: equivalences follow the user's locale
+
+The report compared a US-grid CO2 figure against French factors: an ADEME car, a TGV meaningless outside France, and a French beef average. A car, a kWh and a kilo of beef each differ by a factor of 2 or more between countries, so three sets now ship. A French locale keeps ADEME and SNCF, and so does an undetected one: the French set is the tool's original default, and a hook or CI environment that strips `LANG` should reproduce the previous behavior, not silently switch factor sets. A US locale gets published EPA factors, in miles rather than km since that is both what EPA publishes and what a US reader measures a drive in: 393 gCO2e/mile, 12.4 gCO2 per smartphone charge (EPA's marginal grid rate), and 6400 gCO2e per 150 g steak (Putman et al. 2023's cradle-to-grave 42.7 kgCO2e/kg). Everyone else, non-France francophones included, gets world averages: 200 gCO2/km by car (GFEI's 167 g/km rated global new-vehicle figure plus the ~20% EU real-world gap from OBFCM data, landing between the EU and US real-world anchors), 8.7 gCO2e per charge (EPA's 0.019 kWh at Ember's 458 gCO2e/kWh world grid intensity for 2025) and 14900 gCO2e per 150 g steak (Poore & Nemecek's 99.48 kgCO2e/kg global mean for beef herds, which carries land-use change). The Gemini prompt equivalence is unchanged everywhere. Full derivations and scope caveats in METHODOLOGY.md.
+
+Detection reads `CLAUDE_CARBON_LOCALE`, then `LC_ALL`/`LC_MESSAGES`/`LANG` (skipping `C`/`POSIX` sentinels), then macOS `AppleLocale`, since hooks and GUI-launched shells often carry no `LANG` at all. The twelve factors live in `data/factors.json` under `equivalences`, read by both `/carbon-report` and the card generator through a shared detection lib, so they sit inside the marketplace-cache drift check and the CI runtime-change guard (the golden vectors stay scoped to the emission factors, which did not move). On the PNG cards the FR card always carries the ADEME factor while the EN card follows the locale down to the unit, and the `Totals since` line quotes the set of the exported card. Contributed by Kévin Dunglas (@dunglas).
+
 ## 2026-08-12
 
 ### feat: add beef steak equivalence

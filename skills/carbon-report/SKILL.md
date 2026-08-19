@@ -8,6 +8,45 @@ Run the following bash script exactly as written and present the output to the u
 ```bash
 #!/usr/bin/env bash
 
+# Locate the install (equivalence factors + shared locale lib live in the repo),
+# mirroring /carbon-card: status line wiring first, then plugin root, then default.
+CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+REPO_DIR=""
+if command -v jq >/dev/null 2>&1 && [ -f "$CFG/settings.json" ]; then
+  SL_CMD="$(jq -r '.statusLine.command // empty' "$CFG/settings.json" 2>/dev/null)"
+  # statusLine.command stores a shell-escaped path: expand ~ and unescape spaces
+  SL_CMD="${SL_CMD//\\ / }"; SL_CMD="${SL_CMD/#\~/$HOME}"
+  [ -n "$SL_CMD" ] && [ -f "$SL_CMD" ] && REPO_DIR="$(cd "$(dirname "$SL_CMD")/.." 2>/dev/null && pwd)"
+fi
+[ -z "$REPO_DIR" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && REPO_DIR="$CLAUDE_PLUGIN_ROOT"
+[ -z "$REPO_DIR" ] && [ -n "${CLAUDE_CARBON_DIR:-}" ] && REPO_DIR="$CLAUDE_CARBON_DIR"
+if [ -z "$REPO_DIR" ]; then
+  # Pure marketplace installs reach here: settings.json carries no statusLine.command
+  # (the status line is wired through plugin.json) and CLAUDE_PLUGIN_ROOT is not in the
+  # env of a skill's bash. Pick the newest cached plugin copy, the same scan as
+  # statusline.sh CACHE_LATEST, keeping only candidates that ship the equivalence lib.
+  CACHE_LATEST=""
+  for D in "$CFG/plugins/cache"/*/claude-carbon/*/; do
+    [ -f "${D}scripts/equiv-lib.sh" ] || continue
+    if [ -z "$CACHE_LATEST" ] || [ "$(printf '%s\n%s\n' "$CACHE_LATEST" "$D" | sort -V | tail -1)" = "$D" ]; then
+      CACHE_LATEST="$D"
+    fi
+  done
+  [ -n "$CACHE_LATEST" ] && REPO_DIR="${CACHE_LATEST%/}"
+fi
+[ -z "$REPO_DIR" ] && REPO_DIR="$HOME/code/claude-carbon"
+FACTORS_FILE="$REPO_DIR/data/factors.json"
+
+if ! command -v jq >/dev/null 2>&1 || [ ! -f "$FACTORS_FILE" ] || [ ! -f "$REPO_DIR/scripts/equiv-lib.sh" ]; then
+  echo "Error: jq and $REPO_DIR/data/factors.json are required (equivalence factors)." >&2
+  exit 1
+fi
+
+# Pick the equivalence set from the user locale BEFORE LC_ALL=C below masks it:
+# the factors are country-specific (a French car and a US car differ by ~1.7x).
+. "$REPO_DIR/scripts/equiv-lib.sh"
+EQUIV_SET="$(detect_equiv_set)"
+
 # Force C locale: comma-decimal locales (de_DE, fr_FR) make awk mis-parse
 # "431.7045" as 431 and print "431,0" instead of "431.7"
 export LC_ALL=C
@@ -40,11 +79,22 @@ ALL_SESSIONS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE ${NOT_EX
 ALL_COST="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(cost_usd), 0) FROM sessions WHERE ${NOT_EXCLUDED};" | awk '{printf "%.2f", $1}')"
 
 # --- Equivalences (all-time total) ---
-# Factors and sources: METHODOLOGY.md "Equivalences used in reports"
-KM_CAR="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 142}')"
-GEMINI="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 0.03}')"
-KM_TGV="$(echo "$ALL_CO2" | awk '{printf "%.0f", $1 / 3.5}')"
-STEAKS="$(echo "$ALL_CO2" | awk '{printf "%.1f", $1 / 4200}')"
+# Factors: data/factors.json "equivalences" (single source, shared with the cards);
+# derivations and sources: METHODOLOGY.md "Equivalences used in reports". France and
+# undetected locales get the ADEME/SNCF set, a US locale the EPA one, everyone else
+# the world average: a car, a kWh and a kilo of beef each differ by 2x+ between
+# countries, so a single set would be wrong for most readers.
+EQUIV_ROWS="$(jq -r --arg set "$EQUIV_SET" \
+  '.equivalences[$set][] | "\(.divisor)|\(.decimals)|\(.label)|\(.source)"' "$FACTORS_FILE" \
+  | while IFS='|' read -r divisor decimals label source; do
+      count="$(echo "$ALL_CO2" | awk -v d="$divisor" -v p="$decimals" '{ fmt = "%." p "f"; printf fmt, $1 / d }')"
+      printf '%s|%s|%s\n' "$count" "$label" "$source"
+    done)"
+# A malformed or hand-edited factors.json must fail loudly, not print an empty section
+if [ -z "$EQUIV_ROWS" ]; then
+  echo "Error: could not read the '$EQUIV_SET' equivalence set from $FACTORS_FILE" >&2
+  exit 1
+fi
 
 # --- Top 5 sessions by CO2 ---
 TOP5="$(sqlite3 -separator '|' "$DB_PATH" \
@@ -80,10 +130,10 @@ echo "  Sessions  : ${ALL_SESSIONS}"
 echo "  Cost      : \$${ALL_COST}"
 echo ""
 echo "--- Equivalences (all-time) ---"
-echo "  ${KM_CAR} km en voiture        (142 gCO2e/km, ADEME 2025)"
-echo "  ${GEMINI} prompts Gemini       (0.03 gCO2e, Google 2025)"
-echo "  ${KM_TGV} km en TGV             (3.5 gCO2e/km, SNCF 2024)"
-echo "  ${STEAKS} steak(s) de boeuf    (4200 gCO2e/steak 150g, ADEME Impact CO2 2025)"
+while IFS='|' read -r count label source; do
+  [ -z "$count" ] && continue
+  printf "  %10s %-20s (%s)\n" "$count" "$label" "$source"
+done <<< "$EQUIV_ROWS"
 echo ""
 echo "--- Top 5 sessions by CO2 ---"
 echo "Date        | Project                 | CO2 (g) | Model                          | Cost"
