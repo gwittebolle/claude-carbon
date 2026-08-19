@@ -1,6 +1,6 @@
 {
   "name": "claude-carbon",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Track the carbon footprint of your Claude Code sessions",
   "author": {
     "name": "Gaetan Wittebolle",
@@ -9,7 +9,12 @@
   "homepage": "https://github.com/gwittebolle/claude-carbon",
   "repository": "https://github.com/gwittebolle/claude-carbon",
   "license": "MIT",
-  "keywords": ["carbon-footprint", "sustainability", "claude-code", "green-it"],
+  "keywords": [
+    "carbon-footprint",
+    "sustainability",
+    "claude-code",
+    "green-it"
+  ],
   "hooks": "./hooks/hooks.json",
   "skills": "./skills/",
   "statusLine": {

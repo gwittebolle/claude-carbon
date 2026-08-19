@@ -1,6 +1,6 @@
 {
   "name": "claude-carbon",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Track the carbon footprint of your Claude Code sessions",
   "bin": {
     "claude-carbon": "bin/claude-carbon.js"
