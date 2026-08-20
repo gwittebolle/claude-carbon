@@ -92,13 +92,16 @@ if [ "$N_SESSIONS" = "0" ]; then
   exit 0
 fi
 
+# The DB folds cache write into input_tokens (schema v2), so pure input is
+# input_tokens - cache_creation_tokens; legacy v1 rows default the cache
+# columns to 0 and show their whole input in the Input column.
 MODEL_ROWS=""
-while IFS="$(printf '\t')" read -r MODEL M_N M_TOKENS M_CR M_CO2 M_COST; do
+while IFS="$(printf '\t')" read -r MODEL M_N M_IN M_CW M_CR M_OUT M_CO2 M_COST; do
   [ -n "$MODEL" ] || continue
-  MODEL_ROWS="${MODEL_ROWS}| \`${MODEL}\` | ${M_N} | $(format_tokens "$M_TOKENS") | $(format_tokens "$M_CR") | $(format_co2 "$M_CO2") | \$$(echo "$M_COST" | awk '{printf "%.2f", $1}') |
+  MODEL_ROWS="${MODEL_ROWS}| \`${MODEL}\` | ${M_N} | $(format_tokens "$M_IN") | $(format_tokens "$M_CW") | $(format_tokens "$M_CR") | $(format_tokens "$M_OUT") | $(format_co2 "$M_CO2") | \$$(echo "$M_COST" | awk '{printf "%.2f", $1}') |
 "
 done <<EOF
-$(sqlite3 -separator "$(printf '\t')" "$DB_PATH" "SELECT model, COUNT(*), COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0), COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(co2_grams), 0), COALESCE(SUM(cost_usd), 0) FROM sessions ${WHERE} GROUP BY model ORDER BY SUM(co2_grams) DESC;")
+$(sqlite3 -separator "$(printf '\t')" "$DB_PATH" "SELECT model, COUNT(*), COALESCE(SUM(input_tokens), 0) - COALESCE(SUM(cache_creation_tokens), 0), COALESCE(SUM(cache_creation_tokens), 0), COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(co2_grams), 0), COALESCE(SUM(cost_usd), 0) FROM sessions ${WHERE} GROUP BY model ORDER BY SUM(co2_grams) DESC;")
 EOF
 
 # ── Format ──────────────────────────────────────────────────
@@ -135,10 +138,10 @@ BODY="${MARKER}
 ${EQUIV_LINE}
 
 <details>
-<summary>Detail per model</summary>
+<summary>Token detail per model</summary>
 
-| Model | Sessions | Tokens | Cache reads | CO2e | Cost |
-|---|---|---|---|---|---|
+| Model | Sessions | Input | Cache write | Cache read | Output | CO2e | Cost |
+|---|---|---|---|---|---|---|---|
 ${MODEL_ROWS}
 </details>
 

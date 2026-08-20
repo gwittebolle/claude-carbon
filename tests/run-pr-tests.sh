@@ -88,12 +88,12 @@ DB2="${TMPROOT}/report.db"
 sqlite3 "$DB2" "$SCHEMA"
 # Two sessions on the branch (fable + sonnet), one on another branch, one on
 # another project, one excluded, one legacy row without a branch.
-sqlite3 "$DB2" "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cost_usd, co2_grams, started_at, methodology_version, git_branch) VALUES
-  ('s1', 'myproj', 'claude-fable-5',  100000, 20000, 1000000, 2.50, 100.0, '2026-08-01T00:00:00Z', 2, 'feat/x'),
-  ('s2', 'myproj', 'claude-sonnet-4-5', 50000, 10000,  500000, 0.50,  24.4, '2026-08-02T00:00:00Z', 2, 'feat/x'),
-  ('s3', 'myproj', 'claude-fable-5',  999999, 99999, 9999999, 9.99, 999.0, '2026-08-03T00:00:00Z', 2, 'other-branch'),
-  ('s4', 'otherproj', 'claude-fable-5', 88888, 8888,  888888, 8.88, 888.0, '2026-08-04T00:00:00Z', 2, 'feat/x'),
-  ('s6', 'myproj', 'claude-fable-5',  77777,  7777,  777777, 0.77,  77.0, '2026-08-06T00:00:00Z', 2, '');"
+sqlite3 "$DB2" "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd, co2_grams, started_at, methodology_version, git_branch) VALUES
+  ('s1', 'myproj', 'claude-fable-5',  100000, 20000, 1000000, 40000, 2.50, 100.0, '2026-08-01T00:00:00Z', 2, 'feat/x'),
+  ('s2', 'myproj', 'claude-sonnet-4-5', 50000, 10000,  500000, 0, 0.50,  24.4, '2026-08-02T00:00:00Z', 2, 'feat/x'),
+  ('s3', 'myproj', 'claude-fable-5',  999999, 99999, 9999999, 0, 9.99, 999.0, '2026-08-03T00:00:00Z', 2, 'other-branch'),
+  ('s4', 'otherproj', 'claude-fable-5', 88888, 8888,  888888, 0, 8.88, 888.0, '2026-08-04T00:00:00Z', 2, 'feat/x'),
+  ('s6', 'myproj', 'claude-fable-5',  77777,  7777,  777777, 0, 0.77,  77.0, '2026-08-06T00:00:00Z', 2, '');"
 sqlite3 "$DB2" "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, started_at, excluded, git_branch) VALUES
   ('s5', 'myproj', 'glm-4.7-flash', 55555, 5555, 0, 0, '2026-08-05T00:00:00Z', 1, 'feat/x');"
 
@@ -110,7 +110,8 @@ check "dry-run: cost total"          "yes" "$(echo "$OUT" | grep -q '\$3.00' && 
 check "dry-run: tokens total (180k)" "yes" "$(echo "$OUT" | grep -q '| 180k |' && echo yes || echo no)"
 check "dry-run: cache reads (1.5M)"  "yes" "$(echo "$OUT" | grep -q '| 1.5M |' && echo yes || echo no)"
 check "dry-run: 2 sessions"          "yes" "$(echo "$OUT" | grep -q '| 2 |' && echo yes || echo no)"
-check "dry-run: per-model detail"    "yes" "$(echo "$OUT" | grep -q '`claude-fable-5` | 1 |' && echo yes || echo no)"
+# s1 folded input is 100k with 40k of cache write inside: pure input 60k.
+check "dry-run: per-model detail"    "yes" "$(echo "$OUT" | grep -qF '`claude-fable-5` | 1 | 60k | 40k | 1.0M | 20k |' && echo yes || echo no)"
 # No backslash before the backticks: GNU grep reads \` as a buffer anchor
 # (BSD grep as a literal), so the escaped form passes on macOS and fails on CI.
 check "dry-run: branch named"        "yes" "$(echo "$OUT" | grep -qF 'sessions on `feat/x`' && echo yes || echo no)"
