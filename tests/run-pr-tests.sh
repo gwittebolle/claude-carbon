@@ -116,6 +116,7 @@ check "dry-run: per-model detail"    "yes" "$(echo "$OUT" | grep -qF '`claude-fa
 # (BSD grep as a literal), so the escaped form passes on macOS and fails on CI.
 check "dry-run: branch named"        "yes" "$(echo "$OUT" | grep -qF 'sessions on `feat/x`' && echo yes || echo no)"
 check "dry-run: Estimated + turn off" "yes" "$(echo "$OUT" | grep -q 'Estimated by \[claude-carbon\]' && echo "$OUT" | grep -q '\[turn off\]' && echo yes || echo no)"
+check "dry-run: cost footnote"       "yes" "$(echo "$OUT" | grep -qF 'Cost*' && echo "$OUT" | grep -qF '*API list price of the equivalent usage' && echo yes || echo no)"
 check "dry-run: world car factor"    "yes" "$(echo "$OUT" | grep -q '200 g/km, world avg' && echo yes || echo no)"
 check "dry-run: no em-dash"          "0"   "$(echo "$OUT" | grep -c '—')"
 

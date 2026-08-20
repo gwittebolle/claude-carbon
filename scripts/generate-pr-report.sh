@@ -131,7 +131,7 @@ fi
 BODY="${MARKER}
 **Claude Code carbon report** · developing this PR
 
-| CO2e | Cost (API list) | Tokens (in + cache write + out) | Cache reads | Sessions |
+| CO2e | Cost* | Tokens (in + cache write + out) | Cache reads | Sessions |
 |---|---|---|---|---|
 | **${CO2_DISPLAY}** | ${COST_DISPLAY} | ${TOKENS_DISPLAY} | ${CACHE_READ_DISPLAY} | ${N_SESSIONS} |
 
@@ -144,6 +144,8 @@ ${EQUIV_LINE}
 |---|---|---|---|---|---|---|---|
 ${MODEL_ROWS}
 </details>
+
+<sub>*API list price of the equivalent usage; a subscription bills its flat fee instead.</sub>
 
 <sub>Local Claude Code sessions on \`${BRANCH}\` · Estimated by [claude-carbon](${REPO_URL}) · [methodology](${REPO_URL}/blob/main/METHODOLOGY.md) · [turn off](${REPO_URL}#pr-dev-footprint-carbon-pr) · team view · [tokenclimate.com](https://tokenclimate.com/en?ref=carbon-pr)</sub>"
 
