@@ -8,9 +8,8 @@ branding:
 inputs:
   execution_file:
     description: >-
-      Path to the Claude Code execution log JSON. Pass
-      ${{ steps.<claude-step-id>.outputs.execution_file }} from
-      anthropics/claude-code-action; defaults to
+      Path to the Claude Code execution log JSON. Pass the execution_file
+      output of your anthropics/claude-code-action step; defaults to
       $RUNNER_TEMP/claude-execution-output.json (same job only).
     required: false
     default: ""
