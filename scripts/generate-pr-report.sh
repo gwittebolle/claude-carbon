@@ -131,7 +131,7 @@ fi
 BODY="${MARKER}
 **Claude Code carbon report** · developing this PR
 
-| CO2e | Cost (API list) | Tokens | Cache reads | Sessions |
+| CO2e | Cost (API list) | Tokens (in + cache write + out) | Cache reads | Sessions |
 |---|---|---|---|---|
 | **${CO2_DISPLAY}** | ${COST_DISPLAY} | ${TOKENS_DISPLAY} | ${CACHE_READ_DISPLAY} | ${N_SESSIONS} |
 
