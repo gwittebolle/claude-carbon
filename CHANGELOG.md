@@ -10,9 +10,9 @@ The number reviewers rarely see is what the PR cost to develop. The Stop hook (a
 
 New `carbon-badge` skill and `scripts/generate-badge.sh`: prints a ready-to-paste markdown snippet (plus the raw URL) for a static shields.io badge with the all-time total, clickable back to this repo. Same aggregate as the report's Totals line (stored `co2_grams`, excluded rows out), never re-derived from token columns. `format_co2` moved from `generate-report.sh` into a shared `scripts/format-lib.sh` and gained a tonne tier: users above 1,000 kg now see "1.2 t" on cards and the Totals line where "1234.0 kg" appeared before. Covered by `tests/run-badge-tests.sh` (unit tiers, shields escaping, FR decimal comma, exclusion, missing DB).
 
-### feat: GitHub Action "Carbon Report for Claude Code"
+### chore: CI-run GitHub Action parked on feat/carbon-ci-action
 
-New root `action.yml` (composite) for teams running `anthropics/claude-code-action` in CI: parses the run's `execution_file`, computes CO2e/cost with the plugin's exact formulas (new `scripts/compute-lib.sh`, replayed against the golden vectors in CI), writes the job summary and step outputs, and upserts one sticky PR comment (marker `<!-- claude-carbon-report -->`). Disableable at three levels (`comment: "false"`, a `no-carbon-report` label, plain removal) and never fails the caller's CI: every malformed input exits 0 with an honest `status` output, and an all-zero aggregate over real assistant messages reports `error` instead of a plausible zero comment. Dogfooded on this repo's PRs against the committed fixture (`comment: false` + output assertions).
+A composite action measuring `anthropics/claude-code-action` runs was built and tested (sticky PR comment, never-fail contract, golden-vector parity), then pulled from this release: nobody has real agentic CI runs to measure yet, this repo included, and an unused README promise ages badly. The complete implementation lives on the `feat/carbon-ci-action` branch, ready to rebase when real demand shows up.
 
 ### chore: release.sh checks npm auth before writing anything
 

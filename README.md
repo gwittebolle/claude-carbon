@@ -181,37 +181,6 @@ How the sessions are attributed: the Stop hook stores each session's git branch 
 
 Turning it off is the default: nothing is posted unless you run it. `--dry-run` previews the comment, `--pr <number>` targets a specific PR, and deleting the comment on GitHub is the full cleanup.
 
-### Carbon report on your CI runs (GitHub Action)
-
-If your team runs Claude Code in CI with [anthropics/claude-code-action](https://github.com/anthropics/claude-code-action), this repo also ships a composite action that posts one sticky comment per PR with the run's footprint (CO2e, cost, tokens, one equivalence), computed with the same methodology and golden vectors as the plugin. You stay in control: it is disableable at three levels (below), and it never fails your build, even when it breaks internally.
-
-```yaml
-permissions:
-  contents: read
-  pull-requests: write
-
-steps:
-  - id: claude
-    uses: anthropics/claude-code-action@v1
-    # ... your existing configuration
-  - uses: gwittebolle/claude-carbon@v1.4.0
-    if: always() # the execution log is written on failed runs too
-    with:
-      execution_file: ${{ steps.claude.outputs.execution_file }}
-```
-
-The carbon step must run in the same job as the claude step (the execution log lives in that job's `RUNNER_TEMP`). The comment is updated in place on every push, never stacked. Tested against `claude-code-action@v1`.
-
-**Turning it off** - three levels, all first-class:
-
-1. `comment: "false"` - computes silently: the figures land in the job summary and in the step outputs (`co2_grams`, `cost_usd`, `total_tokens`, `cache_read_tokens`, `comment_markdown`, `status`), no PR comment.
-2. A `no-carbon-report` label on a PR (name configurable via `opt_out_label`) - that PR gets no comment, the job summary is still written.
-3. Removal: delete the step. Nothing else to clean up - one comment, one job summary, no state, and CI never blocks, present or half-removed.
-
-Other inputs: `locale` (`world` default, `fr` or `us`) picks the equivalence factor set; `github_token` defaults to the workflow token. On fork PRs the default token is read-only, so the comment cannot be posted: the action degrades to the job summary with a warning annotation.
-
-The comment's tone is a contract: figures, one equivalence, an "Estimated" label linking the methodology. No score, no threshold, no judgement - the number informs, the reader decides.
-
 ## How it works
 
 ![Data flow](docs/data-flow.png)

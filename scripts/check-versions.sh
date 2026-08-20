@@ -26,10 +26,9 @@ PLUGIN=.claude-plugin/plugin.json
 MARKET=.claude-plugin/marketplace.json
 MARKET_PATH='.plugins[] | select(.name == "claude-carbon") | .version'
 
-# Paths whose contents execute on an installed machine — action.yml included, since
-# GitHub Action consumers run it at a tag. Everything else (README, CHANGELOG,
+# Paths whose contents execute on an installed machine. Everything else (README, CHANGELOG,
 # stats, .github, tests) can change freely without anyone needing to update.
-RUNTIME_PATHS=(scripts hooks skills data install.sh bin action.yml)
+RUNTIME_PATHS=(scripts hooks skills data install.sh bin)
 
 command -v jq >/dev/null 2>&1 || { echo "ERROR: jq is required." >&2; exit 1; }
 

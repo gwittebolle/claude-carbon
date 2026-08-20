@@ -45,18 +45,6 @@ jobs:
       - name: Assert badge URL and snippet against fixture databases
         run: bash tests/run-badge-tests.sh
 
-  action-report:
-    name: github action compute path
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-
-      # Replays the golden vectors through compute-lib.sh, runs the entrypoint on
-      # the committed fixture, and asserts the never-fail contract on malformed inputs.
-      - name: Assert the action's compute path and never-fail contract
-        run: bash tests/run-action-tests.sh
-
   pr-report:
     name: carbon-pr pipeline
     runs-on: ubuntu-latest
