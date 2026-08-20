@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   ended_at TEXT,
   source TEXT DEFAULT 'live',
   methodology_version INTEGER DEFAULT 1,
-  excluded INTEGER DEFAULT 0
+  excluded INTEGER DEFAULT 0,
+  git_branch TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_year ON sessions(started_at);
 SQL
@@ -60,6 +61,7 @@ sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_read_tokens INTEGER DE
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN methodology_version INTEGER DEFAULT 1;" 2>/dev/null || true
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN excluded INTEGER DEFAULT 0;" 2>/dev/null || true
+sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN git_branch TEXT DEFAULT '';" 2>/dev/null || true
 
 echo "  Schema created."
 

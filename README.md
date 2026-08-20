@@ -168,7 +168,20 @@ claude-carbon measures one developer's sessions, locally. If the question comes 
 
 The only places the OSS points there are a one-line footer in `/carbon-report` and a small credit on the `/carbon-card` PNGs. No status-line promo, no email capture: nothing leaves your machine.
 
-### Carbon report on your PRs (GitHub Action)
+### PR dev footprint (/carbon-pr)
+
+The number reviewers rarely see is what the PR cost to develop: your local Claude Code sessions while building the branch. `/carbon-pr` (or `scripts/generate-pr-report.sh`) sums the recorded sessions of the current branch and posts one sticky comment on its open PR, through your own `gh` auth. Run it after your push; running it again updates the same comment in place.
+
+```
+**Claude Code carbon report** · developing this PR
+124 g CO2e · $3.00 · 180k tokens · 1.5M cache reads · 2 sessions
+```
+
+How the sessions are attributed: the Stop hook stores each session's git branch (read from the transcript), and the report selects `project + branch`. Sessions recorded before this column existed carry no branch; `scripts/backfill.sh` repairs them while their transcripts are still on disk (about 30 days). Sessions started from a subdirectory of the repo are stored under the subdirectory's name and stay out of the sum. A session that ends on another branch than it started is attributed to where it finished.
+
+Turning it off is the default: nothing is posted unless you run it. `--dry-run` previews the comment, `--pr <number>` targets a specific PR, and deleting the comment on GitHub is the full cleanup.
+
+### Carbon report on your CI runs (GitHub Action)
 
 If your team runs Claude Code in CI with [anthropics/claude-code-action](https://github.com/anthropics/claude-code-action), this repo also ships a composite action that posts one sticky comment per PR with the run's footprint (CO2e, cost, tokens, one equivalence), computed with the same methodology and golden vectors as the plugin. You stay in control: it is disableable at three levels (below), and it never fails your build, even when it breaks internally.
 
@@ -232,6 +245,7 @@ bash scripts/recompute.sh
 | `/carbon-report` | Text report with totals, equivalences, top sessions |
 | `/carbon-card`   | Generate shareable PNG report cards                 |
 | `/carbon-badge`  | Shields.io badge of your total footprint for your READMEs |
+| `/carbon-pr`     | Post the dev footprint of the current branch on its PR |
 | `/carbon-update` | Update to the latest version and re-price history   |
 
 <details>
@@ -247,6 +261,7 @@ bash scripts/recompute.sh
 | `recompute.sh`       | Re-derive cost/CO2 from stored tokens after a price/factor change (no transcripts needed) |
 | `generate-report.sh` | Export PNG report cards (CLI, with `--since` / `--until` / `--all`)                                   |
 | `generate-badge.sh`  | Print the shields.io badge markdown + URL (CLI)                                           |
+| `generate-pr-report.sh` | Post the branch's dev footprint on its PR (CLI, `--dry-run` / `--pr`)                  |
 
 Note: backfill now derives project names from the transcript's `cwd` (matching the live hook). Sessions backfilled before this change keep their old, possibly truncated names; delete those rows and re-run `backfill.sh` to normalize them.
 

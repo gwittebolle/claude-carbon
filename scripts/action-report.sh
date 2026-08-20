@@ -172,7 +172,7 @@ if [ -n "${EQUIV_DIVISOR:-}" ]; then
 fi
 
 # ── 5. Build the report body ────────────────────────────────
-# Tone contract (see README "Carbon report on your PRs"): figures only. No
+# Tone contract (see README "Carbon report on your CI runs"): figures only. No
 # score, no threshold, no alarm emoji, no judgement — the number informs, the
 # reader decides. "Estimated", the methodology link and the "turn off" link
 # are invariants: the claim stays honest and the reader keeps the off switch.
@@ -194,7 +194,7 @@ ${EQUIV_LINE}
 ${MODEL_ROWS}
 </details>
 
-<sub>Estimated by [claude-carbon](${REPO_URL}) · [methodology](${REPO_URL}/blob/main/METHODOLOGY.md) · [turn off](${REPO_URL}#carbon-report-on-your-prs-github-action) · team view · [tokenclimate.com](https://tokenclimate.com/en?ref=github-action)</sub>"
+<sub>Estimated by [claude-carbon](${REPO_URL}) · [methodology](${REPO_URL}/blob/main/METHODOLOGY.md) · [turn off](${REPO_URL}#carbon-report-on-your-ci-runs-github-action) · team view · [tokenclimate.com](https://tokenclimate.com/en?ref=github-action)</sub>"
 
 SUMMARY_BODY="$BODY"
 

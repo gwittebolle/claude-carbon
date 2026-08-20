@@ -57,6 +57,18 @@ jobs:
       - name: Assert the action's compute path and never-fail contract
         run: bash tests/run-action-tests.sh
 
+  pr-report:
+    name: carbon-pr pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fixture transcript through the Stop hook (git_branch capture), then the
+      # dry-run report against fixture DBs. No network, no gh.
+      - name: Assert branch capture and the dev PR report
+        run: bash tests/run-pr-tests.sh
+
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest

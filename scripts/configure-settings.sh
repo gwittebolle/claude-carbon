@@ -132,7 +132,7 @@ fi
 # /carbon-* slash commands, symlinked so they follow the clone on update.
 COMMANDS_DIR="${CONFIG_DIR}/commands"
 mkdir -p "$COMMANDS_DIR"
-for SKILL_NAME in carbon-report carbon-card carbon-update carbon-badge; do
+for SKILL_NAME in carbon-report carbon-card carbon-update carbon-badge carbon-pr; do
   SKILL_LNK="${COMMANDS_DIR}/${SKILL_NAME}.md"
   if [ -L "$SKILL_LNK" ] || [ -f "$SKILL_LNK" ]; then
     echo "  /${SKILL_NAME}: already installed (skipped)"

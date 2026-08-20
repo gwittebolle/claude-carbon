@@ -1,6 +1,10 @@
 # Changelog
 
-## 2026-08-19
+## 2026-08-20
+
+### feat: /carbon-pr, the dev footprint of a branch posted on its PR
+
+The number reviewers rarely see is what the PR cost to develop. The Stop hook (and backfill) now store each session's git branch in a new `git_branch` column (read from the transcript's `gitBranch` envelope field, last non-empty value; idempotent migration like the previous columns), and backfill gains a repair pass that fills the branch on already-captured rows while their transcript survives. New `scripts/generate-pr-report.sh` + `carbon-pr` skill: sums the current branch's sessions (project + branch, excluded rows out), renders the same comment contract as the CI action (figures, one equivalence, collapsed per-model detail, Estimated / turn off footer, no em-dash), and upserts one sticky comment on the branch's PR through the developer's own `gh` auth. Opt-in by nature: nothing is posted unless the developer runs it. Covered by `tests/run-pr-tests.sh` (branch capture through the real hook, legacy DB migration, branch-only attribution, guards).
 
 ### feat: /carbon-badge, a shields.io badge of your measured footprint
 
