@@ -8,10 +8,6 @@
 
 Track the carbon footprint of your Claude Code sessions.
 
-[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-972.0%20kg%20CO2e-2f6f4f)](https://github.com/gwittebolle/claude-carbon)
-
-<sub>The author's own footprint, not the project's: 1,025 Claude Code sessions measured by this tool between 15 January 2026 and 20 August 2026. Generated with `/carbon-badge` (see [Badge](#badge)), static by design, so it reads as of its last refresh.</sub>
-
 ![Live CO2 in the Claude Code status line](docs/demo.gif)
 
 **1. Install (or update):**
@@ -244,13 +240,15 @@ Note: backfill now derives project names from the transcript's `cwd` (matching t
 
 `/carbon-badge` prints a ready-to-paste shields.io badge with your measured all-time footprint, clickable back to this repo:
 
-[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-12.4%20kg%20CO2e-2f6f4f)](https://github.com/gwittebolle/claude-carbon)
+[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-972.0%20kg%20CO2e-2f6f4f)](https://github.com/gwittebolle/claude-carbon)
+
+<sub>That badge is live, not a mockup: the author's own total, 1,025 sessions measured between 15 January 2026 and 20 August 2026. It is one developer's footprint, not the project's.</sub>
 
 ```markdown
-[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-12.4%20kg%20CO2e-2f6f4f)](https://github.com/gwittebolle/claude-carbon)
+[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-972.0%20kg%20CO2e-2f6f4f)](https://github.com/gwittebolle/claude-carbon)
 ```
 
-The badge is a static image built from your local database, so the number is measured, not estimated on the fly. Re-run `/carbon-badge` whenever you want to refresh it. The badge at the top of this README is the real thing: the author's own total, refreshed the same way.
+The badge is a static image built from your local database, so the number is measured, not estimated on the fly. Re-run `/carbon-badge` whenever you want to refresh it.
 
 Numbers follow the locale the report uses (`fr` prints `12,4 kg`, `us` and the world default print `12.4 kg`); `CLAUDE_CARBON_LOCALE` forces a set.
 
