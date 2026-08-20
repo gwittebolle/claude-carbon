@@ -127,14 +127,8 @@ TOP_MODEL="$(sqlite3 "$DB_PATH" "SELECT model FROM sessions ${WHERE} GROUP BY mo
 TOTAL_TOKENS_RAW="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) FROM sessions ${WHERE};")"
 
 # ── Format values ───────────────────────────────────────────
-format_co2() {
-  local grams="$1"
-  if (( $(echo "$grams >= 1000" | LC_ALL=C bc -l) )); then
-    echo "$(echo "$grams" | LC_ALL=C awk '{printf "%.1f", $1/1000}') kg"
-  else
-    echo "$(echo "$grams" | LC_ALL=C awk '{printf "%.0f", $1}') g"
-  fi
-}
+# shellcheck source=scripts/format-lib.sh
+. "$SCRIPT_DIR/format-lib.sh"
 
 read -r TOTAL_CO2_VALUE TOTAL_CO2_UNIT <<< "$(format_co2 "$TOTAL_CO2_RAW")"
 TOTAL_COST="$(echo "$TOTAL_COST_RAW" | LC_ALL=C awk '{printf "%.0f", $1}')"

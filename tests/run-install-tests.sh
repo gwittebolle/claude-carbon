@@ -66,7 +66,7 @@ check "cold start: Stop hook"              "$STOP"       "$(hook_commands "$S" S
 check "cold start: SessionStart hook"      "$RESCAN"     "$(hook_commands "$S" SessionStart)"
 
 MISSING=""
-for c in carbon-report carbon-card carbon-update; do
+for c in carbon-report carbon-card carbon-update carbon-badge; do
   [ -L "${CFG}/commands/${c}.md" ] || MISSING="${MISSING}${c} "
 done
 check "cold start: /carbon-* commands linked" "" "$MISSING"
