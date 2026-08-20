@@ -105,8 +105,16 @@ if ! carbon_load_rates "$FACTORS_FILE" "$PRICES_FILE"; then
 fi
 
 # ── 3. Compute totals ───────────────────────────────────────
+format_tokens() {
+  echo "$1" | awk '{
+    if ($1 >= 1000000)   printf "%.1fM", $1 / 1000000
+    else if ($1 >= 1000) printf "%.0fk", $1 / 1000
+    else                 printf "%d", $1
+  }'
+}
+
 TOTAL_CO2="0"; TOTAL_COST="0"; TOTAL_TOKENS=0; TOTAL_CACHE_READ=0
-MODEL_ROWS="" # markdown rows for the per-model summary table
+MODEL_ROWS="" # markdown rows for the collapsed per-model detail table
 
 while IFS="$(printf '\t')" read -r MODEL IN CW CR OUT; do
   [ -n "$MODEL" ] || continue
@@ -119,11 +127,12 @@ EOF
   # reported separately (they dominate CI runs and would drown the figure).
   TOTAL_TOKENS="$(echo "$TOTAL_TOKENS $IN $CW $OUT" | awk '{printf "%d", $1 + $2 + $3 + $4}')"
   TOTAL_CACHE_READ="$(echo "$TOTAL_CACHE_READ $CR" | awk '{printf "%d", $1 + $2}')"
+  TOKEN_CELLS="$(format_tokens "$IN") | $(format_tokens "$CW") | $(format_tokens "$CR") | $(format_tokens "$OUT")"
   if carbon_is_excluded_model "$MODEL"; then
-    MODEL_ROWS="${MODEL_ROWS}| \`${MODEL}\` (excluded) | - | - |
+    MODEL_ROWS="${MODEL_ROWS}| \`${MODEL}\` (excluded) | ${TOKEN_CELLS} | - | - |
 "
   else
-    MODEL_ROWS="${MODEL_ROWS}| \`${MODEL}\` | $(format_co2 "$CO2") | \$$(echo "$COST" | awk '{printf "%.2f", $1}') |
+    MODEL_ROWS="${MODEL_ROWS}| \`${MODEL}\` | ${TOKEN_CELLS} | $(format_co2 "$CO2") | \$$(echo "$COST" | awk '{printf "%.2f", $1}') |
 "
   fi
 done <<EOF
@@ -138,14 +147,6 @@ if [ "$(echo "$TOTAL_CO2 $TOTAL_COST $TOTAL_TOKENS $TOTAL_CACHE_READ" | awk '{pr
 fi
 
 # ── 4. Format the figures ───────────────────────────────────
-format_tokens() {
-  echo "$1" | awk '{
-    if ($1 >= 1000000)   printf "%.1fM", $1 / 1000000
-    else if ($1 >= 1000) printf "%.0fk", $1 / 1000
-    else                 printf "%d", $1
-  }'
-}
-
 CO2_DISPLAY="$(format_co2 "$TOTAL_CO2")"
 COST_DISPLAY="\$$(echo "$TOTAL_COST" | awk '{printf "%.2f", $1}')"
 TOKENS_DISPLAY="$(format_tokens "$TOTAL_TOKENS")"
@@ -173,9 +174,11 @@ fi
 # ── 5. Build the report body ────────────────────────────────
 # Tone contract (see README "Carbon report on your PRs"): figures only. No
 # score, no threshold, no alarm emoji, no judgement — the number informs, the
-# reader decides. "Estimated" and the methodology link are invariants.
+# reader decides. "Estimated", the methodology link and the "turn off" link
+# are invariants: the claim stays honest and the reader keeps the off switch.
+# No em-dash anywhere in the rendered text (house writing rule).
 BODY="${MARKER}
-**Claude Code carbon report** — this run
+**Claude Code carbon report** · this run
 
 | CO2e | Cost (API list) | Tokens | Cache reads |
 |---|---|---|---|
@@ -183,17 +186,17 @@ BODY="${MARKER}
 
 ${EQUIV_LINE}
 
-<sub>Estimated, [methodology](${REPO_URL}/blob/main/METHODOLOGY.md) · team view · [tokenclimate.com](https://tokenclimate.com/en?ref=github-action)</sub>"
-
-SUMMARY_BODY="${BODY}
-
 <details>
-<summary>Per model</summary>
+<summary>Token detail per model</summary>
 
-| Model | CO2e | Cost |
-|---|---|---|
+| Model | Input | Cache write | Cache read | Output | CO2e | Cost |
+|---|---|---|---|---|---|---|
 ${MODEL_ROWS}
-</details>"
+</details>
+
+<sub>Estimated by [claude-carbon](${REPO_URL}) · [methodology](${REPO_URL}/blob/main/METHODOLOGY.md) · [turn off](${REPO_URL}#carbon-report-on-your-prs-github-action) · team view · [tokenclimate.com](https://tokenclimate.com/en?ref=github-action)</sub>"
+
+SUMMARY_BODY="$BODY"
 
 # ── 6. Outputs + job summary (always, even with comment: false) ──
 set_output "co2_grams" "$TOTAL_CO2"

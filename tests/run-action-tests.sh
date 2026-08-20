@@ -142,8 +142,15 @@ else
 fi
 check "fixture: comment carries the marker" "yes" \
   "$(grep -q '<!-- claude-carbon-report -->' "$OUT_FILE" && echo yes || echo no)"
-check "fixture: comment says Estimated + methodology" "yes" \
-  "$(grep -q 'Estimated, \[methodology\]' "$OUT_FILE" && echo yes || echo no)"
+check "fixture: comment says Estimated by claude-carbon" "yes" \
+  "$(grep -q 'Estimated by \[claude-carbon\]' "$OUT_FILE" && echo yes || echo no)"
+check "fixture: comment links methodology and turn off" "yes" \
+  "$(grep -q '\[methodology\]' "$OUT_FILE" && grep -q '\[turn off\]' "$OUT_FILE" && echo yes || echo no)"
+check "fixture: comment carries the token detail table" "yes" \
+  "$(grep -q '| Model | Input | Cache write | Cache read | Output | CO2e | Cost |' "$OUT_FILE" && echo yes || echo no)"
+# House writing rule: no em-dash in anything the action renders.
+check "fixture: no em-dash in the rendered report" "0" \
+  "$(grep -c '—' "$OUT_FILE" "$SUM_FILE" | awk -F: '{s += $NF} END {print s}')"
 check "fixture: summary written" "yes" \
   "$(grep -q 'Claude Code carbon report' "$SUM_FILE" && echo yes || echo no)"
 check "fixture: summary lists the excluded model" "yes" \

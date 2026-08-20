@@ -2,7 +2,7 @@
 
 ## 2026-08-19
 
-### feat: /carbon-badge — shields.io badge of your measured footprint
+### feat: /carbon-badge, a shields.io badge of your measured footprint
 
 New `carbon-badge` skill and `scripts/generate-badge.sh`: prints a ready-to-paste markdown snippet (plus the raw URL) for a static shields.io badge with the all-time total, clickable back to this repo. Same aggregate as the report's Totals line (stored `co2_grams`, excluded rows out), never re-derived from token columns. `format_co2` moved from `generate-report.sh` into a shared `scripts/format-lib.sh` and gained a tonne tier: users above 1,000 kg now see "1.2 t" on cards and the Totals line where "1234.0 kg" appeared before. Covered by `tests/run-badge-tests.sh` (unit tiers, shields escaping, FR decimal comma, exclusion, missing DB).
 
