@@ -124,7 +124,7 @@ echo ""
 
 # What is actually shipping: runtime changes are what the notice is meant to announce.
 if [ -n "$LAST_TAG" ]; then
-  RUNTIME_CHANGED="$(git diff --name-only "${LAST_TAG}..HEAD" -- scripts hooks skills data install.sh bin 2>/dev/null || true)"
+  RUNTIME_CHANGED="$(git diff --name-only "${LAST_TAG}..HEAD" -- scripts hooks skills data install.sh bin action.yml 2>/dev/null || true)"
   if [ -n "$RUNTIME_CHANGED" ]; then
     echo "Runtime files changed since ${LAST_TAG}:"
     echo "$RUNTIME_CHANGED" | sed 's/^/  /'

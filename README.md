@@ -168,6 +168,37 @@ claude-carbon measures one developer's sessions, locally. If the question comes 
 
 The only places the OSS points there are a one-line footer in `/carbon-report` and a small credit on the `/carbon-card` PNGs. No status-line promo, no email capture: nothing leaves your machine.
 
+### Carbon report on your PRs (GitHub Action)
+
+If your team runs Claude Code in CI with [anthropics/claude-code-action](https://github.com/anthropics/claude-code-action), this repo also ships a composite action that posts one sticky comment per PR with the run's footprint (CO2e, cost, tokens, one equivalence), computed with the same methodology and golden vectors as the plugin. You stay in control: it is disableable at three levels (below), and it never fails your build, even when it breaks internally.
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+
+steps:
+  - id: claude
+    uses: anthropics/claude-code-action@v1
+    # ... your existing configuration
+  - uses: gwittebolle/claude-carbon@v1.4.0
+    if: always() # the execution log is written on failed runs too
+    with:
+      execution_file: ${{ steps.claude.outputs.execution_file }}
+```
+
+The carbon step must run in the same job as the claude step (the execution log lives in that job's `RUNNER_TEMP`). The comment is updated in place on every push, never stacked. Tested against `claude-code-action@v1`.
+
+**Turning it off** - three levels, all first-class:
+
+1. `comment: "false"` - computes silently: the figures land in the job summary and in the step outputs (`co2_grams`, `cost_usd`, `total_tokens`, `cache_read_tokens`, `comment_markdown`, `status`), no PR comment.
+2. A `no-carbon-report` label on a PR (name configurable via `opt_out_label`) - that PR gets no comment, the job summary is still written.
+3. Removal: delete the step. Nothing else to clean up - one comment, one job summary, no state, and CI never blocks, present or half-removed.
+
+Other inputs: `locale` (`world` default, `fr` or `us`) picks the equivalence factor set; `github_token` defaults to the workflow token. On fork PRs the default token is read-only, so the comment cannot be posted: the action degrades to the job summary with a warning annotation.
+
+The comment's tone is a contract: figures, one equivalence, an "Estimated" label linking the methodology. No score, no threshold, no judgement - the number informs, the reader decides.
+
 ## How it works
 
 ![Data flow](docs/data-flow.png)
@@ -200,6 +231,7 @@ bash scripts/recompute.sh
 | ---------------- | --------------------------------------------------- |
 | `/carbon-report` | Text report with totals, equivalences, top sessions |
 | `/carbon-card`   | Generate shareable PNG report cards                 |
+| `/carbon-badge`  | Shields.io badge of your total footprint for your READMEs |
 | `/carbon-update` | Update to the latest version and re-price history   |
 
 <details>
@@ -214,10 +246,23 @@ bash scripts/recompute.sh
 | `backfill.sh`        | Re-parse all historical JSONL transcripts (incl. subagents)                               |
 | `recompute.sh`       | Re-derive cost/CO2 from stored tokens after a price/factor change (no transcripts needed) |
 | `generate-report.sh` | Export PNG report cards (CLI, with `--since` / `--until` / `--all`)                                   |
+| `generate-badge.sh`  | Print the shields.io badge markdown + URL (CLI)                                           |
 
 Note: backfill now derives project names from the transcript's `cwd` (matching the live hook). Sessions backfilled before this change keep their old, possibly truncated names; delete those rows and re-run `backfill.sh` to normalize them.
 
 </details>
+
+## Badge
+
+`/carbon-badge` prints a ready-to-paste shields.io badge with your measured all-time footprint, clickable back to this repo:
+
+[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-12.4%20kg%20CO2e-2f6f4f)](https://github.com/gwittebolle/claude-carbon)
+
+```markdown
+[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-12.4%20kg%20CO2e-2f6f4f)](https://github.com/gwittebolle/claude-carbon)
+```
+
+The badge is a static image built from your local database, so the number is measured, not estimated on the fly. Re-run `/carbon-badge` whenever you want to refresh it.
 
 ## Using with ccstatusline
 

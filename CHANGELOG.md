@@ -2,6 +2,14 @@
 
 ## 2026-08-19
 
+### feat: /carbon-badge — shields.io badge of your measured footprint
+
+New `carbon-badge` skill and `scripts/generate-badge.sh`: prints a ready-to-paste markdown snippet (plus the raw URL) for a static shields.io badge with the all-time total, clickable back to this repo. Same aggregate as the report's Totals line (stored `co2_grams`, excluded rows out), never re-derived from token columns. `format_co2` moved from `generate-report.sh` into a shared `scripts/format-lib.sh` and gained a tonne tier: users above 1,000 kg now see "1.2 t" on cards and the Totals line where "1234.0 kg" appeared before. Covered by `tests/run-badge-tests.sh` (unit tiers, shields escaping, FR decimal comma, exclusion, missing DB).
+
+### feat: GitHub Action "Carbon Report for Claude Code"
+
+New root `action.yml` (composite) for teams running `anthropics/claude-code-action` in CI: parses the run's `execution_file`, computes CO2e/cost with the plugin's exact formulas (new `scripts/compute-lib.sh`, replayed against the golden vectors in CI), writes the job summary and step outputs, and upserts one sticky PR comment (marker `<!-- claude-carbon-report -->`). Disableable at three levels (`comment: "false"`, a `no-carbon-report` label, plain removal) and never fails the caller's CI: every malformed input exits 0 with an honest `status` output, and an all-zero aggregate over real assistant messages reports `error` instead of a plausible zero comment. Dogfooded on this repo's PRs against the committed fixture (`comment: false` + output assertions).
+
 ### chore: release.sh checks npm auth before writing anything
 
 `--npm` publishes at the very end, after the bump is committed and the tag pushed, so an expired npm session left a half-done release; and re-running the whole script double-bumps, which is exactly how the orphan v1.2.0 tag was born today. The script now fails on `npm whoami` up front when `--npm` is passed (skipped in `--dry-run`, which never publishes), and a publish failure late in the run says in so many words to rerun only `npm publish`, never the script.

@@ -1,0 +1,71 @@
+name: "Carbon Report for Claude Code"
+description: "Posts a sticky PR comment with the CO2e, cost and tokens of a Claude Code CI run. Never fails your build."
+author: "gwittebolle"
+branding:
+  icon: "cloud"
+  color: "green"
+
+inputs:
+  execution_file:
+    description: >-
+      Path to the Claude Code execution log JSON. Pass
+      ${{ steps.<claude-step-id>.outputs.execution_file }} from
+      anthropics/claude-code-action; defaults to
+      $RUNNER_TEMP/claude-execution-output.json (same job only).
+    required: false
+    default: ""
+  comment:
+    description: >-
+      Post/update the sticky PR comment. Set to 'false' to compute silently:
+      the job summary and the outputs are still written.
+    required: false
+    default: "true"
+  github_token:
+    description: "Token used to post the PR comment (needs pull-requests: write)."
+    required: false
+    default: ${{ github.token }}
+  opt_out_label:
+    description: "PRs carrying this label get no comment (job summary still written)."
+    required: false
+    default: "no-carbon-report"
+  locale:
+    description: "Equivalence factor set: world, fr or us."
+    required: false
+    default: "world"
+
+outputs:
+  co2_grams:
+    description: "Estimated CO2e of the run, in grams."
+    value: ${{ steps.report.outputs.co2_grams }}
+  cost_usd:
+    description: "Theoretical API list cost of the run, in USD."
+    value: ${{ steps.report.outputs.cost_usd }}
+  total_tokens:
+    description: "Input + cache write + output tokens (cache reads reported separately)."
+    value: ${{ steps.report.outputs.total_tokens }}
+  cache_read_tokens:
+    description: "Cache read tokens of the run."
+    value: ${{ steps.report.outputs.cache_read_tokens }}
+  comment_markdown:
+    description: "The report body, reusable in your own steps."
+    value: ${{ steps.report.outputs.comment_markdown }}
+  status:
+    description: "ok, skipped (no usable execution file) or error (internal failure; CI unaffected)."
+    value: ${{ steps.report.outputs.status }}
+
+runs:
+  using: "composite"
+  steps:
+    # Composite steps have no continue-on-error: the trailing || is the
+    # outermost never-fail guard, surviving even a missing script.
+    - id: report
+      shell: bash
+      env:
+        INPUT_EXECUTION_FILE: ${{ inputs.execution_file }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_OPT_OUT_LABEL: ${{ inputs.opt_out_label }}
+        INPUT_LOCALE: ${{ inputs.locale }}
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: >-
+        bash "$GITHUB_ACTION_PATH/scripts/action-report.sh"
+        || echo "::notice::claude-carbon: report step failed internally; CI unaffected"

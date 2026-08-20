@@ -1,0 +1,110 @@
+[
+  {
+    "type": "system",
+    "subtype": "init",
+    "session_id": "fixture-session",
+    "model": "claude-sonnet-4-5"
+  },
+  {
+    "type": "assistant",
+    "requestId": "req_1",
+    "parent_tool_use_id": null,
+    "message": {
+      "id": "msg_1",
+      "type": "message",
+      "role": "assistant",
+      "model": "claude-sonnet-4-5",
+      "content": [{ "type": "text", "text": "superseded by the retry below: same (id, requestId), last occurrence wins" }],
+      "usage": {
+        "input_tokens": 10000,
+        "cache_creation_input_tokens": 20000,
+        "cache_read_input_tokens": 100000,
+        "output_tokens": 10000
+      }
+    }
+  },
+  {
+    "type": "assistant",
+    "requestId": "req_1",
+    "parent_tool_use_id": null,
+    "message": {
+      "id": "msg_1",
+      "type": "message",
+      "role": "assistant",
+      "model": "claude-sonnet-4-5",
+      "content": [{ "type": "text", "text": "final version of msg_1" }],
+      "usage": {
+        "input_tokens": 20000,
+        "cache_creation_input_tokens": 40000,
+        "cache_read_input_tokens": 200000,
+        "output_tokens": 20000
+      }
+    }
+  },
+  {
+    "type": "assistant",
+    "requestId": "req_2",
+    "parent_tool_use_id": "toolu_subagent_1",
+    "message": {
+      "id": "msg_2",
+      "type": "message",
+      "role": "assistant",
+      "model": "claude-sonnet-4-5",
+      "content": [{ "type": "text", "text": "subagent message: same flat array, counted once" }],
+      "usage": {
+        "input_tokens": 10000,
+        "cache_creation_input_tokens": 10000,
+        "cache_read_input_tokens": 100000,
+        "output_tokens": 10000
+      }
+    }
+  },
+  {
+    "type": "assistant",
+    "requestId": "req_3",
+    "parent_tool_use_id": null,
+    "message": {
+      "id": "msg_3",
+      "type": "message",
+      "role": "assistant",
+      "model": "claude-3-5-haiku",
+      "content": [{ "type": "text", "text": "second model in the same run" }],
+      "usage": {
+        "input_tokens": 10000,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 50000,
+        "output_tokens": 10000
+      }
+    }
+  },
+  {
+    "type": "assistant",
+    "requestId": "req_4",
+    "parent_tool_use_id": null,
+    "message": {
+      "id": "msg_4",
+      "type": "message",
+      "role": "assistant",
+      "model": "glm-4.7-flash",
+      "content": [{ "type": "text", "text": "non-Claude model: tokens counted, no cost/CO2" }],
+      "usage": {
+        "input_tokens": 10000,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 10000
+      }
+    }
+  },
+  {
+    "type": "user",
+    "message": { "role": "user", "content": [{ "type": "text", "text": "tool result" }] }
+  },
+  {
+    "type": "result",
+    "subtype": "success",
+    "duration_ms": 60000,
+    "num_turns": 5,
+    "total_cost_usd": 0.8825,
+    "result": "done"
+  }
+]

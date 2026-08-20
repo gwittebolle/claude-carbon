@@ -33,6 +33,30 @@ jobs:
       - name: Exercise the settings.json merge and the update repair path
         run: bash tests/run-install-tests.sh
 
+  badge:
+    name: badge output
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Runs against throwaway fixture DBs via CLAUDE_CARBON_DB; sqlite3 and bc
+      # are preinstalled on ubuntu-latest.
+      - name: Assert badge URL and snippet against fixture databases
+        run: bash tests/run-badge-tests.sh
+
+  action-report:
+    name: github action compute path
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Replays the golden vectors through compute-lib.sh, runs the entrypoint on
+      # the committed fixture, and asserts the never-fail contract on malformed inputs.
+      - name: Assert the action's compute path and never-fail contract
+        run: bash tests/run-action-tests.sh
+
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
