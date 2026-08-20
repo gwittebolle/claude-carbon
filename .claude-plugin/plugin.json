@@ -15,7 +15,6 @@
     "claude-code",
     "green-it"
   ],
-  "hooks": "./hooks/hooks.json",
   "skills": "./skills/",
   "statusLine": {
     "type": "command",
