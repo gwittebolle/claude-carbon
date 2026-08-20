@@ -140,7 +140,7 @@ ${EQUIV_LINE}
 <details>
 <summary>Token detail per model</summary>
 
-| Model | Sessions | Input | Cache write | Cache read | Output | CO2e | Cost |
+| Model | Sessions | Uncached input | Cache write | Cache read | Output | CO2e | Cost |
 |---|---|---|---|---|---|---|---|
 ${MODEL_ROWS}
 </details>
