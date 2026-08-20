@@ -33,6 +33,30 @@ jobs:
       - name: Exercise the settings.json merge and the update repair path
         run: bash tests/run-install-tests.sh
 
+  badge:
+    name: badge output
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Runs against throwaway fixture DBs via CLAUDE_CARBON_DB; sqlite3 and bc
+      # are preinstalled on ubuntu-latest.
+      - name: Assert badge URL and snippet against fixture databases
+        run: bash tests/run-badge-tests.sh
+
+  pr-report:
+    name: carbon-pr pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fixture transcript through the Stop hook (git_branch capture), then the
+      # dry-run report against fixture DBs. No network, no gh.
+      - name: Assert branch capture and the dev PR report
+        run: bash tests/run-pr-tests.sh
+
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest

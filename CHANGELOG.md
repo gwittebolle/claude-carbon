@@ -1,6 +1,18 @@
 # Changelog
 
-## 2026-08-19
+## 2026-08-20
+
+### feat: /carbon-pr, the dev footprint of a branch posted on its PR
+
+The number reviewers rarely see is what the PR cost to develop. The Stop hook (and backfill) now store each session's git branch in a new `git_branch` column (read from the transcript's `gitBranch` envelope field, last non-empty value; idempotent migration like the previous columns), and backfill gains a repair pass that fills the branch on already-captured rows while their transcript survives. New `scripts/generate-pr-report.sh` + `carbon-pr` skill: sums the current branch's sessions (project + branch, excluded rows out), renders the same comment contract as the CI action (figures, one equivalence, collapsed per-model detail, Estimated / turn off footer, no em-dash), and upserts one sticky comment on the branch's PR through the developer's own `gh` auth. Opt-in by nature: nothing is posted unless the developer runs it. Covered by `tests/run-pr-tests.sh` (branch capture through the real hook, legacy DB migration, branch-only attribution, guards).
+
+### feat: /carbon-badge, a shields.io badge of your measured footprint
+
+New `carbon-badge` skill and `scripts/generate-badge.sh`: prints a ready-to-paste markdown snippet (plus the raw URL) for a static shields.io badge with the all-time total, clickable back to this repo. Same aggregate as the report's Totals line (stored `co2_grams`, excluded rows out), never re-derived from token columns. `format_co2` moved from `generate-report.sh` into a shared `scripts/format-lib.sh` and gained a tonne tier: users above 1,000 kg now see "1.2 t" on cards and the Totals line where "1234.0 kg" appeared before. Covered by `tests/run-badge-tests.sh` (unit tiers, shields escaping, FR decimal comma, exclusion, missing DB).
+
+### chore: CI-run GitHub Action parked on feat/carbon-ci-action
+
+A composite action measuring `anthropics/claude-code-action` runs was built and tested (sticky PR comment, never-fail contract, golden-vector parity), then pulled from this release: nobody has real agentic CI runs to measure yet, this repo included, and an unused README promise ages badly. The complete implementation lives on the `feat/carbon-ci-action` branch, ready to rebase when real demand shows up.
 
 ### chore: release.sh checks npm auth before writing anything
 
