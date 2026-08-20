@@ -111,7 +111,9 @@ check "dry-run: tokens total (180k)" "yes" "$(echo "$OUT" | grep -q '| 180k |' &
 check "dry-run: cache reads (1.5M)"  "yes" "$(echo "$OUT" | grep -q '| 1.5M |' && echo yes || echo no)"
 check "dry-run: 2 sessions"          "yes" "$(echo "$OUT" | grep -q '| 2 |' && echo yes || echo no)"
 check "dry-run: per-model detail"    "yes" "$(echo "$OUT" | grep -q '`claude-fable-5` | 1 |' && echo yes || echo no)"
-check "dry-run: branch named"        "yes" "$(echo "$OUT" | grep -q 'sessions on \`feat/x\`' && echo yes || echo no)"
+# No backslash before the backticks: GNU grep reads \` as a buffer anchor
+# (BSD grep as a literal), so the escaped form passes on macOS and fails on CI.
+check "dry-run: branch named"        "yes" "$(echo "$OUT" | grep -qF 'sessions on `feat/x`' && echo yes || echo no)"
 check "dry-run: Estimated + turn off" "yes" "$(echo "$OUT" | grep -q 'Estimated by \[claude-carbon\]' && echo "$OUT" | grep -q '\[turn off\]' && echo yes || echo no)"
 check "dry-run: world car factor"    "yes" "$(echo "$OUT" | grep -q '200 g/km, world avg' && echo yes || echo no)"
 check "dry-run: no em-dash"          "0"   "$(echo "$OUT" | grep -c '—')"
