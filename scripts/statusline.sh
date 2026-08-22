@@ -222,9 +222,22 @@ fi
 # factors while every check runs green on the current copy (incident of 2026-08-01: six weeks
 # of sessions persisted with pre-v6 factors). Auto-update is opt-in for third-party
 # marketplaces, so the cache CAN lag. Here we compare this install's factors/prices against
-# the newest cached copy of the plugin; any byte difference means the two installs disagree.
-# Self-skips when this statusline IS the newest cache copy (single-install machines).
+# the newest cached copy of the plugin. Fast path: one cmp per file, no spawn when the bytes
+# match (the common case). Only when they differ do we spend a jq to compare the data with
+# the "_"-prefixed documentation keys stripped: a docs-only edit to a comment key (the
+# 2026-08-22 false positive, 17d396a) must not look like a factor change, while any value
+# difference still does. Self-skips when this statusline IS the newest cache copy
+# (single-install machines).
 DRIFT_SEGMENT=""
+# drift_values_differ <a> <b>: 0 when the two JSON files disagree once every "_"-prefixed
+# key (at any depth) is removed; 1 when they agree. Without jq, any byte difference counts.
+drift_values_differ() {
+  command -v jq &>/dev/null || return 0
+  local A B
+  A="$(jq -S 'walk(if type == "object" then with_entries(select(.key | startswith("_") | not)) else . end)' "$1" 2>/dev/null)" || return 0
+  B="$(jq -S 'walk(if type == "object" then with_entries(select(.key | startswith("_") | not)) else . end)' "$2" 2>/dev/null)" || return 0
+  [ "$A" != "$B" ]
+}
 if [ -z "${CLAUDE_CARBON_NO_DRIFT_CHECK:-}" ] && printf '1.0\n1.0.1\n' | sort -V >/dev/null 2>&1; then
   CACHE_LATEST=""
   for D in "${CONFIG_DIR}/plugins/cache"/*/claude-carbon/*/; do
@@ -239,7 +252,8 @@ if [ -z "${CLAUDE_CARBON_NO_DRIFT_CHECK:-}" ] && printf '1.0\n1.0.1\n' | sort -V
     if [ -n "$OWN_ROOT" ] && [ -n "$CACHE_ROOT" ] && [ "$OWN_ROOT" != "$CACHE_ROOT" ]; then
       for F in data/factors.json data/prices.json; do
         if [ -f "${CACHE_ROOT}/${F}" ] && [ -f "${OWN_ROOT}/${F}" ] \
-           && ! cmp -s "${CACHE_ROOT}/${F}" "${OWN_ROOT}/${F}"; then
+           && ! cmp -s "${CACHE_ROOT}/${F}" "${OWN_ROOT}/${F}" \
+           && drift_values_differ "${CACHE_ROOT}/${F}" "${OWN_ROOT}/${F}"; then
           DRIFT_SEGMENT=" | ≠ install drift"
           break
         fi
@@ -283,3 +297,4 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
 fi
 
 echo "${PROJECT}${BRANCH_SUFFIX} | ${DOT} ${DISPLAY_NAME} ${PROGRESS_BAR} ${PCT_DISPLAY} | \$${COST_DISPLAY} · ${CO2_DISPLAY}${USAGE_SEGMENT}${UPDATE_SEGMENT}${DRIFT_SEGMENT}${CARD_SEGMENT}"
+
