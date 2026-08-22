@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-08-21
+
+- docs: the cache_read_factor section now says what the term actually is. The formula applies a fraction of an uncached input token, so it is a PREFILL residual; earlier versions justified it as the decode-phase KV re-read residual, which is a different object, bilinear in (context x generated tokens) and currently absorbed in the output factor. Consequence stated: long-context agentic use is underestimated. Adds the Irminsul hit/miss measurement (arXiv:2605.05696, Table 1: 14/34/37% on GQA/MHA/MLA at 4096 prefix tokens), explains why 0.14 is not adopted, and widens the published range from 0.05-0.15 to 0.05-0.20 because two of the three measured architectures sit above the old ceiling. The factor value itself is unchanged at 0.08, so all 12 golden vectors are untouched.
+
 ## 2026-08-20
 
 ### fix: marketplace plugin failed to load on current Claude Code

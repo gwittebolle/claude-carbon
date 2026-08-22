@@ -91,13 +91,38 @@ Claude Code purges JSONL transcripts after about 30 days, so the SQLite DB is th
 
 ## Cache read energy
 
-A `cache_read` token is a previously-processed context token whose key/value tensors are reused, so its prefill compute is skipped. It is not free in energy: during decode, every generated token re-reads the entire KV cache from HBM, including the cached tokens (GreenCache, SIGMETRICS: "caching does not reduce computation in the decode phase"). So the energy of a cached token is the decode-phase KV-read residual that survives caching.
+A `cache_read` token is a previously-processed context token whose key/value tensors are reused, so its prefill compute is skipped. It is not free in energy.
 
-No study directly measures the cache_read-to-input energy ratio. The default `cache_read_factor` of **0.08** (defensible range 0.05-0.15, hard bound 0-0.20) is an engineering estimate derived from adjacent measurements: prefill is ≤ 3.4% of total inference energy for generation workloads and a larger KV cache amplifies per-token decode energy by 1.3-51.8% (both Solovyeva & Castor, measured on 3B-7B models with short prompts), and per-token energy rises ~3x from 2K to 10K context (TokenPowerBench, H100, Llama3 70B). The factor is workload-dependent and grows with context length; a flat constant understates very long reused prefixes.
+### What this term is, and what it is not
+
+The formula applies `cache_read_tokens * input_factor * cache_read_factor`, i.e. a fraction of the energy of an uncached input token. So it is a **prefill residual**: what is still paid at prefill when the prefix is already cached.
+
+Earlier versions of this document justified the same term as the decode-phase KV re-read residual: during decode, every generated token re-reads the entire KV cache from HBM, including the cached tokens (GreenCache, SIGMETRICS: "caching does not reduce computation in the decode phase"). That is a different object, and it is **not linear in `cache_read_tokens`** - it scales with the product (context size x generated tokens). Today that cost sits absorbed inside a constant output factor, calibrated at context lengths the source does not publish. Stated plainly: **in long-context agentic use, this model underestimates that term.**
+
+### What is measured
+
+A direct hit/miss measurement has existed since May 2026. Irminsul (arXiv:2605.05696, Table 1) instruments prefill energy per cache event with NVML hardware counters, at 4,096 prefix tokens:
+
+| Attention | Model | Miss | Hit | Hit / miss |
+| --- | --- | ---: | ---: | ---: |
+| GQA | Qwen3-32B | 262.3 J | 37.5 J | 14% |
+| MLA | DeepSeek-V2-Lite | 47.1 J | 17.2 J | 37% |
+| MHA | DeepSeek-MoE-16B | 45.2 J | 15.3 J | 34% |
+| Hybrid SSM | Mamba2, GDN, KDA | - | - | 0% saving |
+
+Three reservations. The measurement is at **4,096** prefix tokens, while the median Claude Code step carries 126,180 (TraceLab, arXiv:2606.30560v2, Table 8): at that scale the fixed kernel-launch costs that dominate small cells amortise away and the real ratio falls, which the paper acknowledges for its own small cells. The two high rows are 16B models, exactly where those fixed costs weigh most. And Claude's attention architecture is not published, so which row applies is unknown.
+
+### The value
+
+The default `cache_read_factor` stays **0.08**, published range **0.05-0.20** (previously 0.05-0.15). We do not adopt 0.14: applying a 4K-context measurement to usage that runs at 126K would move a Claude Code-heavy total by 25-30% on a basis that cannot be defended. The upper bound does move, because two of the three measured architectures sit above the old ceiling - the stated uncertainty was understating the upside.
+
+The bracketing measurements still hold: prefill is ≤ 3.4% of total inference energy for generation workloads and a larger KV cache amplifies per-token decode energy by 1.3-51.8% (both Solovyeva & Castor, measured on 3B-7B models with short prompts), and per-token energy rises ~3x from 2K to 10K context (TokenPowerBench, H100, Llama3 70B).
+
+The real fix is a different equation shape, with a residual prefill term and a decode term that depends on context length, not a different constant.
 
 This factor is **not** Anthropic's 0.1x cache_read billing ratio. That is a price, not an energy measurement (OpenAI prices the same mechanism at 0.5x). Setting `cache_read_factor` to 0 is a defensible lower bound but treats a reused 100K-token system prompt as carbon-free, which understates a real memory-bandwidth cost.
 
-Sources: GreenCache (arXiv:2505.23970, SIGMETRICS 2026), TokenPowerBench (arXiv:2512.03024), Solovyeva & Castor (arXiv:2602.05712).
+Sources: Irminsul (arXiv:2605.05696), GreenCache (arXiv:2505.23970, SIGMETRICS 2026), TokenPowerBench (arXiv:2512.03024), Solovyeva & Castor (arXiv:2602.05712), TraceLab (arXiv:2606.30560v2).
 
 ## Cost estimate
 
