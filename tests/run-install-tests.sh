@@ -209,6 +209,38 @@ BEFORE="$(cat "${CFG}/settings.json")"
 CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
 check "invalid settings.json left untouched" "$BEFORE" "$(cat "${CFG}/settings.json")"
 
+# ---------------------------------------------------------------- 9. install drift check
+
+# The statusline compares this install's data/ files against the newest plugin cache copy.
+# A docs-only edit to a "_"-prefixed comment key must stay quiet (false positive of
+# 2026-08-22); a changed value must light the segment; an identical cache stays quiet.
+CFG="${TMPROOT}/drift"
+CACHE_DATA="${CFG}/plugins/cache/mkt/claude-carbon/9.9.9/data"
+mkdir -p "$CACHE_DATA" "${CFG}/claude-carbon"
+cp "${REPO_DIR}/data/prices.json" "${CACHE_DATA}/prices.json"
+
+# drift_shown: "yes" when the statusline prints the drift segment for the current cache.
+drift_shown() {
+  if echo '{}' | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_NO_CARD_NUDGE=1 CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 \
+       bash "$STATUSLINE" 2>/dev/null | grep -q "install drift"; then echo yes; else echo no; fi
+}
+
+cp "${REPO_DIR}/data/factors.json" "${CACHE_DATA}/factors.json"
+check "drift: identical cache is quiet" "no" "$(drift_shown)"
+
+jq '._cache_read_factor = "an older wording of the same comment"' "${REPO_DIR}/data/factors.json" > "${CACHE_DATA}/factors.json"
+check "drift: comment-only difference is quiet" "no" "$(drift_shown)"
+
+jq '.cache_read_factor = (.cache_read_factor + 0.01)' "${REPO_DIR}/data/factors.json" > "${CACHE_DATA}/factors.json"
+check "drift: value difference is flagged" "yes" "$(drift_shown)"
+
+cp "${REPO_DIR}/data/factors.json" "${CACHE_DATA}/factors.json"
+jq '.models.sonnet.input = (.models.sonnet.input + 1)' "${REPO_DIR}/data/prices.json" > "${CACHE_DATA}/prices.json"
+check "drift: nested price difference is flagged" "yes" "$(drift_shown)"
+
+cp "${REPO_DIR}/data/prices.json" "${CACHE_DATA}/prices.json"
+check "drift: CLAUDE_CARBON_NO_DRIFT_CHECK honoured" "no" "$(CLAUDE_CARBON_NO_DRIFT_CHECK=1 drift_shown)"
+
 # ----------------------------------------------------------------
 
 echo ""

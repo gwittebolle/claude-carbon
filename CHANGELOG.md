@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-08-22
+
+- fix: the statusline's "install drift" check no longer fires on documentation-only edits. It compared `data/factors.json` and `data/prices.json` byte for byte against the newest plugin cache copy, so changing a `_`-prefixed comment key (17d396a rewrote `_cache_read_factor`, value unchanged) lit the segment on two-install machines. The byte `cmp` stays as the fast path; only when it differs does a `jq` pass strip every `_`-prefixed key at any depth and compare the remaining values. Value changes (top-level or nested) still flag. Single-install machines are unaffected, the check still self-skips there. Covered by five new cases in `tests/run-install-tests.sh`.
+
 ## 2026-08-21
 
 - docs: the cache_read_factor section now says what the term actually is. The formula applies a fraction of an uncached input token, so it is a PREFILL residual; earlier versions justified it as the decode-phase KV re-read residual, which is a different object, bilinear in (context x generated tokens) and currently absorbed in the output factor. Consequence stated: long-context agentic use is underestimated. Adds the Irminsul hit/miss measurement (arXiv:2605.05696, Table 1: 14/34/37% on GQA/MHA/MLA at 4096 prefix tokens), explains why 0.14 is not adopted, and widens the published range from 0.05-0.15 to 0.05-0.20 because two of the three measured architectures sit above the old ceiling. The factor value itself is unchanged at 0.08, so all 12 golden vectors are untouched.
