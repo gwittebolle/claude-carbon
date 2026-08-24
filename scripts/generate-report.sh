@@ -197,8 +197,9 @@ else
   DAYS_ELAPSED=0
 fi
 if [ "$DAYS_ELAPSED" -gt 0 ]; then
-  # Linear: average daily rate extrapolated (in tCO2 with 1 decimal)
-  PROJ_LINEAR="$(echo "$TOTAL_CO2_RAW $DAYS_ELAPSED" | LC_ALL=C awk '{printf "%.1f", ($1 / $2) * 365 / 1000000}')"
+  # Linear: average daily rate extrapolated. Kept in GRAMS so the range can pick
+  # its unit with the same rule as every other figure (see format-lib.sh).
+  PROJ_LINEAR="$(echo "$TOTAL_CO2_RAW $DAYS_ELAPSED" | LC_ALL=C awk '{printf "%.4f", ($1 / $2) * 365}')"
 
   # Trend: last 30 days daily rate extrapolated
   if [ -n "$WHERE" ]; then
@@ -211,7 +212,7 @@ if [ "$DAYS_ELAPSED" -gt 0 ]; then
   LAST_MONTH_END="$(echo "$LAST_MONTH_DATA" | LC_ALL=C awk '{print $3}' | cut -c1-10)"
   LAST_MONTH_DAYS="$(( ( $(date -j -f "%Y-%m-%d" "${LAST_MONTH_END}" +%s 2>/dev/null || date -d "${LAST_MONTH_END}" +%s 2>/dev/null) - $(date -j -f "%Y-%m-%d" "${LAST_MONTH_START}" +%s 2>/dev/null || date -d "${LAST_MONTH_START}" +%s 2>/dev/null) ) / 86400 ))"
   if [ "$LAST_MONTH_DAYS" -gt 0 ]; then
-    PROJ_TREND="$(echo "$LAST_MONTH_CO2 $LAST_MONTH_DAYS" | LC_ALL=C awk '{printf "%.1f", ($1 / $2) * 365 / 1000000}')"
+    PROJ_TREND="$(echo "$LAST_MONTH_CO2 $LAST_MONTH_DAYS" | LC_ALL=C awk '{printf "%.4f", ($1 / $2) * 365}')"
   else
     PROJ_TREND="$PROJ_LINEAR"
   fi
@@ -219,9 +220,27 @@ if [ "$DAYS_ELAPSED" -gt 0 ]; then
   # Sort low-high for display (compare as floats)
   LOW="$(echo "$PROJ_LINEAR $PROJ_TREND" | LC_ALL=C awk '{if ($1 <= $2) print $1; else print $2}')"
   HIGH="$(echo "$PROJ_LINEAR $PROJ_TREND" | LC_ALL=C awk '{if ($1 >= $2) print $1; else print $2}')"
-  PROJECTION="${LOW} - ${HIGH}"
+  # The projection does NOT follow the 10 t rule the totals use. A total is a
+  # measurement and reads better as a four-digit kilogram figure; a projection is an
+  # extrapolation from a daily average, and "1414 - 1686 kg" claims a precision it
+  # simply does not have. Tonnes with one decimal state the same range at the
+  # resolution the method actually supports.
+  #
+  # Below 0.1 t the tonne tier would collapse to "0.0 - 0.1", so light users fall
+  # back to whole kilograms. Both bounds always share the unit, picked on HIGH.
+  if (( $(echo "$HIGH >= 100000" | LC_ALL=C bc -l) )); then
+    PROJECTION_UNIT="tCO₂"
+    _PROJ_LO_VAL="$(echo "$LOW"  | LC_ALL=C awk '{printf "%.1f", $1/1000000}')"
+    _PROJ_HI_VAL="$(echo "$HIGH" | LC_ALL=C awk '{printf "%.1f", $1/1000000}')"
+  else
+    PROJECTION_UNIT="kgCO₂"
+    _PROJ_LO_VAL="$(echo "$LOW"  | LC_ALL=C awk '{printf "%.0f", $1/1000}')"
+    _PROJ_HI_VAL="$(echo "$HIGH" | LC_ALL=C awk '{printf "%.0f", $1/1000}')"
+  fi
+  PROJECTION="${_PROJ_LO_VAL} - ${_PROJ_HI_VAL}"
 else
   PROJECTION="0"
+  PROJECTION_UNIT="kgCO₂"
 fi
 
 # Format model
@@ -283,6 +302,7 @@ inject_common() {
     -e "s|{{TOP_MODEL}}|${TOP_MODEL_DISPLAY}|g" \
     -e "s|{{TOTAL_TOKENS}}|${TOTAL_TOKENS}|g" \
     -e "s|{{PROJECTION}}|${PROJECTION}|g" \
+  -e "s|{{PROJECTION_UNIT}}|${PROJECTION_UNIT}|g" \
     -e "s|{{P1_NAME}}|${P_NAME[0]}|g" \
     -e "s|{{P1_CO2}}|${P_CO2[0]}|g" \
     -e "s|{{P1_SESSIONS}}|${P_SESSIONS[0]}|g" \

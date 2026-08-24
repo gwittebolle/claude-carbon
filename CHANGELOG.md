@@ -2,6 +2,18 @@
 
 ## 2026-08-24
 
+### fix: totals stay in kilograms until 10 t, projections stay in tonnes
+
+The card hero read "1.0 t of estimated CO2" for a total of 1016.5 kg. The tonne tier started at 1 t, so the first real milestone a heavy user reaches is also the point where the number shrinks to a single significant digit and stops reading as a quantity. `format_co2` now switches to tonnes at 10 t; the same total renders as "1016.5 kg". This is one shared function, so the card, the badge, `/carbon-report` and `/carbon-pr` all move together.
+
+The yearly projection deliberately does **not** follow that rule and keeps its own unit. It is an extrapolation from a daily average, and "1414 - 1686 kgCO2/yr" claims four digits of precision the method does not have; tonnes with one decimal state the same range at the resolution actually supported. Below 0.1 t the tonne tier would collapse to "0.0 - 0.1", so light users fall back to whole kilograms. Both bounds always share a unit, picked on the high end, so a range can never straddle a tier boundary.
+
+`{{PROJECTION_UNIT}}` is a new slot in `report-summary.html` and `report-summary-en.html`, since the unit was hardcoded next to the value.
+
+- `tests/run-badge-tests.sh`: the tonne-tier fixture moves from 1.234 t to 12.34 t, a case pins that 1.234 t still renders as kilograms, and `format_co2` gains boundary assertions on both sides of 10 t (17 assertions).
+
+## 2026-08-24
+
 ### docs: recompute.sh understated what it does to mixed-model rows
 
 `recompute.sh` warned that re-pricing collapses mixed-model sessions to the row's dominant model, "~6% high on subagent sessions", and said nothing at all about CO2. Both halves were wrong. Measured while applying the cache-write TTL fix to a real database: over 226 rows, `--with-cost` moved cost from $7,491 to $10,787 (+44%) and CO2 from 194.3 to 225.2 kg (+16%). A session that fans work out to Haiku subagents and carries Fable as its dominant model gets every one of those tokens re-derived at Fable's rate.
