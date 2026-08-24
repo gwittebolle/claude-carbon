@@ -241,6 +241,28 @@ check "drift: nested price difference is flagged" "yes" "$(drift_shown)"
 cp "${REPO_DIR}/data/prices.json" "${CACHE_DATA}/prices.json"
 check "drift: CLAUDE_CARBON_NO_DRIFT_CHECK honoured" "no" "$(CLAUDE_CARBON_NO_DRIFT_CHECK=1 drift_shown)"
 
+# ------------------------------------------------------- 10. statusline CO2 source
+
+# The status line must report the SESSION total, not the size of the current context
+# window. It reads this session's row from carbon.db (written by the Stop hook every
+# turn) and only falls back to the context-window estimate when no row exists yet.
+SL_DB="${TMPROOT}/statusline/carbon.db"
+mkdir -p "${TMPROOT}/statusline"
+sqlite3 "$SL_DB" "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, methodology_version INTEGER DEFAULT 2, excluded INTEGER DEFAULT 0, git_branch TEXT DEFAULT '');"
+sqlite3 "$SL_DB" "INSERT INTO sessions (session_id, project, model, co2_grams, cost_usd, excluded) VALUES ('sess-known', 'p', 'claude-opus-5', 26333.0, 1342.13, 0);"
+sqlite3 "$SL_DB" "INSERT INTO sessions (session_id, project, model, co2_grams, cost_usd, excluded) VALUES ('sess-excluded', 'p', 'glm-4.7', 0.0, 0.0, 1);"
+
+# A 200k context window on Opus factors is ~16 g; the stored session total is 26.3 kg.
+sl_co2() {
+  printf '{"session_id":"%s","model":{"id":"%s","display_name":"M"},"context_window":{"total_input_tokens":200000,"total_output_tokens":0,"used_percentage":20},"cost":{"total_cost_usd":1342.13},"workspace":{"current_dir":"/tmp/p"}}' "$1" "${2:-claude-opus-5}" \
+    | CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+}
+
+check "statusline: cumulative total from the DB, not the context window" "26.3kg CO₂" "$(sl_co2 sess-known)"
+check "statusline: unknown session falls back to the window estimate"    "16g CO₂"    "$(sl_co2 sess-unknown)"
+check "statusline: excluded row does not leak, falls back"               "0g CO₂"     "$(sl_co2 sess-excluded glm-4.7)"
+check "statusline: no session_id falls back"                             "16g CO₂"    "$(sl_co2 '')"
+
 # ----------------------------------------------------------------
 
 echo ""

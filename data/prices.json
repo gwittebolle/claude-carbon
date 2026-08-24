@@ -1,15 +1,17 @@
 {
   "_units": "USD per million tokens — current Anthropic list price (pay-as-you-go API value).",
-  "_note": "Fable 5 (claude-fable-5 / claude-mythos-5) is 10/50. Opus 4.6+ is 5/25 (the retired 4.0/4.1 was 15/75). cache_write = input x cache_write_multiplier (5-min TTL), cache_read = input x cache_read_multiplier. After editing prices, run `scripts/recompute.sh --with-cost` to re-derive cost_usd for all raw-token rows (plain `recompute.sh` re-derives CO2 only), without needing the (purged) JSONL.",
-  "_updated": "2026-06-22",
+  "_note": "Fable 5 (claude-fable-5 / claude-mythos-5) is 10/50. Opus 4.6+ is 5/25 (the retired 4.0/4.1 was 15/75). cache_read = input x cache_read_multiplier. Cache writes are billed per TTL tier: input x cache_write_multiplier (5-minute) or input x cache_write_multiplier_1h (1-hour). The tier is not assumed: the split is read per session from usage.cache_creation.ephemeral_1h_input_tokens / ephemeral_5m_input_tokens. After editing prices, run `scripts/recompute.sh --with-cost` to re-derive cost_usd for all raw-token rows (plain `recompute.sh` re-derives CO2 only), without needing the (purged) JSONL.",
+  "_updated": "2026-08-24",
   "models": {
     "fable": { "input": 10, "output": 50 },
     "opus": { "input": 5, "output": 25 },
     "sonnet": { "input": 3, "output": 15 },
     "haiku": { "input": 1, "output": 5 }
   },
+  "_cache_write_multipliers": "Anthropic bills a cache write at 1.25x input for the 5-minute TTL and 2x input for the 1-hour TTL. The tier is set per cache_control block, so one request can mix both. Claude Code writes at the 1-hour tier: 174,465,500 ephemeral_1h tokens against 0 ephemeral_5m over 24,978 assistant requests (measured 2026-08-24). Rows captured before the split existed carry cache_creation_1h_tokens = 0 and are priced at the 5-minute tier; backfill.sh repairs them while their transcript is still on disk.",
   "cache_write_multiplier": 1.25,
+  "cache_write_multiplier_1h": 2.0,
   "cache_read_multiplier": 0.1,
   "eur_per_usd": 0.8729,
-  "_eur_per_usd_note": "ECB euro reference rate 2026-06-22 (1 EUR = 1.1456 USD). Convert USD costs to EUR at display time; do not store EUR amounts. Refresh ~monthly from ECB. cache_write_multiplier 1.25 is the 5-min tier (Claude Code default); the 1-hour cache-write tier is 2x input."
+  "_eur_per_usd_note": "ECB euro reference rate 2026-06-22 (1 EUR = 1.1456 USD). Convert USD costs to EUR at display time; do not store EUR amounts. Refresh ~monthly from ECB."
 }

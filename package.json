@@ -2,6 +2,10 @@
   "name": "claude-carbon",
   "version": "1.4.1",
   "description": "Track the carbon footprint of your Claude Code sessions",
+  "scripts": {
+    "diagram": "node docs/render-diagram.mjs",
+    "diagram:png": "node docs/render-diagram.mjs --png"
+  },
   "bin": {
     "claude-carbon": "bin/claude-carbon.js"
   },

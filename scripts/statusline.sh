@@ -12,6 +12,7 @@ SEGMENT_MODE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
 CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
+DB_PATH="${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}"
 
 # Read stdin
 INPUT="$(cat)"
@@ -24,6 +25,7 @@ OUTPUT_TOKENS="$(echo "$INPUT" | jq -r '.context_window.total_output_tokens // 0
 COST_USD="$(echo "$INPUT" | jq -r '.cost.total_cost_usd // 0')"
 USED_PCT="$(echo "$INPUT" | jq -r '.context_window.used_percentage // 0')"
 CURRENT_DIR="$(echo "$INPUT" | jq -r '.workspace.current_dir // ""')"
+SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // ""')"
 
 # Project name = last path segment
 PROJECT="$(basename "$CURRENT_DIR")"
@@ -48,8 +50,25 @@ else
   FACTOR_OUT="0"
 fi
 
-# Calculate CO2 in grams: (input * factor_in + output * factor_out) / 1_000_000
-CO2_G="$(echo "$INPUT_TOKENS $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | LC_ALL=C awk '{printf "%.0f", ($1 * $2 + $3 * $4) / 1000000}')"
+# CO2 in grams. Preferred source: this session's row in carbon.db, written by the Stop
+# hook at the end of every turn. That figure is CUMULATIVE and carries the full token
+# breakdown (cache reads, subagents), so it sits on the same time base as the cost next
+# to it. It lags by at most one turn.
+#
+# Fallback: the context-window estimate, used until the Stop hook has written a row (first
+# turn of a session, or DB absent). That figure is a SNAPSHOT of the current context, not a
+# session total, and it drops back every time the context is compacted. On a long agentic
+# session it understates the real footprint by orders of magnitude, which is exactly why
+# the DB is preferred.
+CO2_G=""
+if [ -n "$SESSION_ID" ] && [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>&1; then
+  SESSION_ID_SQL="${SESSION_ID//\'/\'\'}"
+  CO2_G="$(sqlite3 -cmd ".timeout 300" "$DB_PATH" "SELECT printf('%.0f', co2_grams) FROM sessions WHERE session_id='${SESSION_ID_SQL}' AND COALESCE(excluded, 0) = 0 AND co2_grams > 0;" 2>/dev/null || true)"
+  case "$CO2_G" in ''|*[!0-9]*) CO2_G="" ;; esac
+fi
+if [ -z "$CO2_G" ]; then
+  CO2_G="$(echo "$INPUT_TOKENS $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | LC_ALL=C awk '{printf "%.0f", ($1 * $2 + $3 * $4) / 1000000}')"
+fi
 
 # Format CO2 with adaptive unit
 if [ "$CO2_G" -ge 1000 ] 2>/dev/null; then
