@@ -2,6 +2,8 @@
 # run-vectors.sh — Replay tests/methodology-vectors.json against the plugin's
 # cost/CO2 formulas (the exact math of scripts/persist-session.sh compute_co2
 # and scripts/recompute.sh) using the CURRENT data/factors.json + data/prices.json.
+# Cache writes are priced per TTL tier: cache_creation_1h_tokens (optional, default 0)
+# is billed at cache_write_multiplier_1h, the remainder at cache_write_multiplier.
 # Exits 1 on the first relative deviation above the tolerance.
 #
 # bash 3.2 compatible (macOS default): no associative arrays, no mapfile.
@@ -33,6 +35,7 @@ P_OPUS_IN="$(jq -r '.models.opus.input' "$PRICES_FILE")";  P_OPUS_OUT="$(jq -r '
 P_SON_IN="$(jq -r '.models.sonnet.input' "$PRICES_FILE")"; P_SON_OUT="$(jq -r '.models.sonnet.output' "$PRICES_FILE")"
 P_HAI_IN="$(jq -r '.models.haiku.input' "$PRICES_FILE")";  P_HAI_OUT="$(jq -r '.models.haiku.output' "$PRICES_FILE")"
 CW_MULT="$(jq -r '.cache_write_multiplier // 1.25' "$PRICES_FILE")"
+CW_MULT_1H="$(jq -r '.cache_write_multiplier_1h // 2.0' "$PRICES_FILE")"
 CR_MULT="$(jq -r '.cache_read_multiplier // 0.1' "$PRICES_FILE")"
 
 EXCLUDE_MODELS="$(jq -r '(.exclude_models // []) | join("|")' "$FACTORS_FILE")"
@@ -64,13 +67,19 @@ while [ "$i" -lt "$N" ]; do
   ROW="$(jq -r --argjson i "$i" '.vectors[$i] | [
     .id, .model,
     (.input_tokens // 0), (.cache_creation_tokens // 0),
+    (.cache_creation_1h_tokens // 0),
     (.cache_read_tokens // 0), (.output_tokens // 0),
     (if .excluded == true then "1" else "0" end),
     (.expected_co2_grams // 0), (.expected_cost_usd // 0)
   ] | @tsv' "$VECTORS_FILE")"
-  IFS="$(printf '\t')" read -r ID MODEL IN CW CR OUT EXCLUDED EXP_CO2 EXP_COST <<EOF
+  IFS="$(printf '\t')" read -r ID MODEL IN CW CW1H CR OUT EXCLUDED EXP_CO2 EXP_COST <<EOF
 $ROW
 EOF
+
+  # Same clamp/split as persist-session.sh compute_co2: an absent or oversized
+  # 1-hour subset falls back to pricing the whole write at the 5-minute tier.
+  CW1H="$(echo "$CW1H $CW" | LC_ALL=C awk '{printf "%d", ($1 > $2 ? $2 : $1)}')"
+  CW5M="$(echo "$CW $CW1H" | LC_ALL=C awk '{printf "%d", $1 - $2}')"
 
   # Mirror persist-session.sh compute_co2: exclusion first, then family pick.
   if is_excluded_model "$MODEL"; then
@@ -99,8 +108,8 @@ EOF
     # Same awk expressions and printf precision as persist-session.sh
     CO2="$(echo "$IN $CW $CR $OUT $FIN $FOUT $CRF" | LC_ALL=C awk \
       '{printf "%.4f", (($1 + $2) * $5 + $3 * ($5 * $7) + $4 * $6) / 1000000}')"
-    COST="$(echo "$IN $CW $CR $OUT $PIN $POUT $CW_MULT $CR_MULT" | LC_ALL=C awk \
-      '{printf "%.6f", ($1 * $5 + $2 * ($5 * $7) + $3 * ($5 * $8) + $4 * $6) / 1000000}')"
+    COST="$(echo "$IN $CW1H $CW5M $CR $OUT $PIN $POUT $CW_MULT_1H $CW_MULT $CR_MULT" | LC_ALL=C awk \
+      '{printf "%.6f", ($1 * $6 + $2 * ($6 * $8) + $3 * ($6 * $9) + $4 * ($6 * $10) + $5 * $7) / 1000000}')"
   fi
 
   OK=1

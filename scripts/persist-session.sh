@@ -4,7 +4,9 @@
 # deduplicates assistant messages by (message.id, requestId) so replayed messages
 # in resumed/compacted sessions are not double-counted, and stores the raw token
 # breakdown (input, cache_write, cache_read, output) so cost/CO2 can be re-derived later
-# via recompute.sh without the (30-day-purged) JSONL.
+# via recompute.sh without the (30-day-purged) JSONL. Cache writes are split by TTL tier
+# (cache_creation_1h_tokens is the 1-hour subset) because the two tiers are billed
+# differently; see data/prices.json.
 # Intentionally no set -euo pipefail: this hook must exit 0 silently in all cases.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,6 +26,7 @@ sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_tokens INTEGE
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN methodology_version INTEGER DEFAULT 1;" 2>/dev/null || true
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN excluded INTEGER DEFAULT 0;" 2>/dev/null || true
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN git_branch TEXT DEFAULT '';" 2>/dev/null || true
+sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_1h_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
 
 # Load emission factors once
 FACTOR_FABLE_IN="$(jq -r '.models.fable.input // 156' "$FACTORS_FILE" 2>/dev/null)" || FACTOR_FABLE_IN="156"
@@ -48,6 +51,7 @@ PRICE_SONNET_OUT="$(jq -r '.models.sonnet.output' "$PRICES_FILE" 2>/dev/null)" |
 PRICE_HAIKU_IN="$(jq -r '.models.haiku.input' "$PRICES_FILE" 2>/dev/null)" || PRICE_HAIKU_IN="1"
 PRICE_HAIKU_OUT="$(jq -r '.models.haiku.output' "$PRICES_FILE" 2>/dev/null)" || PRICE_HAIKU_OUT="5"
 CACHE_WRITE_MULT="$(jq -r '.cache_write_multiplier // 1.25' "$PRICES_FILE" 2>/dev/null)" || CACHE_WRITE_MULT="1.25"
+CACHE_WRITE_MULT_1H="$(jq -r '.cache_write_multiplier_1h // 2.0' "$PRICES_FILE" 2>/dev/null)" || CACHE_WRITE_MULT_1H="2.0"
 CACHE_READ_MULT="$(jq -r '.cache_read_multiplier // 0.1' "$PRICES_FILE" 2>/dev/null)" || CACHE_READ_MULT="0.1"
 
 # User-defined exclusion patterns (grep -E, case-insensitive), joined with |
@@ -78,7 +82,7 @@ CURRENT_DIR="$(echo "$INPUT" | jq -r '.cwd // ""' 2>/dev/null)" || exit 0
 
 # Helper: aggregate tokens from a JSONL file.
 # Dedups assistant messages by (message.id|requestId) keeping the LAST occurrence; tracks
-# input, cache_creation (write), cache_read, and output separately.
+# input, cache_creation (write, plus its 1-hour-TTL subset), cache_read, and output separately.
 aggregate_jsonl() {
   local result
   result="$(jq -s '
@@ -92,6 +96,7 @@ aggregate_jsonl() {
     | {
         input_tokens:   ($d | map(.message.usage.input_tokens // 0) | add // 0),
         cache_creation: ($d | map(.message.usage.cache_creation_input_tokens // 0) | add // 0),
+        cache_creation_1h: ($d | map(.message.usage.cache_creation.ephemeral_1h_input_tokens // 0) | add // 0),
         cache_read:     ($d | map(.message.usage.cache_read_input_tokens // 0) | add // 0),
         output_tokens:  ($d | map(.message.usage.output_tokens // 0) | add // 0),
         models:         ($d | map(.message.model // "") | map(select(length > 0)))
@@ -102,6 +107,7 @@ aggregate_jsonl() {
     echo "$line" | jq -c 'select(.type == "assistant" and .message.usage != null) | {
       input_tokens: (.message.usage.input_tokens // 0),
       cache_creation: (.message.usage.cache_creation_input_tokens // 0),
+      cache_creation_1h: (.message.usage.cache_creation.ephemeral_1h_input_tokens // 0),
       cache_read: (.message.usage.cache_read_input_tokens // 0),
       output_tokens: (.message.usage.output_tokens // 0),
       model: (.message.model // ""),
@@ -119,6 +125,7 @@ aggregate_jsonl() {
     | {
         input_tokens:   ($d | map(.input_tokens) | add // 0),
         cache_creation: ($d | map(.cache_creation) | add // 0),
+        cache_creation_1h: ($d | map(.cache_creation_1h) | add // 0),
         cache_read:     ($d | map(.cache_read) | add // 0),
         output_tokens:  ($d | map(.output_tokens) | add // 0),
         models:         ($d | map(.model) | map(select(length > 0)))
@@ -128,23 +135,32 @@ aggregate_jsonl() {
 
 # Helper: compute CO2 and theoretical API cost for aggregated data using its own model.
 # CO2  = (input + cache_write) * factor_in + cache_read * (factor_in * CACHE_READ_FACTOR) + output * factor_out
-# Cost = input * pin + cache_write * (CACHE_WRITE_MULT*pin) + cache_read * (CACHE_READ_MULT*pin) + output * pout
-# Returns: total_input(=input+cache_write) cache_creation cache_read output co2 cost
+#        (cache write is a full prefill, so both TTL tiers cost the same energy)
+# Cost = input * pin + cw_1h * (CACHE_WRITE_MULT_1H*pin) + cw_5m * (CACHE_WRITE_MULT*pin)
+#        + cache_read * (CACHE_READ_MULT*pin) + output * pout
+# Returns: total_input(=input+cache_write) cache_creation cache_creation_1h cache_read output co2 cost
 compute_co2() {
   local agg="$1"
-  local it cw cr out model family fin fout pin pout co2 cost total_input
+  local it cw cw1h cw5m cr out model family fin fout pin pout co2 cost total_input
 
   it="$(echo "$agg" | jq -r '.input_tokens // 0')"
   cw="$(echo "$agg" | jq -r '.cache_creation // 0')"
+  cw1h="$(echo "$agg" | jq -r '.cache_creation_1h // 0')"
   cr="$(echo "$agg" | jq -r '.cache_read // 0')"
   out="$(echo "$agg" | jq -r '.output_tokens // 0')"
   model="$(echo "$agg" | jq -r '.models | if length == 0 then "claude-sonnet" else group_by(.) | sort_by(-length) | first | first end')"
+
+  # Clamp: the 1-hour subset can never exceed the total cache write. Transcripts
+  # predating the per-tier fields report cache_creation without the breakdown, so
+  # cw1h stays 0 there and the whole write is priced at the 5-minute tier.
+  cw1h="$(echo "$cw1h $cw" | LC_ALL=C awk '{printf "%d", ($1 > $2 ? $2 : $1)}')"
+  cw5m="$(echo "$cw $cw1h" | LC_ALL=C awk '{printf "%d", $1 - $2}')"
 
   total_input="$(echo "$it $cw" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
 
   if is_excluded_model "$model"; then
     # Non-Anthropic / user-excluded model: keep raw tokens, no cost/CO2 estimate
-    echo "$total_input $cw $cr $out 0 0"
+    echo "$total_input $cw $cw1h $cr $out 0 0"
     return 0
   fi
 
@@ -162,10 +178,10 @@ compute_co2() {
 
   co2="$(echo "$it $cw $cr $out $fin $fout $CACHE_READ_FACTOR" | LC_ALL=C awk \
     '{printf "%.4f", (($1 + $2) * $5 + $3 * ($5 * $7) + $4 * $6) / 1000000}')"
-  cost="$(echo "$it $cw $cr $out $pin $pout $CACHE_WRITE_MULT $CACHE_READ_MULT" | LC_ALL=C awk \
-    '{printf "%.6f", ($1 * $5 + $2 * ($5 * $7) + $3 * ($5 * $8) + $4 * $6) / 1000000}')"
+  cost="$(echo "$it $cw1h $cw5m $cr $out $pin $pout $CACHE_WRITE_MULT_1H $CACHE_WRITE_MULT $CACHE_READ_MULT" | LC_ALL=C awk \
+    '{printf "%.6f", ($1 * $6 + $2 * ($6 * $8) + $3 * ($6 * $9) + $4 * ($6 * $10) + $5 * $7) / 1000000}')"
   total_input="$(echo "$it $cw" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
-  echo "$total_input $cw $cr $out $co2 $cost"
+  echo "$total_input $cw $cw1h $cr $out $co2 $cost"
 }
 
 # Find the JSONL file: use transcript_path from hook, fallback to search by session_id
@@ -188,7 +204,7 @@ fi
 
 # Parse main JSONL
 MAIN_AGG="$(aggregate_jsonl "$JSONL_FILE")" || exit 0
-read -r INPUT_TOKENS CACHE_CREATION CACHE_READ OUTPUT_TOKENS CO2_G COST_USD <<< "$(compute_co2 "$MAIN_AGG")"
+read -r INPUT_TOKENS CACHE_CREATION CACHE_CREATION_1H CACHE_READ OUTPUT_TOKENS CO2_G COST_USD <<< "$(compute_co2 "$MAIN_AGG")"
 
 # Extract model from JSONL (not available in Stop hook JSON)
 MODEL_RAW="$(echo "$MAIN_AGG" | jq -r '.models | if length == 0 then "claude-sonnet" else group_by(.) | sort_by(-length) | first | first end' 2>/dev/null)" || MODEL_RAW="claude-sonnet"
@@ -200,9 +216,10 @@ if [ -d "$SUBAGENT_DIR" ]; then
     [ -f "$SUB_FILE" ] || continue
     SUB_AGG="$(aggregate_jsonl "$SUB_FILE")" || continue
 
-    read -r SUB_IN SUB_CW SUB_CR SUB_OUT SUB_CO2 SUB_COST <<< "$(compute_co2 "$SUB_AGG")"
+    read -r SUB_IN SUB_CW SUB_CW1H SUB_CR SUB_OUT SUB_CO2 SUB_COST <<< "$(compute_co2 "$SUB_AGG")"
     INPUT_TOKENS="$(echo "$INPUT_TOKENS $SUB_IN" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
     CACHE_CREATION="$(echo "$CACHE_CREATION $SUB_CW" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
+    CACHE_CREATION_1H="$(echo "$CACHE_CREATION_1H $SUB_CW1H" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
     CACHE_READ="$(echo "$CACHE_READ $SUB_CR" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
     OUTPUT_TOKENS="$(echo "$OUTPUT_TOKENS $SUB_OUT" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
     CO2_G="$(echo "$CO2_G $SUB_CO2" | LC_ALL=C awk '{printf "%.4f", $1 + $2}')"
@@ -233,6 +250,6 @@ NOW="${NOW//\'/\'\'}"
 GIT_BRANCH="${GIT_BRANCH//\'/\'\'}"
 
 # INSERT OR REPLACE into sessions (source='live', cost = theoretical API list price)
-sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${INPUT_TOKENS}, ${OUTPUT_TOKENS}, ${CACHE_READ}, ${CACHE_CREATION}, ${COST_USD}, ${CO2_G}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${NOW}'), '${NOW}', 'live', ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}');" 2>/dev/null || true
+sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${INPUT_TOKENS}, ${OUTPUT_TOKENS}, ${CACHE_READ}, ${CACHE_CREATION}, ${CACHE_CREATION_1H}, ${COST_USD}, ${CO2_G}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${NOW}'), '${NOW}', 'live', ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}');" 2>/dev/null || true
 
 exit 0

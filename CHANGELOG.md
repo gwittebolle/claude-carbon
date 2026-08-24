@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-08-24
+
+### fix: the status line showed the current context size, not the session total
+
+Next to a cumulative session cost, the CO2 figure was computed from `context_window.total_input_tokens`, a snapshot of the context currently loaded. The two numbers sat on different time bases. Caught on a 36-hour multi-agent session displaying `$1775.30 · 17g CO₂` while its stored row held 26.33 kg, a factor of about 1500. Compaction made it worse rather than caused it: each compaction shrinks the window, so the number fell back while the cost kept climbing.
+
+The status line now reads the session's own row from `carbon.db`, written by the `Stop` hook at the end of every turn, so it reports the same cumulative figure as `/carbon-report` (cache reads and subagents included) at most one turn late. The context-window estimate remains as a fallback for the first turn of a session, when no row exists yet, and for a missing database. Excluded rows are never read; the fallback correctly yields 0 for a non-Anthropic model.
+
+The earlier limitation note said this needed Anthropic to expose the token breakdown in the status hook. It does not: the hook already passes `session_id`, and the breakdown is in our own database.
+
+- Four assertions added to `tests/run-install-tests.sh` covering the DB path, the unknown-session fallback, the excluded row, and a missing `session_id` (31 total).
+- The data-flow diagram is redrawn and, more to the point, it is now generated. The status-line branch is fed by `carbon.db`, the `context_window` arrow is dashed and labelled as the fallback, and the footnote asking Anthropic for a token breakdown in the status hook is gone.
+- `docs/data-flow.excalidraw` is the versioned source and `docs/render-diagram.mjs` renders it (`npm run diagram`, or `npm run diagram:png` to also rasterize through headless Chrome). The README now points at `docs/data-flow.svg`. Previously the diagram existed only as a PNG with no source, which is how it drifted away from the code it documents and stayed wrong through a release. Node only, no dependency added, and the renderer lives in `docs/` so it stays out of the paths `check-versions.sh` and `release.sh` watch.
+
+### fix: cache writes are priced per TTL tier instead of always at the 5-minute rate
+
+`prices.json` carried a single `cache_write_multiplier` of 1.25, the 5-minute rate, and `METHODOLOGY.md` asserted that 1.25 was correct because the 5-minute tier is "Claude Code's default". The transcripts say otherwise: over 24,978 assistant requests, 174,465,500 cache-write tokens landed in `ephemeral_1h` and 0 in `ephemeral_5m`. Claude Code writes at the 1-hour tier, billed 2x input, so every stored `cost_usd` understated that line item by a factor 1.6 (+12.5% on the total for that sample, $5,216 -> $5,870 at Opus list price).
+
+Rather than swap one wrong constant for another, the tier is now read from the data. `usage.cache_creation.ephemeral_1h_input_tokens` is aggregated per session and stored in a new `cache_creation_1h_tokens` column, so a session mixing both tiers prices correctly and a future change of client default needs no code change. `prices.json` gains `cache_write_multiplier_1h` (2.0) next to the existing 1.25.
+
+CO2 is untouched. A cache write is a full prefill whichever TTL it carries; the tier buys retention, not compute. Only `cost_usd` moves.
+
+- New column `cache_creation_1h_tokens`, migrated idempotently by `setup.sh`, `backfill.sh`, `persist-session.sh` and `recompute.sh`. The 1-hour subset is clamped to the cache-write total everywhere, so a malformed transcript can never produce a negative 5-minute remainder.
+- Rows captured before the split carry 0 and stay priced at the 5-minute tier. `backfill.sh` gains a repair pass that refills the column from any transcript still inside the 30-day window (same pattern as the `git_branch` repair) and prints a reminder to run `recompute.sh --with-cost` afterwards.
+- Golden vectors: the 12 existing vectors keep their exact expected values, since an absent `cache_creation_1h_tokens` reproduces the previous formula. Four vectors added for the 1-hour path, the mixed-tier split, and the clamp.
+
 ## 2026-08-22
 
 - fix: the statusline's "install drift" check no longer fires on documentation-only edits. It compared `data/factors.json` and `data/prices.json` byte for byte against the newest plugin cache copy, so changing a `_`-prefixed comment key (17d396a rewrote `_cache_read_factor`, value unchanged) lit the segment on two-install machines. The byte `cmp` stays as the fast path; only when it differs does a `jq` pass strip every `_`-prefixed key at any depth and compare the remaining values. Value changes (top-level or nested) still flag. Single-install machines are unaffected, the check still self-skips there. Covered by five new cases in `tests/run-install-tests.sh`.

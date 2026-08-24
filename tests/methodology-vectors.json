@@ -2,12 +2,14 @@
   "_purpose": "Canonical golden vectors for the claude-carbon methodology. Source of truth shared with downstream consumers (TokenClimate SaaS keeps a byte-identical copy in tests/fixtures/ and checks it weekly). Any change to data/factors.json or data/prices.json MUST update these expected values in the same commit.",
   "_formulas": {
     "co2_grams": "((input_tokens + cache_creation_tokens) * factor_in + cache_read_tokens * (factor_in * cache_read_factor) + output_tokens * factor_out) / 1e6",
-    "cost_usd": "(input_tokens * price_in + cache_creation_tokens * (price_in * cache_write_multiplier) + cache_read_tokens * (price_in * cache_read_multiplier) + output_tokens * price_out) / 1e6"
+    "cost_usd": "(input_tokens * price_in + cw_1h * (price_in * cache_write_multiplier_1h) + cw_5m * (price_in * cache_write_multiplier) + cache_read_tokens * (price_in * cache_read_multiplier) + output_tokens * price_out) / 1e6",
+    "_cache_write_ttl_split": "cw_1h = min(cache_creation_1h_tokens, cache_creation_tokens); cw_5m = cache_creation_tokens - cw_1h. cache_creation_1h_tokens is OPTIONAL and defaults to 0, which prices the whole cache write at the 5-minute tier and reproduces the pre-split formula exactly. Every vector without the field is therefore unchanged by the split."
   },
-  "_token_semantics": "input_tokens here is the UNCACHED input (Anthropic usage.input_tokens). cache_creation_tokens (cache write) is separate. Note: the plugin DB column input_tokens stores input + cache_write; these vectors keep them split, as captured from the JSONL.",
+  "_token_semantics": "input_tokens here is the UNCACHED input (Anthropic usage.input_tokens). cache_creation_tokens (cache write) is separate, and cache_creation_1h_tokens is the subset of it written at the 1-hour TTL (Anthropic usage.cache_creation.ephemeral_1h_input_tokens); the 5-minute portion is the remainder. Note: the plugin DB column input_tokens stores input + cache_write; these vectors keep them split, as captured from the JSONL.",
   "_constants": {
     "cache_read_factor": 0.08,
     "cache_write_multiplier": 1.25,
+    "cache_write_multiplier_1h": 2.0,
     "cache_read_multiplier": 0.1,
     "factors_gco2e_per_mtok": {
       "fable": { "input": 156, "output": 3304 },
@@ -146,6 +148,54 @@
       "output_tokens": 10000,
       "expected_co2_grams": 4.33,
       "expected_cost_usd": 0.06
+    },
+    {
+      "id": "opus-cache-write-1h-only",
+      "description": "Opus, cache_write only at the 1-hour TTL: same CO2 as the 5-minute twin (a write is a full prefill either way), 2x input price instead of 1.25x",
+      "model": "claude-opus-4-6",
+      "input_tokens": 0,
+      "cache_creation_tokens": 100000,
+      "cache_creation_1h_tokens": 100000,
+      "cache_read_tokens": 0,
+      "output_tokens": 0,
+      "expected_co2_grams": 7.8,
+      "expected_cost_usd": 1.0
+    },
+    {
+      "id": "opus-cache-write-split-ttl",
+      "description": "Opus, one session mixing both cache-write tiers (150k at 1h, 50k at 5m)",
+      "model": "claude-opus-4-6",
+      "input_tokens": 0,
+      "cache_creation_tokens": 200000,
+      "cache_creation_1h_tokens": 150000,
+      "cache_read_tokens": 0,
+      "output_tokens": 0,
+      "expected_co2_grams": 15.6,
+      "expected_cost_usd": 1.8125
+    },
+    {
+      "id": "opus-claude-code-session-1h",
+      "description": "Opus, real Claude Code shape with every cache write at the 1-hour TTL (what the client actually does)",
+      "model": "claude-opus-4-7",
+      "input_tokens": 20000,
+      "cache_creation_tokens": 400000,
+      "cache_creation_1h_tokens": 400000,
+      "cache_read_tokens": 8000000,
+      "output_tokens": 60000,
+      "expected_co2_grams": 181.8,
+      "expected_cost_usd": 9.6
+    },
+    {
+      "id": "sonnet-cache-write-1h-over-total",
+      "description": "Sonnet, malformed input where the 1-hour subset exceeds the total cache write: clamped to the total, never a negative 5-minute remainder",
+      "model": "claude-sonnet-4",
+      "input_tokens": 0,
+      "cache_creation_tokens": 100000,
+      "cache_creation_1h_tokens": 500000,
+      "cache_read_tokens": 0,
+      "output_tokens": 0,
+      "expected_co2_grams": 3.9,
+      "expected_cost_usd": 0.6
     },
     {
       "id": "haiku-cache-read-only",
