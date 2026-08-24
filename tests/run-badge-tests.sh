@@ -76,10 +76,18 @@ check "kg tier: URL" "https://img.shields.io/badge/claude--carbon-12.4%20kg%20CO
 
 # ---------------------------------------------------------------- 3. tonne tier
 
-DB="${TMPROOT}/tonne.db"
+# The tonne tier starts at 10 t. A one-tonne total, which is what a year of heavy
+# personal use looks like, stays in kilograms so the badge keeps a figure with
+# some weight to it rather than collapsing to "1.2 t".
+DB="${TMPROOT}/below-tonne-tier.db"
 make_db "$DB" 1234000
 OUT="$(run_badge "$DB" en_US)"
-check "tonne tier: URL" "https://img.shields.io/badge/claude--carbon-1.2%20t%20CO2e-2f6f4f" "$(url_of "$OUT")"
+check "below tonne tier: still kg" "https://img.shields.io/badge/claude--carbon-1234.0%20kg%20CO2e-2f6f4f" "$(url_of "$OUT")"
+
+DB="${TMPROOT}/tonne.db"
+make_db "$DB" 12340000
+OUT="$(run_badge "$DB" en_US)"
+check "tonne tier: URL" "https://img.shields.io/badge/claude--carbon-12.3%20t%20CO2e-2f6f4f" "$(url_of "$OUT")"
 
 # ---------------------------------------------------------------- 4. FR comma, escaped
 
@@ -116,10 +124,17 @@ check "missing DB: message"    "Error: carbon.db not found. Run setup.sh first."
 
 # shellcheck source=../scripts/format-lib.sh
 . "${REPO_DIR}/scripts/format-lib.sh"
-check "format_co2 999"     "999 g"  "$(format_co2 999)"
-check "format_co2 1000"    "1.0 kg" "$(format_co2 1000)"
-check "format_co2 999999"  "1000.0 kg" "$(format_co2 999999)"
-check "format_co2 1000000" "1.0 t"  "$(format_co2 1000000)"
+check "format_co2 999"      "999 g"      "$(format_co2 999)"
+check "format_co2 1000"     "1.0 kg"     "$(format_co2 1000)"
+check "format_co2 999999"   "1000.0 kg"  "$(format_co2 999999)"
+# The tonne tier starts at 10 t, not 1 t: a one-tonne total reads as "1016.3 kg",
+# not "1.0 t", so the figure keeps its weight instead of collapsing to a rounding
+# artefact. These four pin the boundary from both sides.
+check "format_co2 1000000"  "1000.0 kg"  "$(format_co2 1000000)"
+check "format_co2 1016300"  "1016.3 kg"  "$(format_co2 1016300)"
+check "format_co2 9999999"  "10000.0 kg" "$(format_co2 9999999)"
+check "format_co2 10000000" "10.0 t"     "$(format_co2 10000000)"
+check "format_co2 25400000" "25.4 t"     "$(format_co2 25400000)"
 
 # ----------------------------------------------------------------
 
