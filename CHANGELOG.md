@@ -2,6 +2,12 @@
 
 ## 2026-08-24
 
+### docs: recompute.sh understated what it does to mixed-model rows
+
+`recompute.sh` warned that re-pricing collapses mixed-model sessions to the row's dominant model, "~6% high on subagent sessions", and said nothing at all about CO2. Both halves were wrong. Measured while applying the cache-write TTL fix to a real database: over 226 rows, `--with-cost` moved cost from $7,491 to $10,787 (+44%) and CO2 from 194.3 to 225.2 kg (+16%). A session that fans work out to Haiku subagents and carries Fable as its dominant model gets every one of those tokens re-derived at Fable's rate.
+
+That matters because the header presented the CO2-only mode as "safe and idempotent", which invites running it as routine hygiene. It is not: the original insert is model-accurate per subagent and recompute cannot recover that. The note now carries the measured figures and says to prefer a targeted `UPDATE` when a single line item moved, which is how the TTL correction was applied.
+
 ### fix: the status line showed the current context size, not the session total
 
 Next to a cumulative session cost, the CO2 figure was computed from `context_window.total_input_tokens`, a snapshot of the context currently loaded. The two numbers sat on different time bases. Caught on a 36-hour multi-agent session displaying `$1775.30 · 17g CO₂` while its stored row held 26.33 kg, a factor of about 1500. Compaction made it worse rather than caused it: each compaction shrinks the window, so the number fell back while the cost kept climbing.

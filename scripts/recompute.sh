@@ -4,9 +4,16 @@ set -euo pipefail
 # recompute.sh — Re-derive cost_usd and co2_grams for stored sessions from their raw token
 # counts and the CURRENT data/factors.json + data/prices.json, without reading any JSONL.
 # Run this after changing CO2 factors or the cache_read_factor. By DEFAULT it recomputes
-# co2_grams ONLY (safe and idempotent). Pass --with-cost (alias --prices) to ALSO re-derive
-# cost_usd — only do that after editing prices.json, because cost re-pricing collapses
-# mixed-model (subagent) sessions to the row's dominant model, inflating their cost by ~6%.
+# co2_grams ONLY. Pass --with-cost (alias --prices) to ALSO re-derive cost_usd — only do
+# that after editing prices.json.
+#
+# NEITHER MODE IS FREE ON MIXED-MODEL ROWS. The original insert is model-accurate per
+# subagent; recompute has only the row's dominant model to work with, so a session whose
+# subagents ran on a cheaper model is re-derived entirely at the expensive one. Measured
+# on 226 rows of heavy multi-agent use (2026-08-24): cost +44%, CO2 +16%. An older note
+# here claimed ~6% on cost and said nothing about CO2; both were wrong. Run it when a
+# factor or a price actually changed, not as routine hygiene, and prefer a targeted UPDATE
+# when you only need to adjust one line item.
 #
 # This is the answer to Anthropic's 30-day transcript purge: the raw token breakdown is
 # captured once (by the Stop hook, within the 30-day window) and frozen; everything derived
@@ -15,7 +22,7 @@ set -euo pipefail
 # rows lack cache_read and are left untouched.
 #
 # Mixed-model sessions (subagents on a different model) are recomputed at the row's dominant
-# model, a small approximation; the original insert was model-accurate per subagent.
+# model. This is not a small approximation on subagent-heavy workloads; see the note above.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FACTORS_FILE="${CLAUDE_CARBON_FACTORS:-${SCRIPT_DIR}/../data/factors.json}"
@@ -105,7 +112,7 @@ TOTAL_COST="$(sqlite3 "$DB_PATH" "SELECT printf('%.0f', COALESCE(SUM(cost_usd),0
 TOTAL_CO2_KG="$(sqlite3 "$DB_PATH" "SELECT printf('%.0f', COALESCE(SUM(co2_grams),0)/1000.0) FROM sessions;")"
 
 if [ "$WITH_COST" = "1" ]; then
-  echo "Re-priced cost at the dominant model for mixed-model rows (~6% high on subagent sessions)."
+  echo "Re-priced cost at the dominant model for mixed-model rows (measured +44% on heavy subagent use)."
   echo "Recomputed CO2 + cost for ${RECOMPUTED} rows (left ${LEGACY} legacy rows untouched)."
 else
   echo "Recomputed CO2 for ${RECOMPUTED} rows (cost unchanged; left ${LEGACY} legacy rows untouched)."
