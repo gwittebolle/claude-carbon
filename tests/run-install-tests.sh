@@ -47,14 +47,12 @@ bad() {
   echo "FAIL $1"
   echo "       expected: $2"
   echo "       actual:   $3"
-  # Two strings that render identically differ by something invisible: a carriage
-  # return from a Windows tool, a trailing space, a non-ASCII lookalike. Printing
-  # the bytes turns "expected X, got X" into an actionable failure.
-  if [ "${#2}" = "${#3}" ] || [ "$2" = "$3 " ] || [ "$2 " = "$3" ]; then
-    echo "       (same rendering, ${#2} vs ${#3} chars; bytes below)"
-    printf '       expected: '; printf '%s' "$2" | od -An -c | tr -s ' ' | tr -d '\n'; echo
-    printf '       actual:   '; printf '%s' "$3" | od -An -c | tr -s ' ' | tr -d '\n'; echo
-  fi
+  # Always dump the bytes. A carriage return from a Windows tool, a trailing space or
+  # a stray separator renders as nothing in a CI log, turning a failure into "expected
+  # X, got X" with no way to act on it.
+  echo "       (${#2} vs ${#3} chars)"
+  printf '       expected bytes: '; printf '%s' "$2" | od -An -c | tr -s ' ' | tr -d '\n'; echo
+  printf '       actual bytes:   '; printf '%s' "$3" | od -An -c | tr -s ' ' | tr -d '\n'; echo
 }
 
 # check <name> <expected> <actual>
