@@ -10,16 +10,26 @@ Run the following bash script exactly as written and present the output to the u
 
 # Locate the install (equivalence factors + shared locale lib live in the repo),
 # mirroring /carbon-card: status line wiring first, then plugin root, then default.
-CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+# Windows (Git Bash): CLAUDE_* variables and the paths stored in settings.json can
+# arrive in the native "C:\Users\..." spelling, which bash cannot open. cygpath
+# ships with Git for Windows; everywhere else this is the identity function.
+ccp() {
+  case "${OSTYPE:-}" in msys*|cygwin*) ;; *) printf '%s' "$1"; return 0 ;; esac
+  case "$1" in
+    [A-Za-z]:[\\/]*|*\\*) cygpath -u "$1" 2>/dev/null || printf '%s' "$1" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+CFG="$(ccp "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
 REPO_DIR=""
 if command -v jq >/dev/null 2>&1 && [ -f "$CFG/settings.json" ]; then
   SL_CMD="$(jq -r '.statusLine.command // empty' "$CFG/settings.json" 2>/dev/null)"
   # statusLine.command stores a shell-escaped path: expand ~ and unescape spaces
-  SL_CMD="${SL_CMD//\\ / }"; SL_CMD="${SL_CMD/#\~/$HOME}"
+  SL_CMD="${SL_CMD//\\ / }"; SL_CMD="${SL_CMD/#\~/$HOME}"; SL_CMD="$(ccp "$SL_CMD")"
   [ -n "$SL_CMD" ] && [ -f "$SL_CMD" ] && REPO_DIR="$(cd "$(dirname "$SL_CMD")/.." 2>/dev/null && pwd)"
 fi
-[ -z "$REPO_DIR" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && REPO_DIR="$CLAUDE_PLUGIN_ROOT"
-[ -z "$REPO_DIR" ] && [ -n "${CLAUDE_CARBON_DIR:-}" ] && REPO_DIR="$CLAUDE_CARBON_DIR"
+[ -z "$REPO_DIR" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && REPO_DIR="$(ccp "$CLAUDE_PLUGIN_ROOT")"
+[ -z "$REPO_DIR" ] && [ -n "${CLAUDE_CARBON_DIR:-}" ] && REPO_DIR="$(ccp "$CLAUDE_CARBON_DIR")"
 if [ -z "$REPO_DIR" ]; then
   # Pure marketplace installs reach here: settings.json carries no statusLine.command
   # (the status line is wired through plugin.json) and CLAUDE_PLUGIN_ROOT is not in the
@@ -51,7 +61,7 @@ EQUIV_SET="$(detect_equiv_set)"
 # "431.7045" as 431 and print "431,0" instead of "431.7"
 export LC_ALL=C
 
-DB_PATH="${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-carbon/carbon.db}"
+DB_PATH="$(ccp "${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-carbon/carbon.db}")"
 
 if [ ! -f "$DB_PATH" ]; then
   echo "Database not found. Run setup.sh first:"

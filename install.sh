@@ -4,10 +4,64 @@ set -euo pipefail
 # install.sh — One-line installer for claude-carbon.
 # Usage: curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
 
-INSTALL_DIR="${CLAUDE_CARBON_DIR:-$HOME/code/claude-carbon}"
+# `curl … | bash` leaves BASH_SOURCE unset, which `set -u` would treat as fatal.
+SCRIPT_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")"
+# The installer is normally curl-piped into bash, with no clone on disk yet, so it
+# carries a minimal copy of the two helpers it needs before the dependency check:
+# the platform probe behind the install hints, and the Windows path conversion.
+# tests/run-portability-tests.sh asserts this fallback agrees with the real
+# scripts/portable-lib.sh on every input, so the two cannot drift apart.
+if [ -n "$SCRIPT_SELF_DIR" ] && [ -f "${SCRIPT_SELF_DIR}/scripts/portable-lib.sh" ]; then
+  # shellcheck source=scripts/portable-lib.sh
+  . "${SCRIPT_SELF_DIR}/scripts/portable-lib.sh"
+else
+  # >>> portable-lib fallback
+  case "${OSTYPE:-}" in
+    darwin*)       CC_OS="darwin" ;;
+    msys*|cygwin*) CC_OS="windows" ;;
+    *)             CC_OS="linux" ;;
+  esac
+  cc_install_hint() {
+    case "$CC_OS" in
+      darwin) printf 'brew install %s' "$1" ;;
+      windows)
+        case "$1" in
+          jq)      printf 'winget install jqlang.jq' ;;
+          sqlite3) printf 'winget install SQLite.SQLite' ;;
+          git)     printf 'winget install Git.Git' ;;
+          node)    printf 'winget install OpenJS.NodeJS' ;;
+          *)       printf 'winget install %s' "$1" ;;
+        esac
+        ;;
+      *) printf 'apt install %s' "$1" ;;
+    esac
+  }
+  cc_path() {
+    local p="${1:-}"
+    [ -n "$p" ] || return 0
+    if [ "$CC_OS" != "windows" ]; then printf '%s' "$p"; return 0; fi
+    case "$p" in
+      [A-Za-z]:[\\/]*|*\\*)
+        if command -v cygpath >/dev/null 2>&1; then
+          cygpath -u "$p" 2>/dev/null || printf '%s' "$p"
+        else
+          p="${p//\\//}"
+          case "$p" in
+            [A-Za-z]:/*) printf '/%s%s' "$(printf '%s' "${p%%:*}" | tr 'A-Z' 'a-z')" "${p#*:}" ;;
+            *) printf '%s' "$p" ;;
+          esac
+        fi
+        ;;
+      *) printf '%s' "$p" ;;
+    esac
+  }
+  # <<< portable-lib fallback
+fi
+
+INSTALL_DIR="$(cc_path "${CLAUDE_CARBON_DIR:-$HOME/code/claude-carbon}")"
 # Honour Claude Code's own CLAUDE_CONFIG_DIR so a second environment
 # (e.g. CLAUDE_CONFIG_DIR=~/.claude-work claude) installs into its own dir.
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CONFIG_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
 
 echo ""
 echo "  claude-carbon installer"
@@ -18,11 +72,8 @@ echo ""
 for cmd in jq sqlite3 git; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "ERROR: $cmd is not installed." >&2
-    if [[ "$(uname)" == "Darwin" ]]; then
-      echo "  Install with: brew install $cmd" >&2
-    else
-      echo "  Install with: apt install $cmd" >&2
-    fi
+    echo "  Install with: $(cc_install_hint "$cmd")" >&2
+    [ "$CC_OS" = "windows" ] && echo "  Then reopen this shell so PATH picks it up." >&2
     exit 1
   fi
 done

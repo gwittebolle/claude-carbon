@@ -7,12 +7,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DB_PATH="${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon/carbon.db}"
+# shellcheck source=scripts/portable-lib.sh
+. "${SCRIPT_DIR}/portable-lib.sh"
+DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon/carbon.db}")"
 REPO_URL="https://github.com/gwittebolle/claude-carbon"
 BADGE_COLOR="2f6f4f"
 
 # ── Deps check ──────────────────────────────────────────────
-for cmd in sqlite3 bc; do
+for cmd in sqlite3 awk; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "Error: $cmd is required but not found." >&2
     exit 1

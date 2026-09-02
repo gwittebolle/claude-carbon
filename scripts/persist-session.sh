@@ -10,10 +10,14 @@
 # Intentionally no set -euo pipefail: this hook must exit 0 silently in all cases.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/portable-lib.sh
+. "${SCRIPT_DIR}/portable-lib.sh"
 FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
 PRICES_FILE="${SCRIPT_DIR}/../data/prices.json"
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
-DB_PATH="${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}"
+# CLAUDE_CONFIG_DIR and CLAUDE_CARBON_DB are set by the user, so on Windows they
+# arrive in whatever spelling that user typed, native path included.
+CONFIG_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")"
+DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}")"
 
 METHODOLOGY_VERSION=2
 
@@ -77,8 +81,12 @@ INPUT="$(cat 2>/dev/null)" || exit 0
 SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // ""' 2>/dev/null)" || exit 0
 [ -n "$SESSION_ID" ] || exit 0
 
+# Claude Code is a native binary: on Windows both of these arrive as
+# "C:\\Users\\me\\...", which bash cannot open. cc_path converts them.
 TRANSCRIPT_PATH="$(echo "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null)" || exit 0
+TRANSCRIPT_PATH="$(cc_path "$TRANSCRIPT_PATH")"
 CURRENT_DIR="$(echo "$INPUT" | jq -r '.cwd // ""' 2>/dev/null)" || exit 0
+CURRENT_DIR="$(cc_path "$CURRENT_DIR")"
 
 # Helper: aggregate tokens from a JSONL file.
 # Dedups assistant messages by (message.id|requestId) keeping the LAST occurrence; tracks

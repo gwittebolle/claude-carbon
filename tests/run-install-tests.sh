@@ -19,7 +19,11 @@ command -v jq  >/dev/null 2>&1 || { echo "FAIL: jq is required" >&2; exit 1; }
 command -v git >/dev/null 2>&1 || { echo "FAIL: git is required" >&2; exit 1; }
 [ -f "$CONFIGURE" ] || { echo "FAIL: missing $CONFIGURE" >&2; exit 1; }
 
-TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/claude-carbon-tests.XXXXXX")"
+# cc_tmpdir rather than $TMPDIR directly: under Git Bash on Windows TMPDIR can
+# hold a native "C:\Users\..." path, which mktemp cannot use as a template.
+# shellcheck source=scripts/portable-lib.sh
+. "${REPO_DIR}/scripts/portable-lib.sh"
+TMPROOT="$(mktemp -d "$(cc_tmpdir)/claude-carbon-tests.XXXXXX")"
 # Normalize: $TMPDIR often carries a trailing slash, and the scripts under test resolve their
 # own paths with `cd && pwd`, so an unnormalized root makes assertions compare //-doubled
 # strings against clean ones.
@@ -38,20 +42,39 @@ PASSED=0
 FAILED=0
 
 ok() {   PASSED=$((PASSED + 1)); echo "PASS $1"; }
-bad() {  FAILED=$((FAILED + 1)); echo "FAIL $1"; echo "       expected: $2"; echo "       actual:   $3"; }
+bad() {
+  FAILED=$((FAILED + 1))
+  echo "FAIL $1"
+  echo "       expected: $2"
+  echo "       actual:   $3"
+  # Always dump the bytes. A carriage return from a Windows tool, a trailing space or
+  # a stray separator renders as nothing in a CI log, turning a failure into "expected
+  # X, got X" with no way to act on it.
+  echo "       (${#2} vs ${#3} chars)"
+  printf '       expected bytes: '; printf '%s' "$2" | od -An -c | tr -s ' ' | tr -d '\n'; echo
+  printf '       actual bytes:   '; printf '%s' "$3" | od -An -c | tr -s ' ' | tr -d '\n'; echo
+}
 
 # check <name> <expected> <actual>
 check() {
   if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "$2" "$3"; fi
 }
 
-# Commands registered for a hook event, newline-separated, in order.
-hook_commands() { jq -r --arg e "$2" '[.hooks[$e][]?.hooks[]?.command] | .[]' "$1" 2>/dev/null; }
+# Commands registered for a hook event, newline-separated, in order. The tr strips the
+# interior carriage returns Git Bash leaves in a multi-line command substitution; the
+# assertions are about the commands, not about how the capture was framed.
+hook_commands() { jq -r --arg e "$2" '[.hooks[$e][]?.hooks[]?.command] | .[]' "$1" 2>/dev/null | tr -d '\r'; }
 hook_count()    { jq -r --arg e "$2" '[.hooks[$e][]?.hooks[]?.command] | length' "$1" 2>/dev/null; }
 
-STATUSLINE="${REPO_DIR}/scripts/statusline.sh"
-STOP="${REPO_DIR}/scripts/persist-session.sh"
-RESCAN="${REPO_DIR}/scripts/safety-rescan.sh"
+# What configure-settings.sh writes is platform-dependent by design. On Windows it
+# writes the "mixed" spelling ("D:/a/repo/scripts/x.sh"): Claude Code may resolve the
+# path with Windows APIs before spawning Git Bash, and its status line docs require
+# forward slashes because Git Bash eats unquoted backslashes. cc_native_path is the
+# identity function on macOS and Linux, so these expectations are unchanged there.
+CMD_BASE="$(cc_native_path "$REPO_DIR")"
+STATUSLINE="${CMD_BASE}/scripts/statusline.sh"
+STOP="${CMD_BASE}/scripts/persist-session.sh"
+RESCAN="${CMD_BASE}/scripts/safety-rescan.sh"
 
 # ---------------------------------------------------------------- 1. cold start
 
@@ -65,11 +88,18 @@ check "cold start: statusLine"             "$STATUSLINE" "$(jq -r '.statusLine.c
 check "cold start: Stop hook"              "$STOP"       "$(hook_commands "$S" Stop)"
 check "cold start: SessionStart hook"      "$RESCAN"     "$(hook_commands "$S" SessionStart)"
 
+# Symlinked everywhere a symlink works. Git Bash cannot create one without Windows
+# Developer Mode, so there the commands are copied on purpose and configure-settings.sh
+# refreshes the copy on update; assert whichever form this platform is meant to produce.
 MISSING=""
 for c in carbon-report carbon-card carbon-update carbon-badge carbon-pr; do
-  [ -L "${CFG}/commands/${c}.md" ] || MISSING="${MISSING}${c} "
+  if cc_is_windows; then
+    cmp -s "${REPO_DIR}/skills/${c}/SKILL.md" "${CFG}/commands/${c}.md" 2>/dev/null || MISSING="${MISSING}${c} "
+  else
+    [ -L "${CFG}/commands/${c}.md" ] || MISSING="${MISSING}${c} "
+  fi
 done
-check "cold start: /carbon-* commands linked" "" "$MISSING"
+check "cold start: /carbon-* commands installed" "" "$MISSING"
 
 # ---------------------------------------------------------------- 2. pre-1.1.3 install repaired
 

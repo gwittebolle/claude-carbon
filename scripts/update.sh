@@ -6,8 +6,10 @@
 set -uo pipefail   # NOT -e: each git step is handled explicitly
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/portable-lib.sh
+. "${SCRIPT_DIR}/portable-lib.sh"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-STATE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"
+STATE_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
 
 [ -d "${REPO_DIR}/.git" ] || { echo "Not a git-clone install; nothing to update." >&2; exit 0; }
 case "$REPO_DIR" in
@@ -60,7 +62,7 @@ bash "${SCRIPT_DIR}/configure-settings.sh" >/dev/null 2>&1 || true
 # Refresh the DB schema, then re-price history (CO2-only by default: cheap, idempotent,
 # no mixed-model cost drift).
 CLAUDE_CARBON_INSTALLER=1 bash "${SCRIPT_DIR}/setup.sh" >/dev/null 2>&1 || true
-DB_PATH="${CLAUDE_CARBON_DB:-${STATE_DIR}/carbon.db}"
+DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${STATE_DIR}/carbon.db}")"
 if [ -f "$DB_PATH" ]; then
   bash "${SCRIPT_DIR}/recompute.sh" || echo "history not re-priced; see message above."
 fi

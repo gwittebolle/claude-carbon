@@ -40,8 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Runs against throwaway fixture DBs via CLAUDE_CARBON_DB; sqlite3 and bc
-      # are preinstalled on ubuntu-latest.
+      # Runs against throwaway fixture DBs via CLAUDE_CARBON_DB; sqlite3 is
+      # preinstalled on ubuntu-latest.
       - name: Assert badge URL and snippet against fixture databases
         run: bash tests/run-badge-tests.sh
 
@@ -56,6 +56,91 @@ jobs:
       # dry-run report against fixture DBs. No network, no gh.
       - name: Assert branch capture and the dev PR report
         run: bash tests/run-pr-tests.sh
+
+  portability:
+    name: portability contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pure string logic plus the anti-regression guards (no bc, no python3, no
+      # hardcoded /tmp, LF endings, quoted hook placeholders). No extra deps.
+      - name: Assert the cross-platform contract
+        run: bash tests/run-portability-tests.sh
+
+      # Skips with exit 0 off Windows. Running it here keeps that skip path honest,
+      # so the suite can never start failing the matrix for the wrong reason.
+      - name: Windows end-to-end (expected to skip here)
+        run: bash tests/run-windows-e2e.sh
+
+  windows:
+    name: windows (git bash)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    # Every suite reports even when an earlier one fails: a Windows-only failure costs
+    # a full push to observe, so one round-trip should surface all of them at once.
+    defaults:
+      run:
+        # The shell Claude Code itself spawns for hooks and the status line on
+        # Windows, so the suite runs in the environment users actually get.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      # jq and sqlite3 are the two commands Git for Windows does not ship, and the
+      # two the README asks Windows users to install. Everything else the plugin
+      # touches (bash, awk, sed, grep, date, curl, git, cygpath) comes with Git.
+      - name: Install jq and sqlite3
+        run: |
+          command -v jq      >/dev/null 2>&1 || choco install jq     --no-progress -y
+          command -v sqlite3 >/dev/null 2>&1 || choco install sqlite --no-progress -y
+
+      - name: Report the toolchain actually available
+        run: |
+          echo "uname   : $(uname -s)"
+          echo "OSTYPE  : ${OSTYPE:-unset}"
+          echo "bash    : ${BASH_VERSION}"
+          echo "jq      : $(jq --version)"
+          echo "sqlite3 : $(sqlite3 --version)"
+          echo "awk     : $(awk --version 2>/dev/null | head -1 || echo present)"
+          echo "cygpath : $(command -v cygpath || echo MISSING)"
+          echo "TMPDIR  : ${TMPDIR:-unset}"
+
+      # cc_path's cygpath branch, which a Linux or macOS runner cannot reach, plus
+      # the same drift and dependency guards.
+      - name: Portability contract
+        if: always()
+        run: bash tests/run-portability-tests.sh
+
+      - name: Methodology golden vectors
+        if: always()
+        run: bash tests/run-vectors.sh
+
+      - name: Install and update wiring
+        if: always()
+        run: bash tests/run-install-tests.sh
+
+      - name: Badge output
+        if: always()
+        run: bash tests/run-badge-tests.sh
+
+      - name: carbon-pr pipeline
+        if: always()
+        run: bash tests/run-pr-tests.sh
+
+      # The assertions no other runner can make: a real cygpath, a native path
+      # pointing at a real file, and the hook manifests spawned the way Claude Code
+      # spawns them (placeholder substituted into the string, string handed to bash).
+      - name: Windows end-to-end
+        if: always()
+        run: bash tests/run-windows-e2e.sh
+
+      # install.ps1 is the one file no POSIX machine can even parse.
+      - name: install.ps1
+        if: always()
+        shell: powershell
+        run: .\tests\run-install-ps1-tests.ps1
 
   shellcheck:
     name: shellcheck

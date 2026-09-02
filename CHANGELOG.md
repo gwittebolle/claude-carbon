@@ -1,5 +1,91 @@
 # Changelog
 
+## 2026-09-02
+
+### feat: native Windows support (issue #27)
+
+`npx claude-carbon` refused to run on Windows and the plugin assumed a POSIX
+machine everywhere else. It now runs on native Windows through the Git Bash that
+Claude Code itself spawns for hooks and the status line, falling back to PowerShell
+only when Git Bash is absent, which is why the plugin stays bash rather than being
+ported: it speaks the shell its host already uses.
+
+Five things were actually broken, all of them silent failures rather than errors:
+
+**Native paths.** Claude Code is a native binary, so the JSON it pipes into the Stop
+hook and the status line carries `C:\Users\me\.claude\projects\...\x.jsonl`, and
+`${CLAUDE_PLUGIN_ROOT}` expands the same way. Bash reads those backslashes as escape
+characters. A new `scripts/portable-lib.sh` converts every path crossing that boundary
+through `cygpath`, with a string rewrite as fallback, and `cc_native_path` does the
+reverse for the paths written back into `settings.json`, which Claude Code may resolve
+with Windows APIs before handing them to Git Bash. The five `SKILL.md` files carry
+their own copy of the conversion: they resolve `CLAUDE_*` variables before any library
+is reachable.
+
+**Unquoted placeholders in the hook wiring.** `plugin.json` and `hooks.json` passed
+`${CLAUDE_PLUGIN_ROOT}/scripts/x.sh` unquoted. In shell form Claude Code hands that
+string to `sh -c`, or to Git Bash on Windows, where the separators disappear. Both
+manifests now quote the placeholder, as the hooks documentation requires. This also
+fixes a plugin root containing a space on macOS and Linux.
+
+**Line endings.** Git for Windows clones with `core.autocrlf=true` by default, which
+would have rewritten every script to CRLF and made bash fail on `$'\r'`. A
+`.gitattributes` pins `*.sh` and the other parsed files to LF.
+
+**Two dependencies Git for Windows does not ship.** `bc` was used for three float
+comparisons and is now `cc_num_ge`, one awk call; `python3` generated the monthly bar
+chart and served the pages for the PNG export, and is now node, already required for
+Playwright on that path. `jq` and `sqlite3` are the whole remaining Windows
+prerequisite list. The node rewrite of the bar chart was verified by generating all
+four report pages from a real 226-session database on `main` and on this branch: the
+HTML is byte-identical.
+
+**Symlinked slash commands.** Git Bash silently degrades `ln -s` to a copy without
+Developer Mode. `configure-settings.sh` now copies on purpose and refreshes the copy
+on every update, so `/carbon-update` still reaches the commands. A file the user wrote
+themselves is left alone.
+
+Two smaller wins came out of it: the local PNG export server binds `127.0.0.1` where
+`python3 -m http.server` defaulted to `0.0.0.0` and briefly published the pages to the
+network, and the macOS Keychain lookup is now guarded on the platform instead of on a
+`security` binary that could be something else entirely.
+
+- `install.ps1`: PowerShell bootstrap that locates Git Bash (skipping the
+  `System32\bash.exe` WSL launcher), checks `jq` and `sqlite3` through Git Bash's own
+  PATH, normalises the downloaded installer's line endings, and hands over to
+  `install.sh`.
+- `bin/claude-carbon.js`: `npx claude-carbon` finds `bash.exe` instead of refusing,
+  honouring `CLAUDE_CODE_GIT_BASH_PATH` first.
+- `tests/run-portability-tests.sh`: 32 assertions covering the path conversion with
+  the platform forced, `cc_num_ge` cross-checked against `bc` itself where `bc`
+  exists, the drift between `install.sh`'s inline fallback and the real library, the
+  absence of `bc` / `python3` / hardcoded `/tmp`, the LF pinning, the quoted
+  placeholders, and the syntax of every script and every `SKILL.md` bash block.
+- `tests/run-windows-e2e.sh`: the assertions no other machine can make, skipped with
+  exit 0 off Windows. A real `cygpath` round-trip on a file whose directory contains a
+  space; the Stop hook fed a native `transcript_path` and asserted to land a row with
+  the right token breakdown, project and branch; the status line fed a native
+  `current_dir`; the hook manifests spawned the way Claude Code spawns them, with the
+  placeholder substituted into the command string and the string handed to bash from a
+  native plugin root; `settings.json` asserted free of backslashes and openable;
+  slash-command copies asserted to refresh while a user-written command survives.
+- `tests/run-install-ps1-tests.ps1`: `install.ps1` parses, finds Git Bash, refuses the
+  `System32\bash.exe` WSL launcher, honours `CLAUDE_CODE_GIT_BASH_PATH` and falls
+  through when it points nowhere, normalises a CRLF download, and propagates the
+  installer's exit code. Run against a stub served over loopback, so nothing is cloned.
+- `configure-settings.sh` hook dedupe: under Git Bash, command substitution drops the
+  carriage return from a single-line capture but keeps the interior ones, so reading
+  several hook commands back out of `jq` yields a bare CR on every line but the last.
+  Our own hook then failed to match itself whenever another tool's hook sat after it in
+  the same event, and every install or update appended a second copy. Found by the
+  Windows runner, and only because the foreign-hook fixture happened to order them that
+  way: with ours last, the accidental case, everything looked idempotent.
+- CI gains a `windows-latest` job running the whole suite under Git Bash, which is the
+  only place the `cygpath` branch is reachable, plus a `portability` job on Ubuntu that
+  also exercises the e2e suite's skip path.
+- README gains a Windows section: the three install paths, and the specifics worth
+  knowing (forward slashes in `settings.json`, copied commands, no sandboxing).
+
 ## 2026-08-24
 
 ### fix: totals stay in kilograms until 10 t, projections stay in tonnes

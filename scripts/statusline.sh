@@ -10,9 +10,11 @@ SEGMENT_MODE=0
 [ "${1:-}" = "--segment" ] && SEGMENT_MODE=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/portable-lib.sh
+. "${SCRIPT_DIR}/portable-lib.sh"
 FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
-DB_PATH="${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}"
+CONFIG_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")"
+DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}")"
 
 # Read stdin
 INPUT="$(cat)"
@@ -24,7 +26,9 @@ INPUT_TOKENS="$(echo "$INPUT" | jq -r '.context_window.total_input_tokens // 0')
 OUTPUT_TOKENS="$(echo "$INPUT" | jq -r '.context_window.total_output_tokens // 0')"
 COST_USD="$(echo "$INPUT" | jq -r '.cost.total_cost_usd // 0')"
 USED_PCT="$(echo "$INPUT" | jq -r '.context_window.used_percentage // 0')"
-CURRENT_DIR="$(echo "$INPUT" | jq -r '.workspace.current_dir // ""')"
+# Native path on Windows ("C:\\Users\\me\\code\\x"): basename and `git -C`
+# both need it converted first.
+CURRENT_DIR="$(cc_path "$(echo "$INPUT" | jq -r '.workspace.current_dir // ""')")"
 SESSION_ID="$(echo "$INPUT" | jq -r '.session_id // ""')"
 
 # Project name = last path segment
@@ -126,7 +130,7 @@ if command -v jq &>/dev/null; then
 
     NEEDS_REFRESH=1
     if [ -f "$USAGE_CACHE_FILE" ]; then
-      CACHE_MTIME="$(stat -f %m "$USAGE_CACHE_FILE" 2>/dev/null || stat -c %Y "$USAGE_CACHE_FILE" 2>/dev/null || echo 0)"
+      CACHE_MTIME="$(cc_mtime "$USAGE_CACHE_FILE")"
       CACHE_AGE=$(( $(date +%s) - CACHE_MTIME ))
       [ "$CACHE_AGE" -lt "$USAGE_CACHE_TTL" ] && NEEDS_REFRESH=0
     fi
@@ -135,7 +139,7 @@ if command -v jq &>/dev/null; then
       TOKEN=""
       if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
         TOKEN="$CLAUDE_CODE_OAUTH_TOKEN"
-      elif command -v security &>/dev/null; then
+      elif [ "$CC_OS" = "darwin" ] && command -v security &>/dev/null; then
         BLOB="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)"
         [ -n "$BLOB" ] && TOKEN="$(echo "$BLOB" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)"
       fi
