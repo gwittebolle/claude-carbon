@@ -12,17 +12,25 @@ Track the carbon footprint of your Claude Code sessions.
 
 **1. Install (or update):**
 
+macOS, Linux, WSL:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
 ```
 
-Or, if you have Node.js:
+Windows (PowerShell), which needs [Git for Windows](https://git-scm.com/downloads/win) and two packages first - see [Windows](#windows):
+
+```powershell
+irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
+```
+
+Or, on any platform with Node.js:
 
 ```bash
 npx claude-carbon
 ```
 
-Same command to install and to update to the latest version (both run the same installer).
+Same command to install and to update to the latest version (all three run the same installer).
 
 **2. Restart Claude Code.** Your CO2 appears in the status line:
 
@@ -309,9 +317,9 @@ curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/inst
 - `sqlite3` - local database
 - `git` - branch detection in status line (optional)
 - `curl` - 5h quota usage via Anthropic's `/api/oauth/usage` endpoint (optional, 60s cache)
-- `playwright-core` + Chromium - PNG export for `/carbon-card` (optional)
+- `node` + `playwright-core` + Chromium - PNG export for `/carbon-card` (optional)
 
-`jq` and `sqlite3` are pre-installed on macOS. On Linux: `apt install jq sqlite3`.
+`jq` and `sqlite3` are pre-installed on macOS. On Linux: `apt install jq sqlite3`. On Windows, see below.
 
 To use `/carbon-card`, install Playwright and its Chromium browser:
 
@@ -319,6 +327,59 @@ To use `/carbon-card`, install Playwright and its Chromium browser:
 npm install -g playwright-core
 npx playwright install chromium
 ```
+
+## Windows
+
+claude-carbon is bash, and stays bash on Windows. That is deliberate rather than a
+shortcut: on native Windows, Claude Code runs status line and hook commands through
+the bash that ships with [Git for Windows](https://git-scm.com/downloads/win), falling
+back to PowerShell only when Git Bash is absent
+([status line docs](https://code.claude.com/docs/en/statusline#windows-configuration),
+[hooks docs](https://code.claude.com/docs/en/hooks)). The plugin speaks the shell its
+host already spawns.
+
+**Native Windows.** Install Git for Windows, plus the two commands it does not ship:
+
+```powershell
+winget install Git.Git
+winget install jqlang.jq
+winget install SQLite.SQLite
+```
+
+Open a new terminal so `PATH` picks them up, then:
+
+```powershell
+irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
+```
+
+Everything else the plugin needs - `bash`, `awk`, `sed`, `grep`, `date`, `curl`,
+`git`, `cygpath` - comes with Git for Windows.
+
+**WSL 2.** Nothing special: run the `curl | bash` installer inside your distribution.
+Claude Code, its transcripts and claude-carbon all live on the Linux side. This is
+the path to pick if your projects are already in WSL. VS Code reaches it through the
+Remote - WSL extension.
+
+**Marketplace install.** `/plugin install claude-carbon@claude-carbon` behaves the
+same as on macOS, once Git for Windows, `jq` and `sqlite3` are present.
+
+### Windows specifics
+
+- **Git Bash is required.** Without it Claude Code routes commands to PowerShell,
+  which cannot run a `.sh` file. `claude doctor` tells you which shell it picked. If
+  Git is installed somewhere unusual, point Claude Code at it in `settings.json`:
+  `{"env": {"CLAUDE_CODE_GIT_BASH_PATH": "C:\\Program Files\\Git\\bin\\bash.exe"}}`.
+- **Paths in `settings.json` use forward slashes** (`C:/Users/you/code/claude-carbon/...`).
+  Git Bash eats unquoted backslashes, and the command then fails with no visible error.
+  The installer writes them correctly; only hand-edits need the care.
+- **Slash commands are copied, not symlinked.** Git Bash cannot create a real symlink
+  without Developer Mode, so `/carbon-report` and friends are copied into
+  `~/.claude/commands/` and refreshed on every update.
+- **Sandboxing is not available** on native Windows (a Claude Code limitation, not
+  this plugin's). Use WSL 2 if you need it.
+- **`/carbon-card` additionally needs Node.js**: `winget install OpenJS.NodeJS`.
+
+CI runs the full test suite on `windows-latest` under Git Bash, alongside Ubuntu.
 
 ## Reduce your footprint
 

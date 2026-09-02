@@ -10,7 +10,7 @@
 # a scratch git repo); the real ~/.claude is never read or written.
 #
 # bash 3.2 compatible (macOS default): no associative arrays, no mapfile.
-# Dependencies: sqlite3, jq, bc, git.
+# Dependencies: sqlite3, jq, awk, git.
 
 set -u
 
@@ -19,12 +19,16 @@ REPO_DIR="$(dirname "$SCRIPT_DIR")"
 PR_SCRIPT="${REPO_DIR}/scripts/generate-pr-report.sh"
 PERSIST="${REPO_DIR}/scripts/persist-session.sh"
 
-for c in sqlite3 jq bc git; do
+for c in sqlite3 jq awk git; do
   command -v "$c" >/dev/null 2>&1 || { echo "FAIL: $c is required" >&2; exit 1; }
 done
 [ -f "$PR_SCRIPT" ] || { echo "FAIL: missing $PR_SCRIPT" >&2; exit 1; }
 
-TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/claude-carbon-pr-tests.XXXXXX")"
+# cc_tmpdir rather than $TMPDIR directly: under Git Bash on Windows TMPDIR can
+# hold a native "C:\Users\..." path, which mktemp cannot use as a template.
+# shellcheck source=scripts/portable-lib.sh
+. "${REPO_DIR}/scripts/portable-lib.sh"
+TMPROOT="$(mktemp -d "$(cc_tmpdir)/claude-carbon-pr-tests.XXXXXX")"
 TMPROOT="$(cd "$TMPROOT" && pwd -P)"
 
 # Only ever delete a path we just created under a temp root, never an arbitrary variable.

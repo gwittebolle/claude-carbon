@@ -1,0 +1,25 @@
+# Git for Windows clones with core.autocrlf=true by default, which would rewrite
+# every shell script to CRLF on checkout. Bash then reads the carriage return as
+# part of the shebang and of every command, and the plugin fails on Windows with
+# errors like `$'\r': command not found`. Pin the working-tree line endings for
+# everything that is executed or parsed rather than edited by hand.
+*.sh        text eol=lf
+*.bash      text eol=lf
+*.json      text eol=lf
+*.jsonl     text eol=lf
+*.md        text eol=lf
+*.html      text eol=lf
+*.yml       text eol=lf
+*.cff       text eol=lf
+bin/*.js    text eol=lf
+
+# PowerShell reads LF without complaint, and `irm | iex` fetches the normalised blob
+# from GitHub rather than a checkout, so there is nothing to gain from CRLF here.
+*.ps1       text eol=lf
+
+# Never touch binary payloads.
+*.png       binary
+*.gif       binary
+*.svg       binary
+*.xlsx      binary
+*.excalidraw binary

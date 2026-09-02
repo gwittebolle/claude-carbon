@@ -4,6 +4,9 @@
 # factors themselves live in data/factors.json ("equivalences", one set per
 # locale). Policy: METHODOLOGY.md "Locale detection".
 
+# shellcheck source=scripts/portable-lib.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/portable-lib.sh"
+
 # Echoes the equivalence set for this user: "fr", "us" or "world".
 # CLAUDE_CARBON_LOCALE forces a set (accepts a set name or a locale string).
 # Must run before any `export LC_ALL=C`, which would mask the user's locale.
@@ -17,10 +20,14 @@ detect_equiv_set() {
       *) resolved="$candidate"; break ;;
     esac
   done
-  if [ -z "$resolved" ] && [ "$(uname)" = "Darwin" ]; then
-    # Hooks and GUI-launched shells often carry no LANG at all
-    resolved="$(defaults read -g AppleLocale 2>/dev/null || true)"
+  if [ -z "$resolved" ]; then
+    # Hooks and GUI-launched shells often carry no LANG at all, and no Windows
+    # shell sets one: fall back to the OS-level locale (AppleLocale on macOS,
+    # the International registry key on Windows).
+    resolved="$(cc_system_locale)"
   fi
+  # Windows and macOS spell the locale with a hyphen ("fr-FR", "en-US") where a
+  # POSIX LANG uses an underscore; the patterns below accept both spellings.
   case "$resolved" in
     # An undetected locale falls back to the French set, this tool's original
     # default: a detection failure must reproduce the pre-locale behavior, not

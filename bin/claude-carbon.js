@@ -6,10 +6,44 @@
 "use strict";
 
 const { spawnSync } = require("node:child_process");
-const { mkdtempSync, writeFileSync } = require("node:fs");
+const { existsSync, mkdtempSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const pkg = require("../package.json");
+
+// The installer, the hooks and the status line are all bash. On macOS and Linux
+// that is simply "bash"; on Windows it is the bash.exe that ships with Git for
+// Windows, which is also the shell Claude Code itself spawns for hooks and the
+// status line. Returns null when nothing usable is found.
+function findBash() {
+  if (process.platform !== "win32") return "bash";
+
+  const candidates = [
+    // Same variable Claude Code reads, so a user who already pointed Claude Code
+    // at a non-default Git install does not have to say it twice.
+    process.env.CLAUDE_CODE_GIT_BASH_PATH,
+    join(process.env.ProgramFiles || "C:\\Program Files", "Git", "bin", "bash.exe"),
+    join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "Git", "bin", "bash.exe"),
+    join(process.env.LOCALAPPDATA || "", "Programs", "Git", "bin", "bash.exe"),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+
+  // Last resort: ask PATH. C:\Windows\System32\bash.exe is excluded on purpose —
+  // that one is the WSL launcher, and running the installer through it would set
+  // claude-carbon up inside the Linux distribution instead of on Windows.
+  const where = spawnSync("where.exe", ["bash"], { encoding: "utf8" });
+  if (where.status === 0 && where.stdout) {
+    for (const line of where.stdout.split(/\r?\n/)) {
+      const path = line.trim();
+      if (path && !/\\System32\\/i.test(path) && existsSync(path)) return path;
+    }
+  }
+
+  return null;
+}
 
 const INSTALL_URL =
   process.env.CLAUDE_CARBON_INSTALL_URL ||
@@ -46,9 +80,14 @@ if (arg !== undefined && arg !== "--dry-run") {
 }
 
 async function main() {
-  if (process.platform === "win32") {
+  const bash = findBash();
+  if (!bash) {
     console.error(
-      "claude-carbon needs bash (macOS or Linux); Windows is not supported yet.",
+      "claude-carbon runs on bash. On Windows that means Git for Windows, which\n" +
+        "Claude Code also uses for its own Bash tool.\n\n" +
+        "  Install it:  winget install Git.Git\n" +
+        "  Or, if it is already installed somewhere unusual, point at it:\n" +
+        '    set CLAUDE_CODE_GIT_BASH_PATH="C:\\Program Files\\Git\\bin\\bash.exe"',
     );
     process.exit(1);
   }
@@ -73,9 +112,9 @@ async function main() {
     process.exit(0);
   }
 
-  const { status, error } = spawnSync("bash", [file], { stdio: "inherit" });
+  const { status, error } = spawnSync(bash, [file], { stdio: "inherit" });
   if (error) {
-    console.error(`Could not run bash: ${error.message}`);
+    console.error(`Could not run ${bash}: ${error.message}`);
     process.exit(1);
   }
   process.exit(status ?? 1);

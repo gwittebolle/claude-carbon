@@ -6,8 +6,10 @@
 # Must exit 0 immediately and never block session start.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DB_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"
-DB_PATH="${CLAUDE_CARBON_DB:-${DB_DIR}/carbon.db}"
+# shellcheck source=scripts/portable-lib.sh
+. "${SCRIPT_DIR}/portable-lib.sh"
+DB_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
+DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${DB_DIR}/carbon.db}")"
 STAMP="${DB_DIR}/.last-rescan"
 
 # Portable detach: fully background a command so it survives session-start exit. setsid is
@@ -44,7 +46,7 @@ fi
 
 # Throttle: skip if a rescan ran in the last 24h
 if [ -f "$STAMP" ]; then
-  MTIME="$(stat -f %m "$STAMP" 2>/dev/null || stat -c %Y "$STAMP" 2>/dev/null || echo 0)"
+  MTIME="$(cc_mtime "$STAMP")"
   AGE=$(( $(date +%s) - MTIME ))
   [ "$AGE" -lt 86400 ] && exit 0
 fi

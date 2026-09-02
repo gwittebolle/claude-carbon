@@ -40,8 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Runs against throwaway fixture DBs via CLAUDE_CARBON_DB; sqlite3 and bc
-      # are preinstalled on ubuntu-latest.
+      # Runs against throwaway fixture DBs via CLAUDE_CARBON_DB; sqlite3 is
+      # preinstalled on ubuntu-latest.
       - name: Assert badge URL and snippet against fixture databases
         run: bash tests/run-badge-tests.sh
 
@@ -55,6 +55,66 @@ jobs:
       # Fixture transcript through the Stop hook (git_branch capture), then the
       # dry-run report against fixture DBs. No network, no gh.
       - name: Assert branch capture and the dev PR report
+        run: bash tests/run-pr-tests.sh
+
+  portability:
+    name: portability contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pure string logic plus the anti-regression guards (no bc, no python3, no
+      # hardcoded /tmp, LF endings, quoted hook placeholders). No extra deps.
+      - name: Assert the cross-platform contract
+        run: bash tests/run-portability-tests.sh
+
+  windows:
+    name: windows (git bash)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        # The shell Claude Code itself spawns for hooks and the status line on
+        # Windows, so the suite runs in the environment users actually get.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      # jq and sqlite3 are the two commands Git for Windows does not ship, and the
+      # two the README asks Windows users to install. Everything else the plugin
+      # touches (bash, awk, sed, grep, date, curl, git, cygpath) comes with Git.
+      - name: Install jq and sqlite3
+        run: |
+          command -v jq      >/dev/null 2>&1 || choco install jq     --no-progress -y
+          command -v sqlite3 >/dev/null 2>&1 || choco install sqlite --no-progress -y
+
+      - name: Report the toolchain actually available
+        run: |
+          echo "uname   : $(uname -s)"
+          echo "OSTYPE  : ${OSTYPE:-unset}"
+          echo "bash    : ${BASH_VERSION}"
+          echo "jq      : $(jq --version)"
+          echo "sqlite3 : $(sqlite3 --version)"
+          echo "awk     : $(awk --version 2>/dev/null | head -1 || echo present)"
+          echo "cygpath : $(command -v cygpath || echo MISSING)"
+          echo "TMPDIR  : ${TMPDIR:-unset}"
+
+      # cc_path's cygpath branch, which a Linux or macOS runner cannot reach, plus
+      # the same drift and dependency guards.
+      - name: Portability contract
+        run: bash tests/run-portability-tests.sh
+
+      - name: Methodology golden vectors
+        run: bash tests/run-vectors.sh
+
+      - name: Install and update wiring
+        run: bash tests/run-install-tests.sh
+
+      - name: Badge output
+        run: bash tests/run-badge-tests.sh
+
+      - name: carbon-pr pipeline
         run: bash tests/run-pr-tests.sh
 
   shellcheck:

@@ -5,8 +5,10 @@
 # hook (safety-rescan.sh), at most once/day. Swallows every error; safe to kill anytime.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/portable-lib.sh
+. "${SCRIPT_DIR}/portable-lib.sh"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-STATE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"
+STATE_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
 OUT="${STATE_DIR}/update-check.json"
 
 # Opt-out (mirrors npm/gh NO_UPDATE_NOTIFIER convention)

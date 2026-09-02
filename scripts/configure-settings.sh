@@ -10,7 +10,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+# shellcheck source=scripts/portable-lib.sh
+. "${SCRIPT_DIR}/portable-lib.sh"
+CONFIG_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
 SETTINGS_FILE="${CONFIG_DIR}/settings.json"
 
 # Marketplace installs declare their hooks in hooks/hooks.json (see plugin.json); writing them
@@ -24,9 +26,14 @@ fi
 
 mkdir -p "$CONFIG_DIR"
 
-STATUSLINE_CMD="${INSTALL_DIR}/scripts/statusline.sh"
-STOP_CMD="${INSTALL_DIR}/scripts/persist-session.sh"
-SESSIONSTART_CMD="${INSTALL_DIR}/scripts/safety-rescan.sh"
+# Claude Code is a native binary on Windows and may resolve these paths itself
+# before handing them to Git Bash, so settings.json gets the "mixed" spelling
+# ("C:/Users/me/…"): valid for the Windows side, and openable by bash as written.
+# Identity on macOS and Linux, so nothing changes there.
+CMD_DIR="$(cc_native_path "$INSTALL_DIR")"
+STATUSLINE_CMD="${CMD_DIR}/scripts/statusline.sh"
+STOP_CMD="${CMD_DIR}/scripts/persist-session.sh"
+SESSIONSTART_CMD="${CMD_DIR}/scripts/safety-rescan.sh"
 
 # Resolve a hook command to a comparable form. The same script reaches settings.json spelled
 # several ways: the README's manual block uses `~/code/claude-carbon/...`, this script writes
@@ -129,15 +136,33 @@ else
   echo "  Created $SETTINGS_FILE"
 fi
 
-# /carbon-* slash commands, symlinked so they follow the clone on update.
+# /carbon-* slash commands. Symlinked so they follow the clone on update — except
+# on Windows, where Git Bash cannot create a real symlink without Developer Mode
+# and silently makes a copy instead. There we copy on purpose, and refresh the
+# copy on every run so an update still reaches the commands.
 COMMANDS_DIR="${CONFIG_DIR}/commands"
 mkdir -p "$COMMANDS_DIR"
 for SKILL_NAME in carbon-report carbon-card carbon-update carbon-badge carbon-pr; do
+  SKILL_SRC="${INSTALL_DIR}/skills/${SKILL_NAME}/SKILL.md"
   SKILL_LNK="${COMMANDS_DIR}/${SKILL_NAME}.md"
-  if [ -L "$SKILL_LNK" ] || [ -f "$SKILL_LNK" ]; then
+  if [ -L "$SKILL_LNK" ]; then
     echo "  /${SKILL_NAME}: already installed (skipped)"
+  elif [ -f "$SKILL_LNK" ]; then
+    # A plain file where a symlink was expected: either a Windows copy of ours,
+    # which must be refreshed, or a command the user wrote, which must not be
+    # touched. Ours always names the project; a hand-written one would not.
+    if cc_is_windows && grep -q "claude-carbon" "$SKILL_LNK" 2>/dev/null; then
+      if cmp -s "$SKILL_SRC" "$SKILL_LNK"; then
+        echo "  /${SKILL_NAME}: already installed (skipped)"
+      else
+        cp -f "$SKILL_SRC" "$SKILL_LNK"
+        echo "  /${SKILL_NAME}: refreshed"
+      fi
+    else
+      echo "  /${SKILL_NAME}: already installed (skipped)"
+    fi
   else
-    ln -s "${INSTALL_DIR}/skills/${SKILL_NAME}/SKILL.md" "$SKILL_LNK"
+    cc_link_or_copy "$SKILL_SRC" "$SKILL_LNK"
     echo "  /${SKILL_NAME}: installed"
   fi
 done

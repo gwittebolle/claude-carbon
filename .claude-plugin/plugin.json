@@ -18,6 +18,6 @@
   "skills": "./skills/",
   "statusLine": {
     "type": "command",
-    "command": "${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh"
+    "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh\""
   }
 }

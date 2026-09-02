@@ -4,8 +4,10 @@ set -euo pipefail
 # setup.sh — Initialize claude-carbon: check deps, create DB, backfill history, show summary.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/portable-lib.sh
+. "${SCRIPT_DIR}/portable-lib.sh"
 PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
+CONFIG_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")"
 DB_DIR="${CONFIG_DIR}/claude-carbon"
 DB_PATH="${DB_DIR}/carbon.db"
 
@@ -15,18 +17,13 @@ echo "────────────────────────�
 # 1. Check dependencies
 echo "Checking dependencies..."
 
-if ! command -v jq &>/dev/null; then
-  echo "ERROR: jq is not installed. Install with: brew install jq" >&2
-  exit 1
-fi
-
-if ! command -v sqlite3 &>/dev/null; then
-  echo "ERROR: sqlite3 is not installed. Install with: brew install sqlite3" >&2
-  exit 1
-fi
-
-echo "  jq: OK"
-echo "  sqlite3: OK"
+for CMD in jq sqlite3; do
+  if ! command -v "$CMD" &>/dev/null; then
+    echo "ERROR: $CMD is not installed. Install with: $(cc_install_hint "$CMD")" >&2
+    exit 1
+  fi
+  echo "  ${CMD}: OK"
+done
 
 # 2. Create directory
 echo ""
@@ -106,6 +103,7 @@ if [ "${CLAUDE_CARBON_INSTALLER:-}" != "1" ]; then
   echo "─────────────────────────────"
   echo "Next steps:"
   echo ""
+  PLUGIN_DIR="$(cc_native_path "$PLUGIN_DIR")"
   echo "1. Add to ${CONFIG_DIR}/settings.json:"
   echo ""
   cat <<EOF

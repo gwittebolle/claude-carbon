@@ -9,7 +9,7 @@
 # ~/.claude is never read or written.
 #
 # bash 3.2 compatible (macOS default): no associative arrays, no mapfile.
-# Dependencies: sqlite3, bc.
+# Dependencies: sqlite3, awk.
 
 set -u
 
@@ -18,10 +18,14 @@ REPO_DIR="$(dirname "$SCRIPT_DIR")"
 BADGE="${REPO_DIR}/scripts/generate-badge.sh"
 
 command -v sqlite3 >/dev/null 2>&1 || { echo "FAIL: sqlite3 is required" >&2; exit 1; }
-command -v bc      >/dev/null 2>&1 || { echo "FAIL: bc is required" >&2; exit 1; }
+command -v awk     >/dev/null 2>&1 || { echo "FAIL: awk is required" >&2; exit 1; }
 [ -f "$BADGE" ] || { echo "FAIL: missing $BADGE" >&2; exit 1; }
 
-TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/claude-carbon-badge-tests.XXXXXX")"
+# cc_tmpdir rather than $TMPDIR directly: under Git Bash on Windows TMPDIR can
+# hold a native "C:\Users\..." path, which mktemp cannot use as a template.
+# shellcheck source=scripts/portable-lib.sh
+. "${REPO_DIR}/scripts/portable-lib.sh"
+TMPROOT="$(mktemp -d "$(cc_tmpdir)/claude-carbon-badge-tests.XXXXXX")"
 TMPROOT="$(cd "$TMPROOT" && pwd -P)"
 
 # Only ever delete a path we just created under a temp root, never an arbitrary variable.

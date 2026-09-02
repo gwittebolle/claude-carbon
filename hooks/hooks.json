@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/persist-session.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/persist-session.sh\""
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/safety-rescan.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/safety-rescan.sh\""
           }
         ]
       }

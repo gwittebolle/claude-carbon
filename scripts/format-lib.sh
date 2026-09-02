@@ -4,6 +4,9 @@
 # Callers are expected to have exported LC_ALL=C already; the pipelines below
 # pin it anyway so a stray comma-decimal locale cannot corrupt the output.
 
+# shellcheck source=scripts/portable-lib.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/portable-lib.sh"
+
 # Echoes "<value> <unit>" for a gram amount, unit adapting to the magnitude:
 # "432 g", "12.4 kg", "1240.0 kg", "12.4 t". One decimal above the gram tier.
 #
@@ -17,9 +20,9 @@ TONNE_TIER_GRAMS=10000000
 
 format_co2() {
   local grams="$1"
-  if (( $(echo "$grams >= ${TONNE_TIER_GRAMS}" | LC_ALL=C bc -l) )); then
+  if cc_num_ge "$grams" "$TONNE_TIER_GRAMS"; then
     echo "$(echo "$grams" | LC_ALL=C awk '{printf "%.1f", $1/1000000}') t"
-  elif (( $(echo "$grams >= 1000" | LC_ALL=C bc -l) )); then
+  elif cc_num_ge "$grams" 1000; then
     echo "$(echo "$grams" | LC_ALL=C awk '{printf "%.1f", $1/1000}') kg"
   else
     echo "$(echo "$grams" | LC_ALL=C awk '{printf "%.0f", $1}') g"

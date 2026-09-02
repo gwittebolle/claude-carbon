@@ -19,7 +19,11 @@ command -v jq  >/dev/null 2>&1 || { echo "FAIL: jq is required" >&2; exit 1; }
 command -v git >/dev/null 2>&1 || { echo "FAIL: git is required" >&2; exit 1; }
 [ -f "$CONFIGURE" ] || { echo "FAIL: missing $CONFIGURE" >&2; exit 1; }
 
-TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/claude-carbon-tests.XXXXXX")"
+# cc_tmpdir rather than $TMPDIR directly: under Git Bash on Windows TMPDIR can
+# hold a native "C:\Users\..." path, which mktemp cannot use as a template.
+# shellcheck source=scripts/portable-lib.sh
+. "${REPO_DIR}/scripts/portable-lib.sh"
+TMPROOT="$(mktemp -d "$(cc_tmpdir)/claude-carbon-tests.XXXXXX")"
 # Normalize: $TMPDIR often carries a trailing slash, and the scripts under test resolve their
 # own paths with `cd && pwd`, so an unnormalized root makes assertions compare //-doubled
 # strings against clean ones.

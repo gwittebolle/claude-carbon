@@ -6,10 +6,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/portable-lib.sh
+. "${SCRIPT_DIR}/portable-lib.sh"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE_DIR="$PROJECT_DIR/templates"
 EXPORT_DIR="$PROJECT_DIR/exports"
-DB_PATH="${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon/carbon.db}"
+DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon/carbon.db}")"
+# One scratch dir for the temp pages and the logo the local server serves.
+CC_TMP="$(cc_tmpdir)"
 TODAY="$(date +%Y-%m-%d)"
 YEAR="$(date +%Y)"
 
@@ -228,7 +232,7 @@ if [ "$DAYS_ELAPSED" -gt 0 ]; then
   #
   # Below 0.1 t the tonne tier would collapse to "0.0 - 0.1", so light users fall
   # back to whole kilograms. Both bounds always share the unit, picked on HIGH.
-  if (( $(echo "$HIGH >= 100000" | LC_ALL=C bc -l) )); then
+  if cc_num_ge "$HIGH" 100000; then
     PROJECTION_UNIT="tCO₂"
     _PROJ_LO_VAL="$(echo "$LOW"  | LC_ALL=C awk '{printf "%.1f", $1/1000000}')"
     _PROJ_HI_VAL="$(echo "$HIGH" | LC_ALL=C awk '{printf "%.1f", $1/1000000}')"
@@ -326,8 +330,8 @@ SINCE_LABEL="$SINCE_LABEL_FR"
 EQUIV_KM="$EQUIV_KM_FR"
 EQUIV_UNIT="km"
 EQUIV_SRC="$EQUIV_TAG_FR"
-_t=$(mktemp /tmp/claude-carbon-summary-fr-XXXXXX); TMP_SUMMARY_FR="${_t}.html"; mv "$_t" "$TMP_SUMMARY_FR"
-_t=$(mktemp /tmp/claude-carbon-detailed-fr-XXXXXX); TMP_DETAILED_FR="${_t}.html"; mv "$_t" "$TMP_DETAILED_FR"
+_t=$(mktemp "${CC_TMP}/claude-carbon-summary-fr-XXXXXX"); TMP_SUMMARY_FR="${_t}.html"; mv "$_t" "$TMP_SUMMARY_FR"
+_t=$(mktemp "${CC_TMP}/claude-carbon-detailed-fr-XXXXXX"); TMP_DETAILED_FR="${_t}.html"; mv "$_t" "$TMP_DETAILED_FR"
 inject_common "$TEMPLATE_DIR/report-summary.html" "$TMP_SUMMARY_FR"
 inject_common "$TEMPLATE_DIR/report-detailed.html" "$TMP_DETAILED_FR"
 
@@ -336,81 +340,67 @@ SINCE_LABEL="$SINCE_LABEL_EN"
 EQUIV_KM="$EQUIV_KM_EN"
 EQUIV_UNIT="$EQUIV_UNIT_EN"
 EQUIV_SRC="$EQUIV_TAG_EN"
-_t=$(mktemp /tmp/claude-carbon-summary-en-XXXXXX); TMP_SUMMARY_EN="${_t}.html"; mv "$_t" "$TMP_SUMMARY_EN"
-_t=$(mktemp /tmp/claude-carbon-detailed-en-XXXXXX); TMP_DETAILED_EN="${_t}.html"; mv "$_t" "$TMP_DETAILED_EN"
+_t=$(mktemp "${CC_TMP}/claude-carbon-summary-en-XXXXXX"); TMP_SUMMARY_EN="${_t}.html"; mv "$_t" "$TMP_SUMMARY_EN"
+_t=$(mktemp "${CC_TMP}/claude-carbon-detailed-en-XXXXXX"); TMP_DETAILED_EN="${_t}.html"; mv "$_t" "$TMP_DETAILED_EN"
 inject_common "$TEMPLATE_DIR/report-summary-en.html" "$TMP_SUMMARY_EN"
 inject_common "$TEMPLATE_DIR/report-detailed-en.html" "$TMP_DETAILED_EN"
 
 # Inject monthly bars into all summary files
 TMP_SUMMARY="$TMP_SUMMARY_FR"
 
-# Inject monthly bars via python (bash/sed can't handle % in style attrs)
-_t=$(mktemp /tmp/claude-carbon-monthly-XXXXXX); TMP_MONTHLY="${_t}.txt"; mv "$_t" "$TMP_MONTHLY"
+# Inject monthly bars via node (bash/sed can't handle % in style attrs). node is
+# already required below for the Playwright lookup, so this costs no new dependency
+# and it drops python3, which a stock Windows does not ship.
+_t=$(mktemp "${CC_TMP}/claude-carbon-monthly-XXXXXX"); TMP_MONTHLY="${_t}.txt"; mv "$_t" "$TMP_MONTHLY"
 echo "$MONTHLY_DATA" > "$TMP_MONTHLY"
 
 export TMP_SUMMARY TMP_SUMMARY_EN TMP_MONTHLY
-python3 << 'PYEOF'
-import sys, os
+node << 'NODEEOF'
+const fs = require("fs");
 
-months_fr = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
-summary_file = os.environ["TMP_SUMMARY"]
-summary_file_en = os.environ["TMP_SUMMARY_EN"]
-monthly_file = os.environ["TMP_MONTHLY"]
+const MONTHS_FR = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-# Parse monthly data
-rows = []
-with open(monthly_file) as f:
-    for line in f:
-        line = line.strip()
-        if not line or "|" not in line:
-            continue
-        month_key, co2_str = line.split("|", 1)
-        co2 = float(co2_str)
-        month_num = int(month_key.split("-")[1])
-        label = months_fr[month_num - 1]
-        if co2 >= 1000:
-            display = f"{co2/1000:.1f} kg"
-        else:
-            display = f"{co2:.0f} g"
-        rows.append((label, co2, display))
+const summaryFr = process.env.TMP_SUMMARY || "";
+const summaryEn = process.env.TMP_SUMMARY_EN || "";
+const monthlyFile = process.env.TMP_MONTHLY || "";
 
-# Calculate percentages
-max_co2 = max(r[1] for r in rows) if rows else 1
-bars_html = ""
-for label, co2, display in rows:
-    pct = int(round(co2 / max_co2 * 100))
-    bars_html += (
-        f'<div class="bar-row">'
-        f'<span class="bar-label">{label}</span>'
-        f'<div class="bar-track"><div class="bar-fill" style="width: {pct}%"></div></div>'
-        f'<span class="bar-value">{display}</span>'
-        f'</div>\n'
-    )
+const rows = [];
+for (const line of fs.readFileSync(monthlyFile, "utf8").split("\n")) {
+  const trimmed = line.trim();
+  const sep = trimmed.indexOf("|");
+  if (!trimmed || sep === -1) continue;
+  rows.push({
+    monthIndex: parseInt(trimmed.slice(0, sep).split("-")[1], 10) - 1,
+    co2: parseFloat(trimmed.slice(sep + 1)),
+  });
+}
 
-# Inject into all summary files
-for sf in [summary_file, summary_file_en]:
-    if sf and os.path.exists(sf):
-        with open(sf) as f:
-            content = f.read()
-        content = content.replace("{{MONTHLY_BARS}}", bars_html)
-        with open(sf, "w") as f:
-            f.write(content)
-PYEOF
+const maxCo2 = rows.length ? Math.max(...rows.map((r) => r.co2)) : 1;
 
-export TMP_SUMMARY_EN
-python3 -c "
-import os
-sf = os.environ.get('TMP_SUMMARY_EN', '')
-if sf and os.path.exists(sf):
-    months_en = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    months_fr = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
-    with open(sf) as f:
-        c = f.read()
-    for fr, en in zip(months_fr, months_en):
-        c = c.replace(f'>{fr}<', f'>{en}<')
-    with open(sf, 'w') as f:
-        f.write(c)
-"
+// Each language gets its own bars, rather than building the French ones and
+// translating the finished page afterwards: a blind ">Mai<" → ">May<" pass over
+// the English file would also rewrite any other three-letter match it found.
+const barsFor = (months) =>
+  rows
+    .map((r) => {
+      const display = r.co2 >= 1000 ? (r.co2 / 1000).toFixed(1) + " kg" : r.co2.toFixed(0) + " g";
+      const pct = Math.round((r.co2 / maxCo2) * 100);
+      return (
+        '<div class="bar-row">' +
+        '<span class="bar-label">' + months[r.monthIndex] + "</span>" +
+        '<div class="bar-track"><div class="bar-fill" style="width: ' + pct + '%"></div></div>' +
+        '<span class="bar-value">' + display + "</span>" +
+        "</div>\n"
+      );
+    })
+    .join("");
+
+for (const [file, months] of [[summaryFr, MONTHS_FR], [summaryEn, MONTHS_EN]]) {
+  if (!file || !fs.existsSync(file)) continue;
+  fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("{{MONTHLY_BARS}}", barsFor(months)));
+}
+NODEEOF
 
 rm -f "$TMP_MONTHLY"
 
@@ -447,9 +437,29 @@ fi
 echo "Exporting PNGs via Playwright..."
 
 PORT=8799
-# Copy logo to /tmp so the HTTP server can serve it
-cp -f "$TEMPLATE_DIR/logo.png" /tmp/logo.png 2>/dev/null || true
-python3 -m http.server "$PORT" --directory /tmp &>/dev/null &
+# Copy the logo next to the pages so the server can serve it
+cp -f "$TEMPLATE_DIR/logo.png" "${CC_TMP}/logo.png" 2>/dev/null || true
+# Static file server in node rather than `python3 -m http.server`: a stock Windows
+# has no python3, and node is already required just above for Playwright. It also
+# binds the loopback interface only, where http.server defaulted to 0.0.0.0 and
+# briefly published these pages to the local network.
+CC_SERVE_DIR="$CC_TMP" CC_SERVE_PORT="$PORT" node -e '
+const http = require("http"), fs = require("fs"), path = require("path");
+const root = process.env.CC_SERVE_DIR;
+const types = { ".html": "text/html; charset=utf-8", ".png": "image/png", ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml" };
+http
+  .createServer((req, res) => {
+    // basename(): the only files ever requested sit directly in the scratch dir,
+    // and it forecloses any "../" walk out of it.
+    const name = path.basename(decodeURIComponent(req.url.split("?")[0]));
+    fs.readFile(path.join(root, name), (err, buf) => {
+      if (err) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { "Content-Type": types[path.extname(name).toLowerCase()] || "application/octet-stream" });
+      res.end(buf);
+    });
+  })
+  .listen(Number(process.env.CC_SERVE_PORT), "127.0.0.1");
+' >/dev/null 2>&1 &
 SERVER_PID=$!
 # A function rather than a quoted trap string: the paths stay quoted, so a temp dir containing
 # a space cannot split them into separate arguments to rm.
@@ -466,10 +476,12 @@ export_png() {
   local html_file="$1" output="$2" label="$3"
   local filename url
   filename="$(basename "$html_file")"
-  url="http://localhost:${PORT}/${filename}"
+  url="http://127.0.0.1:${PORT}/${filename}"
 
+  # node is a native binary: a "/c/Users/…" MSYS path means nothing to it, so both
+  # the module path and the screenshot target go through cc_native_path first.
   node -e "
-const { chromium } = require('${PW_PATH}');
+const { chromium } = require('$(cc_native_path "$PW_PATH")');
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({
@@ -479,7 +491,7 @@ const { chromium } = require('${PW_PATH}');
   await page.goto('${url}', { waitUntil: 'networkidle' });
   await page.waitForTimeout(2000);
   await page.screenshot({
-    path: '${output}',
+    path: '$(cc_native_path "$output")',
     clip: { x: 0, y: 0, width: 1080, height: 1080 }
   });
   await browser.close();
