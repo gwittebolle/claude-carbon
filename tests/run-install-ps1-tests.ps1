@@ -158,3 +158,6 @@ Write-Host "-----------------------------"
 Write-Host "passed: $($script:Passed)   failed: $($script:Failed)"
 if ($script:Failed -gt 0) { exit 1 }
 Write-Host "All $($script:Passed) install.ps1 assertions passed."
+# Explicit: with no `exit`, PowerShell hands back $LASTEXITCODE, and the last thing
+# this suite ran on purpose was a stub installer that exits non-zero.
+exit 0
