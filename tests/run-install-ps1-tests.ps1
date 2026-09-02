@@ -117,10 +117,37 @@ http.createServer((req, res) => {
 }).listen(8791, "127.0.0.1");
 '@ | Set-Content -Path $serverJs -Encoding UTF8
 
-$server = Start-Process node -ArgumentList $serverJs, $serveDir -PassThru -WindowStyle Hidden
-Start-Sleep -Milliseconds 700
+$serverLog = Join-Path $tempRoot 'server.log'
+$serverErr = Join-Path $tempRoot 'server.err'
+$server = Start-Process node -ArgumentList $serverJs, $serveDir -PassThru -WindowStyle Hidden `
+    -RedirectStandardOutput $serverLog -RedirectStandardError $serverErr
+
+# Poll rather than sleep a fixed interval. A fixed 700ms passed once and failed the
+# next run on the same code, and a stub server that is merely slow then surfaces as
+# four unrelated assertion failures instead of one honest "the harness is not ready".
+$ready = $false
+foreach ($attempt in 1..50) {
+    try {
+        $probe = New-Object System.Net.Sockets.TcpClient
+        $probe.Connect('127.0.0.1', 8791)
+        $probe.Close()
+        $ready = $true
+        break
+    } catch {
+        Start-Sleep -Milliseconds 200
+    }
+}
+Assert-Equal "stub server accepting connections" $true $ready
+if (-not $ready) {
+    Write-Host "       node stdout: $(Get-Content $serverLog -Raw -ErrorAction SilentlyContinue)"
+    Write-Host "       node stderr: $(Get-Content $serverErr -Raw -ErrorAction SilentlyContinue)"
+    Write-Host "       node exited: $($server.HasExited)"
+}
 
 try {
+  if (-not $ready) {
+    Write-Host "SKIP handover assertions: the stub server never came up."
+  } else {
     $env:CLAUDE_CARBON_INSTALL_URL = 'http://127.0.0.1:8791/install.sh'
     $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $InstallPs1 2>&1 | Out-String
     $code = $LASTEXITCODE
@@ -146,6 +173,7 @@ try {
     $missOut = & powershell -NoProfile -ExecutionPolicy Bypass -File $InstallPs1 2>&1 | Out-String
     Assert-Contains "reports a download failure"     "could not download"   $missOut
     Assert-Equal    "non-zero exit on download failure" $true               ($LASTEXITCODE -ne 0)
+  }
 }
 finally {
     Remove-Item Env:\CLAUDE_CARBON_INSTALL_URL -ErrorAction SilentlyContinue
