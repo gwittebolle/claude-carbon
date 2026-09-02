@@ -61,8 +61,21 @@ network, and the macOS Keychain lookup is now guarded on the platform instead of
   exists, the drift between `install.sh`'s inline fallback and the real library, the
   absence of `bc` / `python3` / hardcoded `/tmp`, the LF pinning, the quoted
   placeholders, and the syntax of every script and every `SKILL.md` bash block.
+- `tests/run-windows-e2e.sh`: the assertions no other machine can make, skipped with
+  exit 0 off Windows. A real `cygpath` round-trip on a file whose directory contains a
+  space; the Stop hook fed a native `transcript_path` and asserted to land a row with
+  the right token breakdown, project and branch; the status line fed a native
+  `current_dir`; the hook manifests spawned the way Claude Code spawns them, with the
+  placeholder substituted into the command string and the string handed to bash from a
+  native plugin root; `settings.json` asserted free of backslashes and openable;
+  slash-command copies asserted to refresh while a user-written command survives.
+- `tests/run-install-ps1-tests.ps1`: `install.ps1` parses, finds Git Bash, refuses the
+  `System32\bash.exe` WSL launcher, honours `CLAUDE_CODE_GIT_BASH_PATH` and falls
+  through when it points nowhere, normalises a CRLF download, and propagates the
+  installer's exit code. Run against a stub served over loopback, so nothing is cloned.
 - CI gains a `windows-latest` job running the whole suite under Git Bash, which is the
-  only place the `cygpath` branch is reachable, plus a `portability` job on Ubuntu.
+  only place the `cygpath` branch is reachable, plus a `portability` job on Ubuntu that
+  also exercises the e2e suite's skip path.
 - README gains a Windows section: the three install paths, and the specifics worth
   knowing (forward slashes in `settings.json`, copied commands, no sandboxing).
 

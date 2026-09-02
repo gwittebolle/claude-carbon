@@ -69,6 +69,11 @@ jobs:
       - name: Assert the cross-platform contract
         run: bash tests/run-portability-tests.sh
 
+      # Skips with exit 0 off Windows. Running it here keeps that skip path honest,
+      # so the suite can never start failing the matrix for the wrong reason.
+      - name: Windows end-to-end (expected to skip here)
+        run: bash tests/run-windows-e2e.sh
+
   windows:
     name: windows (git bash)
     runs-on: windows-latest
@@ -116,6 +121,17 @@ jobs:
 
       - name: carbon-pr pipeline
         run: bash tests/run-pr-tests.sh
+
+      # The assertions no other runner can make: a real cygpath, a native path
+      # pointing at a real file, and the hook manifests spawned the way Claude Code
+      # spawns them (placeholder substituted into the string, string handed to bash).
+      - name: Windows end-to-end
+        run: bash tests/run-windows-e2e.sh
+
+      # install.ps1 is the one file no POSIX machine can even parse.
+      - name: install.ps1
+        shell: powershell
+        run: .\tests\run-install-ps1-tests.ps1
 
   shellcheck:
     name: shellcheck

@@ -379,7 +379,10 @@ same as on macOS, once Git for Windows, `jq` and `sqlite3` are present.
   this plugin's). Use WSL 2 if you need it.
 - **`/carbon-card` additionally needs Node.js**: `winget install OpenJS.NodeJS`.
 
-CI runs the full test suite on `windows-latest` under Git Bash, alongside Ubuntu.
+CI runs the full test suite on `windows-latest` under Git Bash, alongside Ubuntu,
+plus two Windows-only suites: `tests/run-windows-e2e.sh` (native paths through the Stop
+hook and the status line, hook manifests spawned the way Claude Code spawns them) and
+`tests/run-install-ps1-tests.ps1`.
 
 ## Reduce your footprint
 
