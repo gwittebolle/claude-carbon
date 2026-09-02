@@ -53,9 +53,15 @@ check() {
 hook_commands() { jq -r --arg e "$2" '[.hooks[$e][]?.hooks[]?.command] | .[]' "$1" 2>/dev/null; }
 hook_count()    { jq -r --arg e "$2" '[.hooks[$e][]?.hooks[]?.command] | length' "$1" 2>/dev/null; }
 
-STATUSLINE="${REPO_DIR}/scripts/statusline.sh"
-STOP="${REPO_DIR}/scripts/persist-session.sh"
-RESCAN="${REPO_DIR}/scripts/safety-rescan.sh"
+# What configure-settings.sh writes is platform-dependent by design. On Windows it
+# writes the "mixed" spelling ("D:/a/repo/scripts/x.sh"): Claude Code may resolve the
+# path with Windows APIs before spawning Git Bash, and its status line docs require
+# forward slashes because Git Bash eats unquoted backslashes. cc_native_path is the
+# identity function on macOS and Linux, so these expectations are unchanged there.
+CMD_BASE="$(cc_native_path "$REPO_DIR")"
+STATUSLINE="${CMD_BASE}/scripts/statusline.sh"
+STOP="${CMD_BASE}/scripts/persist-session.sh"
+RESCAN="${CMD_BASE}/scripts/safety-rescan.sh"
 
 # ---------------------------------------------------------------- 1. cold start
 
@@ -69,11 +75,18 @@ check "cold start: statusLine"             "$STATUSLINE" "$(jq -r '.statusLine.c
 check "cold start: Stop hook"              "$STOP"       "$(hook_commands "$S" Stop)"
 check "cold start: SessionStart hook"      "$RESCAN"     "$(hook_commands "$S" SessionStart)"
 
+# Symlinked everywhere a symlink works. Git Bash cannot create one without Windows
+# Developer Mode, so there the commands are copied on purpose and configure-settings.sh
+# refreshes the copy on update; assert whichever form this platform is meant to produce.
 MISSING=""
 for c in carbon-report carbon-card carbon-update carbon-badge carbon-pr; do
-  [ -L "${CFG}/commands/${c}.md" ] || MISSING="${MISSING}${c} "
+  if cc_is_windows; then
+    cmp -s "${REPO_DIR}/skills/${c}/SKILL.md" "${CFG}/commands/${c}.md" 2>/dev/null || MISSING="${MISSING}${c} "
+  else
+    [ -L "${CFG}/commands/${c}.md" ] || MISSING="${MISSING}${c} "
+  fi
 done
-check "cold start: /carbon-* commands linked" "" "$MISSING"
+check "cold start: /carbon-* commands installed" "" "$MISSING"
 
 # ---------------------------------------------------------------- 2. pre-1.1.3 install repaired
 

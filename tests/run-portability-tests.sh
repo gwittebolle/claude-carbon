@@ -78,6 +78,11 @@ is "below the tonne tier"      "no"  "$(ge 9999999.5 10000000)"
 is "zero against zero"         "yes" "$(ge 0 0)"
 is "fraction below one"        "no"  "$(ge 0.5 1)"
 is "large float"               "yes" "$(ge 123456.789 1000)"
+# sqlite3 renders a large REAL in scientific notation, so a total can reach the
+# formatter spelled "1e3". awk parses that; bc rejects it with a syntax error, which
+# is one more reason the comparison moved off bc rather than a regression from it.
+is "scientific notation"       "yes" "$(ge 1e3 1000)"
+is "scientific notation below" "no"  "$(ge 1e2 1000)"
 
 # Cross-check against bc itself wherever bc still exists, so the replacement is
 # provably equivalent on the machines that can prove it.
@@ -85,8 +90,10 @@ if command -v bc >/dev/null 2>&1; then
   echo ""
   echo "cc_num_ge vs bc (cross-check)"
   BC_MISMATCH=0
+  # Decimal literals only: bc has no scientific-notation literal and errors on "1e3",
+  # which is asserted separately above.
   for pair in "1000 1000" "999.9 1000" "1000.1 1000" "0 0" "0.5 1" "10000000 10000000" \
-              "9999999.5 10000000" "123456.789 1000" "431.7045 1000" "1e3 1000"; do
+              "9999999.5 10000000" "123456.789 1000" "431.7045 1000"; do
     set -- $pair
     if cc_num_ge "$1" "$2"; then AWK_R=1; else AWK_R=0; fi
     BC_R="$(echo "$1 >= $2" | LC_ALL=C bc -l)"

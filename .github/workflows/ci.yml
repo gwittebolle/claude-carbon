@@ -78,6 +78,8 @@ jobs:
     name: windows (git bash)
     runs-on: windows-latest
     timeout-minutes: 15
+    # Every suite reports even when an earlier one fails: a Windows-only failure costs
+    # a full push to observe, so one round-trip should surface all of them at once.
     defaults:
       run:
         # The shell Claude Code itself spawns for hooks and the status line on
@@ -108,28 +110,35 @@ jobs:
       # cc_path's cygpath branch, which a Linux or macOS runner cannot reach, plus
       # the same drift and dependency guards.
       - name: Portability contract
+        if: always()
         run: bash tests/run-portability-tests.sh
 
       - name: Methodology golden vectors
+        if: always()
         run: bash tests/run-vectors.sh
 
       - name: Install and update wiring
+        if: always()
         run: bash tests/run-install-tests.sh
 
       - name: Badge output
+        if: always()
         run: bash tests/run-badge-tests.sh
 
       - name: carbon-pr pipeline
+        if: always()
         run: bash tests/run-pr-tests.sh
 
       # The assertions no other runner can make: a real cygpath, a native path
       # pointing at a real file, and the hook manifests spawned the way Claude Code
       # spawns them (placeholder substituted into the string, string handed to bash).
       - name: Windows end-to-end
+        if: always()
         run: bash tests/run-windows-e2e.sh
 
       # install.ps1 is the one file no POSIX machine can even parse.
       - name: install.ps1
+        if: always()
         shell: powershell
         run: .\tests\run-install-ps1-tests.ps1
 
