@@ -160,25 +160,54 @@ fi
 echo ""
 echo "no reintroduced non-Windows dependencies"
 
-RUNTIME_FILES=""
+# An array, expanded quoted. This list used to be a space-joined string expanded
+# unquoted, which split a checkout under a directory with a space in its name (say
+# "~/Claude OS/code/claude-carbon") into filenames that do not exist. grep then read
+# nothing, and every guard below reported "ok" while checking exactly zero files.
+RUNTIME_FILES=()
 for f in "${REPO_DIR}"/scripts/*.sh "${REPO_DIR}/install.sh" "${REPO_DIR}"/skills/*/SKILL.md; do
   case "$f" in
     */release.sh|*/check-versions.sh|*/traffic-snapshot.sh) continue ;;  # maintainer tooling, never runs on a user machine
   esac
-  RUNTIME_FILES="$RUNTIME_FILES $f"
+  [ -f "$f" ] || continue
+  RUNTIME_FILES+=("$f")
 done
 
-# shellcheck disable=SC2086
-BAD_BC="$(grep -nE '(^|[^[:alnum:]_./-])bc[[:space:]]+-l|\|[[:space:]]*bc([[:space:]]|$)' $RUNTIME_FILES 2>/dev/null || true)"
+# Positive control. A guard that cannot fail is worse than no guard, so prove the file
+# list is real and readable before trusting anything the guards below do not find.
+if [ "${#RUNTIME_FILES[@]}" -ge 15 ]; then
+  ok "runtime file list built (${#RUNTIME_FILES[@]} files)"
+else
+  bad "runtime file list built" "expected at least 15 readable files, got ${#RUNTIME_FILES[@]}"
+fi
+CONTROL="$(grep -lE '(^|[^[:alnum:]_./-])jq[[:space:]]' "${RUNTIME_FILES[@]}" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${CONTROL:-0}" -ge 5 ]; then
+  ok "grep reads the runtime files (jq found in ${CONTROL})"
+else
+  bad "grep reads the runtime files" "expected jq in at least 5 files, found it in ${CONTROL:-0}"
+fi
+
+BAD_BC="$(grep -nE '(^|[^[:alnum:]_./-])bc[[:space:]]+-l|\|[[:space:]]*bc([[:space:]]|$)' "${RUNTIME_FILES[@]}" 2>/dev/null || true)"
 if [ -z "$BAD_BC" ]; then ok "no bc invocation"; else bad "no bc invocation" "$BAD_BC"; fi
 
-# shellcheck disable=SC2086
-BAD_PY="$(grep -nE '(^|[^[:alnum:]_./-])python3?[[:space:]]' $RUNTIME_FILES 2>/dev/null | grep -v '^[^:]*:[0-9]*:[[:space:]]*#' || true)"
+BAD_PY="$(grep -nE '(^|[^[:alnum:]_./-])python3?[[:space:]]' "${RUNTIME_FILES[@]}" 2>/dev/null | grep -v '^[^:]*:[0-9]*:[[:space:]]*#' || true)"
 if [ -z "$BAD_PY" ]; then ok "no python invocation"; else bad "no python invocation" "$BAD_PY"; fi
 
-# shellcheck disable=SC2086
-BAD_TMP="$(grep -nE '(^|[^[:alnum:]_$"{/-])/tmp/' $RUNTIME_FILES 2>/dev/null | grep -v '^[^:]*:[0-9]*:[[:space:]]*#' || true)"
+BAD_TMP="$(grep -nE '(^|[^[:alnum:]_$"{/-])/tmp/' "${RUNTIME_FILES[@]}" 2>/dev/null | grep -v '^[^:]*:[0-9]*:[[:space:]]*#' || true)"
 if [ -z "$BAD_TMP" ]; then ok "no hardcoded /tmp path"; else bad "no hardcoded /tmp path" "$BAD_TMP"; fi
+
+# Every path built from a CLAUDE_* variable has to go through the conversion. The user
+# sets those, so on Windows they arrive in whatever spelling the user typed. Miss one
+# and the failure is silent: a read that finds nothing, or a write that lands somewhere
+# the reader never looks. Two were missed on the first pass (install.sh skipped the
+# re-pricing on update, and the card stamped its month where the status line could not
+# see it), which is what this guard exists to prevent from recurring.
+RAW_ENV="$(grep -nE '^[[:space:]]*[A-Z_]+="\$\{?CLAUDE_(CONFIG_DIR|CARBON_DB|CARBON_DIR|PLUGIN_ROOT)' "${RUNTIME_FILES[@]}" 2>/dev/null || true)"
+if [ -z "$RAW_ENV" ]; then
+  ok "every CLAUDE_* path assignment is converted"
+else
+  bad "every CLAUDE_* path assignment is converted" "$RAW_ENV"
+fi
 
 # ── 5. Line endings ──────────────────────────────────────────────────────────
 # Git for Windows clones with core.autocrlf=true, which would rewrite every script

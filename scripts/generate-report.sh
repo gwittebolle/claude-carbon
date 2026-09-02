@@ -533,7 +533,7 @@ fi
 echo "Totals since ${SINCE_LABEL_EN}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${EQUIV_SRC}) · ${TOTAL_SESSIONS} sessions"
 
 # Stamp the month so the statusline's monthly share nudge clears
-STATE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon"
+STATE_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 date +%Y-%m > "${STATE_DIR}/last-card-month" 2>/dev/null || true
 

@@ -116,7 +116,7 @@ CLAUDE_CARBON_INSTALLER=1 bash "$INSTALL_DIR/scripts/setup.sh"
 
 # 3b. On update, re-price stored history with the new factors (CO2-only; cost left intact).
 if [ "$WAS_UPDATE" = "1" ]; then
-  DB_PATH="${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}"
+  DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}")"
   if [ -f "$DB_PATH" ]; then
     bash "$INSTALL_DIR/scripts/recompute.sh" || echo "  (history not re-priced; see message above)"
   fi

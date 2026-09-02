@@ -2,6 +2,33 @@
 
 ## 2026-09-02
 
+### fix: two CLAUDE_* paths missed by the Windows sweep, and the guard that could not see them
+
+A sweep of every path built from a user-set `CLAUDE_*` variable found two the first
+pass missed. Both fail silently on Windows, which is the whole reason this class of
+bug needs a guard rather than a review.
+
+- `install.sh` built the database path from `CLAUDE_CARBON_DB` without converting it,
+  so a user who set it to a native path got the post-update re-pricing skipped: the
+  `[ -f ]` test simply found nothing and the step was passed over without a word.
+- `generate-report.sh` stamped `last-card-month` under an unconverted
+  `CLAUDE_CONFIG_DIR`, while the status line reads that stamp through the converted
+  one. The card would write where the status line could not look, so the monthly share
+  nudge never cleared.
+
+`tests/run-portability-tests.sh` gains the guard: every `VAR="${CLAUDE_*"` assignment
+in a file that runs on a user's machine must go through the conversion.
+
+Writing that guard exposed a worse problem in the suite itself. The list of runtime
+files was a space-joined string expanded unquoted, so on a checkout under a directory
+whose name contains a space (`~/Claude OS/code/claude-carbon`) it split into filenames
+that do not exist. grep read nothing, and the `bc`, `python3` and `/tmp` guards had
+been reporting "ok" while checking zero files. They are now an array expanded quoted,
+and two positive controls assert the list is real and that grep can read it, because a
+guard that cannot fail is worse than no guard at all.
+
+## 2026-09-02
+
 ### feat: native Windows support (issue #27)
 
 `npx claude-carbon` refused to run on Windows and the plugin assumed a POSIX
