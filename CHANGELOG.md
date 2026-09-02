@@ -73,6 +73,13 @@ network, and the macOS Keychain lookup is now guarded on the platform instead of
   `System32\bash.exe` WSL launcher, honours `CLAUDE_CODE_GIT_BASH_PATH` and falls
   through when it points nowhere, normalises a CRLF download, and propagates the
   installer's exit code. Run against a stub served over loopback, so nothing is cloned.
+- `configure-settings.sh` hook dedupe: under Git Bash, command substitution drops the
+  carriage return from a single-line capture but keeps the interior ones, so reading
+  several hook commands back out of `jq` yields a bare CR on every line but the last.
+  Our own hook then failed to match itself whenever another tool's hook sat after it in
+  the same event, and every install or update appended a second copy. Found by the
+  Windows runner, and only because the foreign-hook fixture happened to order them that
+  way: with ours last, the accidental case, everything looked idempotent.
 - CI gains a `windows-latest` job running the whole suite under Git Bash, which is the
   only place the `cygpath` branch is reachable, plus a `portability` job on Ubuntu that
   also exercises the e2e suite's skip path.

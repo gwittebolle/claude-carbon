@@ -60,8 +60,10 @@ check() {
   if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "$2" "$3"; fi
 }
 
-# Commands registered for a hook event, newline-separated, in order.
-hook_commands() { jq -r --arg e "$2" '[.hooks[$e][]?.hooks[]?.command] | .[]' "$1" 2>/dev/null; }
+# Commands registered for a hook event, newline-separated, in order. The tr strips the
+# interior carriage returns Git Bash leaves in a multi-line command substitution; the
+# assertions are about the commands, not about how the capture was framed.
+hook_commands() { jq -r --arg e "$2" '[.hooks[$e][]?.hooks[]?.command] | .[]' "$1" 2>/dev/null | tr -d '\r'; }
 hook_count()    { jq -r --arg e "$2" '[.hooks[$e][]?.hooks[]?.command] | length' "$1" 2>/dev/null; }
 
 # What configure-settings.sh writes is platform-dependent by design. On Windows it

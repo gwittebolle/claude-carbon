@@ -42,6 +42,12 @@ SESSIONSTART_CMD="${CMD_DIR}/scripts/safety-rescan.sh"
 # Commands whose directory does not exist (a third-party hook) are left as written.
 normalize_cmd() {
   local c="$1" dir base
+  # Strip a trailing carriage return. Under Git Bash, command substitution drops the
+  # CR from a single-line capture but keeps the interior ones, so reading N commands
+  # back out of jq yields a bare CR on every line but the last. Without this, our own
+  # hook fails to match itself whenever another tool's hook sits after it in the same
+  # event, and every install or update registers a second copy of ours.
+  c="${c%$'\r'}"
   c="${c//\\ / }"
   # SC2088: the tilde here is data, not a path being expanded — we are matching a literal "~/"
   # prefix inside a string read from settings.json and expanding it ourselves.

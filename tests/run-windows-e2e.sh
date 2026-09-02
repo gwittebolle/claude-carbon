@@ -213,6 +213,36 @@ bash "${REPO_DIR}/scripts/configure-settings.sh" >/dev/null 2>&1
 check "idempotent: one Stop hook"        "1" "$(jq '[.hooks.Stop[]?.hooks[]?] | length' "$SETTINGS")"
 check "idempotent: one SessionStart hook" "1" "$(jq '[.hooks.SessionStart[]?.hooks[]?] | length' "$SETTINGS")"
 
+# The regression that hid behind a passing idempotence check: when another tool's
+# hook sits AFTER ours in the same event, ours comes back from jq with a trailing
+# carriage return and stops matching itself, so every run appends another copy. Our
+# hook being last is the case that accidentally works, so put a foreign one after it.
+echo ""
+echo "dedupe survives a foreign hook sitting after ours"
+
+CFG3="${TMPROOT}/config3"
+mkdir -p "$CFG3"
+NATIVE_SCRIPTS="$(cc_native_path "${REPO_DIR}/scripts")"
+cat > "${CFG3}/settings.json" <<EOF
+{
+  "hooks": {
+    "SessionStart": [
+      {"matcher": "", "hooks": [{"type": "command", "command": "${NATIVE_SCRIPTS}/safety-rescan.sh"}]},
+      {"matcher": "", "hooks": [{"type": "command", "command": "/opt/other/start.sh"}]}
+    ]
+  }
+}
+EOF
+
+CLAUDE_CONFIG_DIR="$CFG3" bash "${REPO_DIR}/scripts/configure-settings.sh" >/dev/null 2>&1
+CLAUDE_CONFIG_DIR="$CFG3" bash "${REPO_DIR}/scripts/configure-settings.sh" >/dev/null 2>&1
+
+OURS_COUNT="$(jq -r --arg c "${NATIVE_SCRIPTS}/safety-rescan.sh" \
+  '[.hooks.SessionStart[]?.hooks[]?.command | select(. == $c)] | length' "${CFG3}/settings.json")"
+check "our hook not duplicated when it is not last" "1" "$OURS_COUNT"
+check "the foreign hook survives" "1" \
+  "$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(. == "/opt/other/start.sh")] | length' "${CFG3}/settings.json")"
+
 # ── 6. Slash commands: copies, and refreshed on update ───────────────────────
 echo ""
 echo "slash commands are copied and stay current"
