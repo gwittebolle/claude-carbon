@@ -154,11 +154,14 @@ cc_install_hint() {
     darwin) printf 'brew install %s' "$cmd" ;;
     windows)
       case "$cmd" in
-        jq)      printf 'winget install jqlang.jq' ;;
-        sqlite3) printf 'winget install SQLite.SQLite' ;;
-        git)     printf 'winget install Git.Git' ;;
-        node)    printf 'winget install OpenJS.NodeJS' ;;
-        *)       printf 'winget install %s' "$cmd" ;;
+        # `--source winget`: otherwise winget also queries the Microsoft Store
+        # source and, when that one is unreachable (TLS-inspecting proxy,
+        # locked-down Store), aborts the whole install instead of falling back.
+        jq)      printf 'winget install jqlang.jq --source winget' ;;
+        sqlite3) printf 'winget install SQLite.SQLite --source winget' ;;
+        git)     printf 'winget install Git.Git --source winget' ;;
+        node)    printf 'winget install OpenJS.NodeJS --source winget' ;;
+        *)       printf 'winget install %s --source winget' "$cmd" ;;
       esac
       ;;
     *) printf 'apt install %s' "$cmd" ;;

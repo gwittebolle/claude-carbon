@@ -63,6 +63,25 @@ Write-Host "  Git Bash: $bash"
 # ── 2. Check the two commands Git for Windows does not ship ──────────────────
 # jq and sqlite3 are the whole Windows prerequisite list: bash, awk, sed, grep,
 # date, curl and git all come with Git for Windows.
+
+# winget records its install directory in the registry PATH, but a terminal opened
+# before that keeps the old value, and the bash spawned below inherits it. Merge
+# the registry PATH in first, so `winget install` followed by a rerun in the same
+# terminal finds the new commands. Entries already present are left alone.
+function Merge-RegistryPath {
+    $current = @($env:Path -split ';' | Where-Object { $_ })
+    $registry = @('Machine', 'User') |
+        ForEach-Object { [Environment]::GetEnvironmentVariable('Path', $_) } |
+        Where-Object { $_ } |
+        ForEach-Object { $_ -split ';' } |
+        Where-Object { $_ }
+    $absent = @($registry | Where-Object { $current -notcontains $_ })
+    if ($absent.Count -gt 0) {
+        $env:Path = ($current + $absent) -join ';'
+    }
+}
+Merge-RegistryPath
+
 $missing = @()
 foreach ($dep in @(
     @{ Name = 'jq';      Package = 'jqlang.jq' },
@@ -77,11 +96,14 @@ foreach ($dep in @(
 if ($missing.Count -gt 0) {
     Write-Host ''
     Write-Host 'ERROR: missing dependencies.' -ForegroundColor Red
+    # `--source winget`: without it winget also queries the Microsoft Store source,
+    # and when that one is unreachable (a TLS-inspecting proxy, a locked-down
+    # Store) it aborts the whole install with exit code 94 instead of falling back.
     foreach ($dep in $missing) {
-        Write-Host "  $($dep.Name) - install with:  winget install $($dep.Package)"
+        Write-Host "  $($dep.Name) - install with:  winget install $($dep.Package) --source winget"
     }
     Write-Host ''
-    Write-Host '  Then open a new terminal (so PATH is refreshed) and rerun this installer.'
+    Write-Host '  Then rerun this installer. The same terminal is fine: PATH is re-read.'
     exit 1
 }
 

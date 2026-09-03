@@ -26,11 +26,11 @@ else
       darwin) printf 'brew install %s' "$1" ;;
       windows)
         case "$1" in
-          jq)      printf 'winget install jqlang.jq' ;;
-          sqlite3) printf 'winget install SQLite.SQLite' ;;
-          git)     printf 'winget install Git.Git' ;;
-          node)    printf 'winget install OpenJS.NodeJS' ;;
-          *)       printf 'winget install %s' "$1" ;;
+          jq)      printf 'winget install jqlang.jq --source winget' ;;
+          sqlite3) printf 'winget install SQLite.SQLite --source winget' ;;
+          git)     printf 'winget install Git.Git --source winget' ;;
+          node)    printf 'winget install OpenJS.NodeJS --source winget' ;;
+          *)       printf 'winget install %s --source winget' "$1" ;;
         esac
         ;;
       *) printf 'apt install %s' "$1" ;;
@@ -107,7 +107,23 @@ if [ -d "$INSTALL_DIR/.git" ]; then
 else
   echo "Cloning to $INSTALL_DIR..."
   mkdir -p "$(dirname "$INSTALL_DIR")"
-  git clone --quiet https://github.com/gwittebolle/claude-carbon.git "$INSTALL_DIR"
+  if ! CLONE_ERR="$(git clone --quiet https://github.com/gwittebolle/claude-carbon.git "$INSTALL_DIR" 2>&1)"; then
+    [ -n "$CLONE_ERR" ] && echo "$CLONE_ERR" >&2
+    echo "ERROR: could not clone claude-carbon." >&2
+    # Git for Windows verifies TLS against its own bundled CA list, which does not
+    # know the root a TLS-inspecting proxy or antivirus re-signs HTTPS with. The
+    # Windows certificate store does, or the user could not browse either.
+    if [ "$CC_OS" = "windows" ] \
+       && printf '%s' "$CLONE_ERR" | grep -q "unable to get local issuer certificate" \
+       && [ "$(git config --get http.sslBackend 2>/dev/null || true)" != "schannel" ]; then
+      echo "  Something on this machine re-signs HTTPS traffic with a root that git's bundled" >&2
+      echo "  CA list does not trust. Point git at the Windows certificate store instead;" >&2
+      echo "  verification stays on, only the trust store changes:" >&2
+      echo "    git config --global http.sslBackend schannel" >&2
+      echo "  Then rerun this installer." >&2
+    fi
+    exit 1
+  fi
 fi
 
 # 3. Run setup (creates DB, backfills history)
