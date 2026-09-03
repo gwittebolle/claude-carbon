@@ -221,7 +221,9 @@ EOF
     mkdir -p "${CFG}/claude-carbon"
     sqlite3 "${CFG}/claude-carbon/carbon.db" "CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY);" 2>/dev/null
     CLAUDE_CONFIG_DIR="$CFG" bash "${CLONE}/scripts/update.sh" >/dev/null 2>&1
-    check "update repairs SessionStart" "${CLONE}/scripts/safety-rescan.sh" "$(hook_commands "${CFG}/settings.json" SessionStart)"
+    # configure-settings.sh writes the hook in native spelling (C:/... on Windows,
+    # see CMD_BASE above), so the expectation has to be spelled the same way.
+    check "update repairs SessionStart" "$(cc_native_path "$CLONE")/scripts/safety-rescan.sh" "$(hook_commands "${CFG}/settings.json" SessionStart)"
     check "update keeps Stop single"    "1" "$(hook_count "${CFG}/settings.json" Stop)"
   else
     echo "SKIP update repair: clone unavailable or without an upstream branch"

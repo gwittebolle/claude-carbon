@@ -296,16 +296,14 @@ for tool in open explorer.exe xdg-open; do
   chmod +x "${FAKE_BIN}/${tool}"
 done
 
-reveal() ( # reveal <os> <file> [env assignments...]
+reveal() ( # reveal <os> <file>; REVEAL_NO_OPEN / REVEAL_CI set by the caller stand in for the real variables
   # shellcheck source=scripts/portable-lib.sh
   . "${REPO_DIR}/scripts/portable-lib.sh"
   CC_OS="$1"; CC_CYGPATH=""
   PATH="${FAKE_BIN}:/usr/bin:/bin"
-  unset CI CLAUDE_CARBON_NO_OPEN
-  shift
-  local f="$1"; shift
-  export "$@" DISPLAY=:0
-  cc_reveal "$f"; echo "rc=$?"
+  # Empty is unset to cc_reveal, and it shields the run from a real CI variable.
+  export DISPLAY=:0 CLAUDE_CARBON_NO_OPEN="${REVEAL_NO_OPEN:-}" CI="${REVEAL_CI:-}"
+  cc_reveal "$2"; echo "rc=$?"
 )
 
 : > "$MARK"
@@ -324,9 +322,9 @@ for _ in $(seq 1 20); do [ -s "$MARK" ] && break; sleep 0.1; done
 is "linux: file manager opens the folder"  "xdg-open ${FAKE_HOME}" "$(cat "$MARK")"
 
 : > "$MARK"
-reveal darwin "$CARD" CLAUDE_CARBON_NO_OPEN=1 >/dev/null
+REVEAL_NO_OPEN=1 reveal darwin "$CARD" >/dev/null
 is "CLAUDE_CARBON_NO_OPEN: nothing spawned" "" "$(cat "$MARK")"
-reveal darwin "$CARD" CI=true >/dev/null
+REVEAL_CI=true reveal darwin "$CARD" >/dev/null
 is "CI: nothing spawned"                    "" "$(cat "$MARK")"
 is "missing file: exits 0, nothing spawned" "rc=0" "$(reveal darwin "${FAKE_HOME}/absent.png")"
 is "missing file: log still empty"          "" "$(cat "$MARK")"
