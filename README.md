@@ -74,6 +74,12 @@ OneDrive-redirected one is honoured) and the folder opens in your file manager, 
 card selected on macOS. `CLAUDE_CARBON_EXPORT_DIR` picks another folder;
 `CLAUDE_CARBON_NO_OPEN=1` skips the opening.
 
+From the 1st to the 10th of each month the status line ends with `📊 August wrapped · /carbon-card`:
+the month just closed has its bar on the card, under the running total. Generating a card
+clears it for the month; it goes quiet on its own after the 10th. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
+moves the cut-off, `CLAUDE_CARBON_NO_CARD_NUDGE=1` removes the nudge. Nothing is posted anywhere:
+sharing stays a human decision.
+
 <details>
 <summary>Advanced options (CLI)</summary>
 

@@ -273,6 +273,26 @@ check "drift: nested price difference is flagged" "yes" "$(drift_shown)"
 cp "${REPO_DIR}/data/prices.json" "${CACHE_DATA}/prices.json"
 check "drift: CLAUDE_CARBON_NO_DRIFT_CHECK honoured" "no" "$(CLAUDE_CARBON_NO_DRIFT_CHECK=1 drift_shown)"
 
+# ------------------------------------------------------- 9b. monthly card nudge
+
+# Early in the month the status line names the month just closed and points at
+# /carbon-card. A card generated this month (last-card-month stamp) clears it, the
+# day threshold ends it, the opt-out silences it. The day is forced through the
+# threshold: 31 means "today qualifies", 0 means "no day does".
+CFG="${TMPROOT}/nudge"
+mkdir -p "${CFG}/claude-carbon"
+nudge_line() {
+  echo '{}' | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 CLAUDE_CARBON_NO_DRIFT_CHECK=1 \
+    bash "$STATUSLINE" 2>/dev/null | grep -o '📊 .*' || true
+}
+EXPECT_NUDGE="📊 $(cc_prev_month_name "$(date +%Y-%m)") wrapped · /carbon-card"
+check "nudge: names the closed month, in English" "$EXPECT_NUDGE" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+check "nudge: past the day threshold it is gone"  ""             "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=0 nudge_line)"
+date +%Y-%m > "${CFG}/claude-carbon/last-card-month"
+check "nudge: a card this month clears it"        ""             "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+rm -f "${CFG}/claude-carbon/last-card-month"
+check "nudge: CLAUDE_CARBON_NO_CARD_NUDGE honoured" ""           "$(CLAUDE_CARBON_NO_CARD_NUDGE=1 CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+
 # ------------------------------------------------------- 10. statusline CO2 source
 
 # The status line must report the SESSION total, not the size of the current context

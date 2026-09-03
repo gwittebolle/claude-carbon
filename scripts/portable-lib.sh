@@ -237,6 +237,19 @@ cc_reveal() {
   return 0
 }
 
+# ── Calendar ────────────────────────────────────────────────────────────────
+# cc_prev_month_name <YYYY-MM> — English name of the month before the given one.
+# Pure arithmetic on the string: no `date -d` (GNU only) or `date -v` (BSD only),
+# and the name is deliberately English whatever the locale, since the status
+# line's other labels are.
+cc_prev_month_name() {
+  local m="${1#*-}" names
+  m="$((10#${m:-1} - 1))"
+  [ "$m" -eq 0 ] && m=12
+  names=(January February March April May June July August September October November December)
+  printf '%s' "${names[$((m - 1))]}"
+}
+
 # ── Locale ──────────────────────────────────────────────────────────────────
 # cc_system_locale — the OS-level locale, for shells that carry no LANG at all
 # (macOS GUI-launched hooks, and every Windows shell). Empty when unknown.

@@ -2,6 +2,27 @@
 
 ## 2026-09-03
 
+### feat: the monthly nudge names the month it wraps, and stays through the 10th
+
+The status line used to show `📊 /carbon-card` to the first three sessions of the
+month and then stop: two or three glances at a command name, with no hint of what
+the card would show. Nobody acted on it.
+
+It now reads `📊 August wrapped · /carbon-card` (English whatever the locale, like
+the rest of the line), on every session from the 1st through the 10th, until a
+card is generated. The month just closed has its bar on the summary card under
+the running total, which is the thing worth sharing. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
+moves the cut-off (default 10); `CLAUDE_CARBON_NO_CARD_NUDGE` still opts out.
+`CLAUDE_CARBON_CARD_NUDGE_SESSIONS` and the `card-nudge-seen` file are gone; an
+existing file is simply no longer read.
+
+`cc_prev_month_name` joins `portable-lib.sh` (pure string arithmetic, no `date -d`
+or `date -v`, pinned on fixed inputs including the January wrap-around), and
+`run-install-tests.sh` drives the status line through the four cases: shown with
+the right label, gone past the threshold, cleared by a card, silenced by the opt-out.
+
+## 2026-09-03
+
 ### docs: say where the status line is displayed, and where it is not
 
 The README note read "Terminal and IDE only", which users of the VS Code extension took

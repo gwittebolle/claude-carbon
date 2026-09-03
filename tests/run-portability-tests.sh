@@ -331,7 +331,24 @@ is "missing file: log still empty"          "" "$(cat "$MARK")"
 
 rm -rf "$FAKE_HOME"
 
-# ── 8. Everything still parses ───────────────────────────────────────────────
+# ── 8. cc_prev_month_name: the nudge's label ─────────────────────────────────
+# Pure string arithmetic, so it can be pinned on fixed inputs, January wrap-around
+# included. English whatever the locale.
+echo ""
+echo "cc_prev_month_name"
+
+prev_month() (
+  # shellcheck source=scripts/portable-lib.sh
+  . "${REPO_DIR}/scripts/portable-lib.sh"
+  LANG=fr_FR.UTF-8 LC_ALL=fr_FR.UTF-8 cc_prev_month_name "$1"
+)
+is "September -> August"          "August"    "$(prev_month 2026-09)"
+is "October -> September"         "September" "$(prev_month 2026-10)"
+is "January wraps to December"    "December"  "$(prev_month 2026-01)"
+is "February -> January"          "January"   "$(prev_month 2026-02)"
+is "leading zero is not octal"    "July"      "$(prev_month 2026-08)"
+
+# ── 9. Everything still parses ───────────────────────────────────────────────
 echo ""
 echo "syntax"
 
