@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-03
+
+### docs: say where the status line is displayed, and where it is not
+
+The README note read "Terminal and IDE only", which users of the VS Code extension took
+to mean the CO2 would appear in the extension's chat panel. That panel has no status line
+at all: the hooks run underneath it (so `/carbon-report` has the sessions) but there is
+no place to display the live figure. The note now says the status line shows only when
+`claude` runs in a terminal, integrated IDE terminal included, and tells panel users to
+open one. Prompted by a GitHub issue where a user shared the panel screenshot.
+
 ## 2026-09-02
 
 ### fix: two CLAUDE_* paths missed by the Windows sweep, and the guard that could not see them
