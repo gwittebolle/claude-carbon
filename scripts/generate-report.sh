@@ -10,7 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/portable-lib.sh"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE_DIR="$PROJECT_DIR/templates"
-EXPORT_DIR="$PROJECT_DIR/exports"
+# Cards go to the user's Downloads, not to the clone: on a marketplace install the
+# clone is a hidden, per-version cache directory (see cc_downloads_dir).
+EXPORT_DIR="$(cc_path "${CLAUDE_CARBON_EXPORT_DIR:-$(cc_downloads_dir)/claude-carbon}")"
 DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon/carbon.db}")"
 # One scratch dir for the temp pages and the logo the local server serves.
 CC_TMP="$(cc_tmpdir)"
@@ -461,6 +463,10 @@ http
   .listen(Number(process.env.CC_SERVE_PORT), "127.0.0.1");
 ' >/dev/null 2>&1 &
 SERVER_PID=$!
+# Out of the job table: bash would otherwise announce the kill in cleanup_server
+# with a "Terminated" notice that quotes this whole node command back, burying
+# the Done line under twenty lines of JavaScript.
+disown "$SERVER_PID" 2>/dev/null || true
 # A function rather than a quoted trap string: the paths stay quoted, so a temp dir containing
 # a space cannot split them into separate arguments to rm.
 cleanup_server() {
@@ -501,7 +507,7 @@ const { chromium } = require('$(cc_native_path "$PW_PATH")');
   if [ -f "$output" ]; then
     local size
     size="$(du -h "$output" | cut -f1 | tr -d ' ')"
-    echo "  ${label}: ${output} (${size})"
+    echo "  ${label}: $(cc_native_path "$output") (${size})"
   else
     echo "  ${label}: FAILED" >&2
   fi
@@ -537,4 +543,14 @@ STATE_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 date +%Y-%m > "${STATE_DIR}/last-card-month" 2>/dev/null || true
 
-echo "Done. ${EXPORT_DIR}/"
+# Put the card in front of the user: the folder opens in the file manager, with
+# the summary card selected where the platform allows it. CLAUDE_CARBON_NO_OPEN
+# skips this. The French card leads on the French (or undetected) locale, which
+# is also the set whose figure the Totals line quotes.
+if [ "$LANG_FILTER" = "fr" ] || { [ -z "$LANG_FILTER" ] && [ "$EQUIV_SET" = "fr" ]; }; then
+  cc_reveal "$EXPORT_DIR/claude-carbon-summary-fr-${FILE_TAG}.png"
+else
+  cc_reveal "$EXPORT_DIR/claude-carbon-summary-en-${FILE_TAG}.png"
+fi
+
+echo "Done. $(cc_native_path "$EXPORT_DIR")/"

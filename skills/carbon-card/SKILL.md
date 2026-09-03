@@ -3,7 +3,7 @@ name: carbon-card
 description: Generate shareable PNG report cards of your Claude Code carbon footprint
 ---
 
-Run the following bash script and present the output to the user. Show the exported file paths so they can share the PNGs.
+Run the following bash script and present the output to the user. Show the exported file paths so they can share the PNGs, and tell them the folder has been opened in their file manager.
 
 ```bash
 #!/usr/bin/env bash
@@ -47,6 +47,6 @@ fi
 bash "$REPO_DIR/scripts/generate-report.sh"
 ```
 
-The script prints the export directory on its final line (`Done. <dir>/`) and a `Totals since ...` line just above it. Show the export path to the user so they can share the PNGs.
+The script prints the export directory on its final line (`Done. <dir>/`) and a `Totals since ...` line just above it. The directory is the user's Downloads folder (`~/Downloads/claude-carbon/`, or `CLAUDE_CARBON_EXPORT_DIR` when set), and the script has already opened it in the file manager: Finder with the summary card selected on macOS, Explorer on Windows, the default file manager on Linux (skipped when `CLAUDE_CARBON_NO_OPEN` is set or no display is available). Show the export path exactly as printed, it is already in the platform's native spelling, and say the folder should now be open in front of them.
 
 Then offer a ready-to-paste social post draft (LinkedIn or X) built ONLY from the numbers on the `Totals since ...` line: CO2e total, cost, the car-km equivalence, session count. The car figure on that line follows the detected locale (ADEME km on a French or undetected locale, EPA miles on a US one, world-average km otherwise) and matches the EN card; the FR card always shows the ADEME figure. The line names its factor in the parenthesis after "by car". Quote the line as printed, unit and factor included, rather than recomputing it. Write it in the user's working language. Keep the register strictly factual: numbers and equivalences, no self-congratulation, no green-virtue framing, no hashtag pile (two at most). Do not add a credit line for the tool in the draft; the card's footer already carries the repo and tokenclimate.com attribution. If the user asks for changes, iterate on the draft, never on the numbers.

@@ -165,6 +165,75 @@ cc_install_hint() {
   esac
 }
 
+# ── User folders and the file manager ───────────────────────────────────────
+# cc_downloads_dir — the user's Downloads folder, as a path bash can open. The
+# cards used to land in <repo>/exports, which on a marketplace install is a
+# hidden, per-version cache directory: nobody could find them, and every update
+# orphaned the previous ones. Downloads exists on all three platforms and is
+# where people look for a file they were handed. The folder is not checked for
+# existence: the source consulted is authoritative, and the caller mkdir -p's.
+cc_downloads_dir() {
+  local d=""
+  case "$CC_OS" in
+    windows)
+      # The Downloads known folder can be redirected (OneDrive does it), so ask
+      # the registry rather than assume %USERPROFILE%\Downloads. The value is a
+      # REG_EXPAND_SZ and comes back with its %VARS% unexpanded.
+      # Output: "    {374DE290-...}    REG_EXPAND_SZ    %USERPROFILE%\Downloads"
+      d="$(reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders' \
+             //v '{374DE290-123F-4565-9164-39C4925E467B}' 2>/dev/null \
+           | LC_ALL=C awk '/374DE290/ { sub(/^[ \t]*\{[^}]*\}[ \t]+REG_[A-Z_]+[ \t]+/, ""); sub(/[ \t\r]+$/, ""); print }' \
+           || true)"
+      local name
+      while [[ "$d" =~ %([A-Za-z_][A-Za-z0-9_]*)% ]]; do
+        name="${BASH_REMATCH[1]}"
+        d="${d//%${name}%/${!name:-}}"
+      done
+      d="$(cc_path "$d")"
+      ;;
+    linux)
+      if command -v xdg-user-dir >/dev/null 2>&1; then
+        d="$(xdg-user-dir DOWNLOAD 2>/dev/null || true)"
+        # xdg-user-dir answers $HOME when the folder is not configured, which is
+        # an absence, not a Downloads directory.
+        [ "$d" = "$HOME" ] && d=""
+      fi
+      ;;
+  esac
+  [ -n "$d" ] || d="$HOME/Downloads"
+  printf '%s' "$d"
+}
+
+# cc_reveal <file> — show the file in the desktop file manager: Finder with the
+# file selected on macOS, Explorer on the folder on Windows (explorer's /select,
+# switch does not survive a path with spaces reliably), the default file manager
+# on the folder on Linux. Best effort and silent: a headless box, a CI runner or
+# a user who set CLAUDE_CARBON_NO_OPEN gets nothing, and never an error.
+cc_reveal() {
+  local f="${1:-}"
+  { [ -n "$f" ] && [ -e "$f" ]; } || return 0
+  { [ -z "${CLAUDE_CARBON_NO_OPEN:-}" ] && [ -z "${CI:-}" ]; } || return 0
+  local dir
+  dir="$(dirname "$f")"
+  case "$CC_OS" in
+    darwin)
+      if command -v open >/dev/null 2>&1; then open -R "$f" >/dev/null 2>&1 || true; fi
+      ;;
+    windows)
+      # explorer.exe exits 1 even when it succeeds, and wants a native path.
+      if command -v explorer.exe >/dev/null 2>&1; then
+        explorer.exe "$(cc_native_path "$dir")" >/dev/null 2>&1 || true
+      fi
+      ;;
+    *)
+      if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$dir" >/dev/null 2>&1 &
+      fi
+      ;;
+  esac
+  return 0
+}
+
 # ── Locale ──────────────────────────────────────────────────────────────────
 # cc_system_locale — the OS-level locale, for shells that carry no LANG at all
 # (macOS GUI-launched hooks, and every Windows shell). Empty when unknown.

@@ -68,7 +68,11 @@ Accurate on every plan, including Max 20x.
   <img src="docs/example-report-v2.png" alt="Claude Carbon Report" width="540">
 </p>
 
-Generate yours with `/carbon-card` in Claude Code. Exports summary and detailed PNGs to `exports/`.
+Generate yours with `/carbon-card` in Claude Code. The summary and detailed PNGs land in
+`~/Downloads/claude-carbon/` (the Windows Downloads folder follows the system setting, so a
+OneDrive-redirected one is honoured) and the folder opens in your file manager, with the
+card selected on macOS. `CLAUDE_CARBON_EXPORT_DIR` picks another folder;
+`CLAUDE_CARBON_NO_OPEN=1` skips the opening.
 
 <details>
 <summary>Advanced options (CLI)</summary>

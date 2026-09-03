@@ -202,7 +202,7 @@ if [ -z "$BAD_TMP" ]; then ok "no hardcoded /tmp path"; else bad "no hardcoded /
 # the reader never looks. Two were missed on the first pass (install.sh skipped the
 # re-pricing on update, and the card stamped its month where the status line could not
 # see it), which is what this guard exists to prevent from recurring.
-RAW_ENV="$(grep -nE '^[[:space:]]*[A-Z_]+="\$\{?CLAUDE_(CONFIG_DIR|CARBON_DB|CARBON_DIR|PLUGIN_ROOT)' "${RUNTIME_FILES[@]}" 2>/dev/null || true)"
+RAW_ENV="$(grep -nE '^[[:space:]]*[A-Z_]+="\$\{?CLAUDE_(CONFIG_DIR|CARBON_DB|CARBON_DIR|CARBON_EXPORT_DIR|PLUGIN_ROOT)' "${RUNTIME_FILES[@]}" 2>/dev/null || true)"
 if [ -z "$RAW_ENV" ]; then
   ok "every CLAUDE_* path assignment is converted"
 else
@@ -239,7 +239,101 @@ for spec in ".claude-plugin/plugin.json" "hooks/hooks.json"; do
   if [ -z "$UNQUOTED" ]; then ok "${spec}: placeholders quoted"; else bad "${spec}: placeholders quoted" "$UNQUOTED"; fi
 done
 
-# ── 7. Everything still parses ───────────────────────────────────────────────
+# ── 7. Where the cards go, and how they are shown ────────────────────────────
+# cc_downloads_dir consults a different authority per platform; each branch is
+# exercised with the platform forced and the authority faked on PATH. cc_reveal
+# must spawn the file manager only when it should, and never fail.
+echo ""
+echo "cc_downloads_dir (per-platform authority, faked)"
+
+FAKE_HOME="$(mktemp -d)"
+FAKE_BIN="${FAKE_HOME}/bin"
+mkdir -p "$FAKE_BIN"
+
+downloads() ( # downloads <os> [extra PATH dir]
+  # shellcheck source=scripts/portable-lib.sh
+  . "${REPO_DIR}/scripts/portable-lib.sh"
+  CC_OS="$1"
+  CC_CYGPATH=""
+  HOME="$FAKE_HOME"
+  PATH="${2:-/nonexistent}:/usr/bin:/bin"
+  cc_downloads_dir
+)
+
+is "darwin: HOME/Downloads"                 "${FAKE_HOME}/Downloads" "$(downloads darwin)"
+is "linux without xdg-user-dir: HOME/Downloads" "${FAKE_HOME}/Downloads" "$(downloads linux)"
+
+printf '#!/usr/bin/env bash\necho "%s"\n' "${FAKE_HOME}/Téléchargements" > "${FAKE_BIN}/xdg-user-dir"
+chmod +x "${FAKE_BIN}/xdg-user-dir"
+is "linux: xdg-user-dir DOWNLOAD wins"      "${FAKE_HOME}/Téléchargements" "$(downloads linux "$FAKE_BIN")"
+
+printf '#!/usr/bin/env bash\necho "%s"\n' "${FAKE_HOME}" > "${FAKE_BIN}/xdg-user-dir"
+is "linux: xdg-user-dir answering HOME is treated as unset" "${FAKE_HOME}/Downloads" "$(downloads linux "$FAKE_BIN")"
+
+# reg.exe output as Git Bash sees it: the known-folder GUID, the type, an
+# unexpanded %USERPROFILE%, a trailing CR. OneDrive redirection is the reason to
+# read the registry at all, so the fake answers with a redirected path.
+cat > "${FAKE_BIN}/reg" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\r\n' '' 'HKEY_CURRENT_USER\Software\...' '    {374DE290-123F-4565-9164-39C4925E467B}    REG_EXPAND_SZ    %USERPROFILE%\OneDrive\Downloads' ''
+EOF
+chmod +x "${FAKE_BIN}/reg"
+is "windows: registry known folder, %USERPROFILE% expanded, converted" \
+   "/c/Users/me/OneDrive/Downloads" \
+   "$(USERPROFILE='C:\Users\me' downloads windows "$FAKE_BIN")"
+
+printf '#!/usr/bin/env bash\nexit 1\n' > "${FAKE_BIN}/reg"
+is "windows: registry unavailable falls back to HOME/Downloads" "${FAKE_HOME}/Downloads" "$(downloads windows "$FAKE_BIN")"
+
+echo ""
+echo "cc_reveal (file manager faked on PATH)"
+
+MARK="${FAKE_HOME}/reveal.log"
+CARD="${FAKE_HOME}/card.png"
+: > "$CARD"
+for tool in open explorer.exe xdg-open; do
+  printf '#!/usr/bin/env bash\necho "%s $*" >> "%s"\n' "$tool" "$MARK" > "${FAKE_BIN}/${tool}"
+  chmod +x "${FAKE_BIN}/${tool}"
+done
+
+reveal() ( # reveal <os> <file> [env assignments...]
+  # shellcheck source=scripts/portable-lib.sh
+  . "${REPO_DIR}/scripts/portable-lib.sh"
+  CC_OS="$1"; CC_CYGPATH=""
+  PATH="${FAKE_BIN}:/usr/bin:/bin"
+  unset CI CLAUDE_CARBON_NO_OPEN
+  shift
+  local f="$1"; shift
+  export "$@" DISPLAY=:0
+  cc_reveal "$f"; echo "rc=$?"
+)
+
+: > "$MARK"
+is "darwin: exits 0"                       "rc=0" "$(reveal darwin "$CARD")"
+is "darwin: Finder selects the file"       "open -R ${CARD}" "$(cat "$MARK")"
+
+: > "$MARK"
+is "windows: exits 0"                      "rc=0" "$(reveal windows "$CARD")"
+is "windows: Explorer opens the folder"    "explorer.exe ${FAKE_HOME}" "$(cat "$MARK")"
+
+: > "$MARK"
+is "linux: exits 0"                        "rc=0" "$(reveal linux "$CARD")"
+# xdg-open is backgrounded so the script never waits on a file manager: give the
+# fake up to 2s to land, then judge.
+for _ in $(seq 1 20); do [ -s "$MARK" ] && break; sleep 0.1; done
+is "linux: file manager opens the folder"  "xdg-open ${FAKE_HOME}" "$(cat "$MARK")"
+
+: > "$MARK"
+reveal darwin "$CARD" CLAUDE_CARBON_NO_OPEN=1 >/dev/null
+is "CLAUDE_CARBON_NO_OPEN: nothing spawned" "" "$(cat "$MARK")"
+reveal darwin "$CARD" CI=true >/dev/null
+is "CI: nothing spawned"                    "" "$(cat "$MARK")"
+is "missing file: exits 0, nothing spawned" "rc=0" "$(reveal darwin "${FAKE_HOME}/absent.png")"
+is "missing file: log still empty"          "" "$(cat "$MARK")"
+
+rm -rf "$FAKE_HOME"
+
+# ── 8. Everything still parses ───────────────────────────────────────────────
 echo ""
 echo "syntax"
 
