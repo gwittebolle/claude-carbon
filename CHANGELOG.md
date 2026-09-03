@@ -10,6 +10,7 @@ at all: the hooks run underneath it (so `/carbon-report` has the sessions) but t
 no place to display the live figure. The note now says the status line shows only when
 `claude` runs in a terminal, integrated IDE terminal included, and tells panel users to
 open one. Prompted by a GitHub issue where a user shared the panel screenshot.
+
 ### fix: Windows installer survives a stale PATH, a broken Store source and TLS inspection
 
 A real install on a Windows machine behind a TLS-inspecting proxy needed three
@@ -32,6 +33,7 @@ one was a place where the installer could have helped and did not.
 `tests/run-install-ps1-tests.ps1` gains a section for the merge: it drops one
 registry entry from the live `PATH`, checks the merge restores it, and checks a
 second merge adds nothing.
+
 ### feat: cards land in ~/Downloads/claude-carbon and the folder opens by itself
 
 A user generated their first card and could not find it. The PNGs were written
