@@ -32,6 +32,36 @@ one was a place where the installer could have helped and did not.
 `tests/run-install-ps1-tests.ps1` gains a section for the merge: it drops one
 registry entry from the live `PATH`, checks the merge restores it, and checks a
 second merge adds nothing.
+### feat: cards land in ~/Downloads/claude-carbon and the folder opens by itself
+
+A user generated their first card and could not find it. The PNGs were written
+to `<repo>/exports/`, which is buried in `~/code` on a curl install and, on a
+marketplace install, sits inside `~/.claude/plugins/cache/.../<version>/`: a
+hidden directory that changes on every update, orphaning the previous cards. The
+script then printed the path in Git Bash spelling (`/c/Users/...`) and did
+nothing else.
+
+- `generate-report.sh` exports to `<Downloads>/claude-carbon/`. `cc_downloads_dir`
+  asks the authority each platform has: the Downloads known folder in the Windows
+  registry (so a OneDrive-redirected folder is honoured), `xdg-user-dir DOWNLOAD`
+  on Linux, `~/Downloads` on macOS and as the fallback everywhere.
+  `CLAUDE_CARBON_EXPORT_DIR` overrides it.
+- After the export, `cc_reveal` opens the folder in the file manager: Finder with
+  the summary card selected on macOS, Explorer on Windows, the default file
+  manager on Linux. Silent when there is no display, in CI, or when
+  `CLAUDE_CARBON_NO_OPEN` is set. Never fails the script.
+- The per-file lines and the final `Done.` line print the path in the platform's
+  native spelling, so what the user sees is what they can paste.
+- `/carbon-card` tells the user the folder is open in front of them.
+- The local file server is disowned after launch. bash used to announce its kill
+  at exit with a "Terminated" notice quoting the whole node command, twenty lines
+  of JavaScript after the `Done.` line in every run.
+
+`tests/run-portability-tests.sh` exercises every branch of both helpers with the
+platform forced and the authority faked on PATH (a `reg` answering an unexpanded
+`%USERPROFILE%\OneDrive\Downloads`, an `xdg-user-dir` answering `$HOME`), and
+checks `cc_reveal` spawns the right tool with the right argument, or nothing when
+it must not.
 
 ## 2026-09-02
 
