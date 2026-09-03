@@ -1,6 +1,6 @@
 {
   "name": "claude-carbon",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "description": "Track the carbon footprint of your Claude Code sessions",
   "author": {
     "name": "Gaetan Wittebolle",
