@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-03
+
+### fix: Windows installer survives a stale PATH, a broken Store source and TLS inspection
+
+A real install on a Windows machine behind a TLS-inspecting proxy needed three
+manual steps before it went through. None of them was a bug in the plugin, but each
+one was a place where the installer could have helped and did not.
+
+- `install.ps1` now merges the registry `PATH` (Machine + User) into its own before
+  looking for `jq` and `sqlite3`. A `winget install` followed by a rerun in the same
+  terminal works; "open a new terminal" is gone from the message and the README.
+  The bash it hands over to inherits the merged value.
+- Every `winget install` hint, in `install.ps1`, `scripts/portable-lib.sh`, the
+  `install.sh` fallback copy and the README, pins `--source winget`. Without it,
+  winget also queries the Microsoft Store source and, when that one fails its
+  certificate check, aborts with exit code 94 instead of falling back.
+- When the clone fails on Windows with `unable to get local issuer certificate` and
+  git is not already on `schannel`, `install.sh` explains the cause and prints the
+  one-line fix (`git config --global http.sslBackend schannel`). Verification stays
+  on; only the trust store changes.
+
+`tests/run-install-ps1-tests.ps1` gains a section for the merge: it drops one
+registry entry from the live `PATH`, checks the merge restores it, and checks a
+second merge adds nothing.
+
 ## 2026-09-02
 
 ### fix: two CLAUDE_* paths missed by the Windows sweep, and the guard that could not see them

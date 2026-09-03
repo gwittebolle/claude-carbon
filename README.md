@@ -341,12 +341,12 @@ host already spawns.
 **Native Windows.** Install Git for Windows, plus the two commands it does not ship:
 
 ```powershell
-winget install Git.Git
-winget install jqlang.jq
-winget install SQLite.SQLite
+winget install Git.Git --source winget
+winget install jqlang.jq --source winget
+winget install SQLite.SQLite --source winget
 ```
 
-Open a new terminal so `PATH` picks them up, then:
+Then, in the same terminal:
 
 ```powershell
 irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
@@ -377,7 +377,17 @@ same as on macOS, once Git for Windows, `jq` and `sqlite3` are present.
   `~/.claude/commands/` and refreshed on every update.
 - **Sandboxing is not available** on native Windows (a Claude Code limitation, not
   this plugin's). Use WSL 2 if you need it.
-- **`/carbon-card` additionally needs Node.js**: `winget install OpenJS.NodeJS`.
+- **`/carbon-card` additionally needs Node.js**: `winget install OpenJS.NodeJS --source winget`.
+- **Behind a TLS-inspecting proxy or antivirus**, the clone fails with
+  `SSL certificate problem: unable to get local issuer certificate`. Git for Windows
+  checks certificates against its own bundled CA list, which does not know the root
+  such tools re-sign traffic with; the Windows certificate store does. Switch git to
+  it (verification stays on) and rerun the installer:
+  `git config --global http.sslBackend schannel`. The installer prints this hint
+  when it detects the case. The same interception is why `winget` needs
+  `--source winget` on those machines: the Microsoft Store source fails its
+  certificate check and, without an explicit source, winget aborts instead of
+  falling back.
 
 CI runs the full test suite on `windows-latest` under Git Bash, alongside Ubuntu,
 plus two Windows-only suites: `tests/run-windows-e2e.sh` (native paths through the Stop

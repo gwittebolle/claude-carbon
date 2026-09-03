@@ -85,7 +85,45 @@ if ($funcMatch.Success) {
     Remove-Item Env:\CLAUDE_CODE_GIT_BASH_PATH -ErrorAction SilentlyContinue
 }
 
-# -- 3. End to end against a stubbed installer --------------------------------
+# -- 3. Registry PATH merge ---------------------------------------------------
+# A terminal opened before `winget install` carries a PATH without winget's
+# directory, and so does every bash it spawns. The merge must bring the registry
+# entries in without duplicating the ones already there.
+Write-Host ""
+Write-Host "registry PATH merge"
+
+$mergeMatch = [regex]::Match($source, '(?ms)^function Merge-RegistryPath \{.*?^\}')
+Assert-Equal "Merge-RegistryPath extracted from install.ps1" $true $mergeMatch.Success
+if ($mergeMatch.Success) {
+    Invoke-Expression $mergeMatch.Value
+    $savedPath = $env:Path
+    try {
+        $registryEntries = @(@('Machine', 'User') |
+            ForEach-Object { [Environment]::GetEnvironmentVariable('Path', $_) } |
+            Where-Object { $_ } |
+            ForEach-Object { $_ -split ';' } |
+            Where-Object { $_ })
+        Assert-Equal "fixture: registry PATH is not empty" $true ($registryEntries.Count -gt 0)
+
+        # Simulate the stale terminal: drop one registry entry from the live PATH.
+        $dropped = $registryEntries[-1]
+        $env:Path = (@($env:Path -split ';' | Where-Object { $_ -and $_ -ne $dropped })) -join ';'
+        Assert-Equal "fixture: entry absent before merge" $false (@($env:Path -split ';') -contains $dropped)
+
+        Merge-RegistryPath
+        Assert-Equal "dropped registry entry is back after merge" $true (@($env:Path -split ';') -contains $dropped)
+        $stillThere = @($registryEntries | Where-Object { @($env:Path -split ';') -notcontains $_ })
+        Assert-Equal "every registry entry present after merge" 0 $stillThere.Count
+
+        $count = @($env:Path -split ';').Count
+        Merge-RegistryPath
+        Assert-Equal "a second merge adds nothing" $count (@($env:Path -split ';').Count)
+    } finally {
+        $env:Path = $savedPath
+    }
+}
+
+# -- 4. End to end against a stubbed installer --------------------------------
 Write-Host ""
 Write-Host "handover to install.sh"
 
