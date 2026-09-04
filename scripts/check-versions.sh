@@ -9,7 +9,9 @@ set -uo pipefail
 #
 #   1. FAIL if the three manifests disagree. Users are told a new version exists by comparing
 #      .claude-plugin/plugin.json against origin/main; npm and the marketplace read the other
-#      two. A mismatch makes at least one of them lie, and that is always a bug.
+#      two. A mismatch makes at least one of them lie, and that is always a bug. CITATION.cff
+#      is held to the same version: GitHub's "Cite this repository" reads it, and a stale one
+#      makes every citation point at an old release.
 #
 #   2. WARN if files that run on a user's machine changed since the last tag while the version
 #      did not. Not a failure: batching several commits into one release is normal, and a
@@ -25,6 +27,7 @@ PKG=package.json
 PLUGIN=.claude-plugin/plugin.json
 MARKET=.claude-plugin/marketplace.json
 MARKET_PATH='.plugins[] | select(.name == "claude-carbon") | .version'
+CITATION=CITATION.cff
 
 # Paths whose contents execute on an installed machine. Everything else (README, CHANGELOG,
 # stats, .github, tests) can change freely without anyone needing to update.
@@ -45,25 +48,27 @@ warn() {
 V_PKG="$(jq -r '.version // empty' "$PKG" 2>/dev/null)"
 V_PLUGIN="$(jq -r '.version // empty' "$PLUGIN" 2>/dev/null)"
 V_MARKET="$(jq -r "$MARKET_PATH // empty" "$MARKET" 2>/dev/null)"
+V_CITE="$(sed -n 's/^version: *//p' "$CITATION" 2>/dev/null | tr -d '"' | head -1)"
 
-for pair in "$PKG:$V_PKG" "$PLUGIN:$V_PLUGIN" "$MARKET:$V_MARKET"; do
+for pair in "$PKG:$V_PKG" "$PLUGIN:$V_PLUGIN" "$MARKET:$V_MARKET" "$CITATION:$V_CITE"; do
   if [ -z "${pair#*:}" ]; then
     echo "FAIL: no version found in ${pair%%:*}" >&2
     exit 1
   fi
 done
 
-if [ "$V_PKG" != "$V_PLUGIN" ] || [ "$V_PKG" != "$V_MARKET" ]; then
-  echo "FAIL: the three manifests must carry the same version." >&2
+if [ "$V_PKG" != "$V_PLUGIN" ] || [ "$V_PKG" != "$V_MARKET" ] || [ "$V_PKG" != "$V_CITE" ]; then
+  echo "FAIL: the three manifests and CITATION.cff must carry the same version." >&2
   echo "  ${PKG}    : ${V_PKG}" >&2
   echo "  ${PLUGIN} : ${V_PLUGIN}" >&2
   echo "  ${MARKET} : ${V_MARKET}" >&2
+  echo "  ${CITATION}    : ${V_CITE}" >&2
   echo "" >&2
   echo "  Bump them together with: bash scripts/release.sh patch" >&2
   exit 1
 fi
 
-echo "OK: all three manifests at ${V_PKG}."
+echo "OK: all three manifests and CITATION.cff at ${V_PKG}."
 
 # ---------------------------------------------------------------- 2. unreleased runtime work
 

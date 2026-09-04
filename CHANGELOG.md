@@ -2,6 +2,14 @@
 
 ## 2026-09-04
 
+### chore: CITATION.cff follows the release version
+
+GitHub's "Cite this repository" reads `CITATION.cff`, which still said 1.1.1,
+released 2026-07-19, five releases and six weeks behind. It now says 1.6.0 and
+the tag's date, `release.sh` rewrites both lines on every bump, and
+`check-versions.sh` fails when the file disagrees with the three manifests, the
+way it already did for those three.
+
 ### feat: store the decode-context term, and date the methodology against the 2026 literature
 
 Each generated token re-reads the whole KV cache, so its energy grows with the

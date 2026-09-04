@@ -71,7 +71,8 @@ bash scripts/release.sh patch             # bump, tag, push, open a draft releas
 ```
 
 The script bumps the three manifests that must stay in sync (`package.json`,
-`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`), commits, tags,
+`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`) and the version
+and release date in `CITATION.cff`, commits, tags,
 pushes, and opens the GitHub release as a draft pre-filled with the CHANGELOG
 lines added since the last tag. Edit those notes, then
 `gh release edit vX.Y.Z --draft=false`. Pass `--npm` to publish to npm as well;

@@ -15,6 +15,8 @@ set -euo pipefail
 # (scripts/, hooks/, skills/, data/, install.sh, bin/) only reaches them once a release bumps
 # it. Docs-only changes deliberately do not nag. Three manifests hold that version and a
 # mismatch makes the notice lie, so they are bumped together, here, or not at all.
+# CITATION.cff carries the version and release date too: GitHub's "Cite this repository"
+# reads it, and it sat at 1.1.1 through five releases before it joined this script.
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
@@ -23,6 +25,7 @@ PKG=package.json
 PLUGIN=.claude-plugin/plugin.json
 MARKET=.claude-plugin/marketplace.json
 MARKET_PATH='.plugins[] | select(.name == "claude-carbon") | .version'
+CITATION=CITATION.cff
 
 BUMP=""
 DRY_RUN=0
@@ -162,6 +165,18 @@ if [ "$DRY_RUN" != "1" ]; then
   fi
 fi
 
+# CITATION.cff is YAML with two scalar lines to rewrite; the date is today's, the day
+# the tag is cut. Re-read rather than trust the writes, as above.
+if [ "$DRY_RUN" = "1" ]; then
+  echo "  [dry-run] $CITATION → $NEW ($(date -u +%Y-%m-%d))"
+else
+  tmp="${CITATION}.tmp.$$"
+  sed -e "s/^version: .*/version: ${NEW}/" -e "s/^date-released: .*/date-released: \"$(date -u +%Y-%m-%d)\"/" "$CITATION" > "$tmp" && mv -f "$tmp" "$CITATION"
+  D="$(sed -n 's/^version: //p' "$CITATION")"
+  [ "$D" = "$NEW" ] || { echo "ERROR: bump did not land in $CITATION ($D). Fix by hand." >&2; exit 1; }
+  echo "  $CITATION → $NEW"
+fi
+
 # npm's lockfile carries the version too when one is committed.
 if [ -f package-lock.json ] && [ "$DRY_RUN" != "1" ]; then
   tmp="package-lock.json.tmp.$$"
@@ -191,9 +206,9 @@ echo ""
 # ---------------------------------------------------------------- commit, tag, push
 
 if [ -f package-lock.json ]; then
-  run git add "$PKG" "$PLUGIN" "$MARKET" package-lock.json
+  run git add "$PKG" "$PLUGIN" "$MARKET" "$CITATION" package-lock.json
 else
-  run git add "$PKG" "$PLUGIN" "$MARKET"
+  run git add "$PKG" "$PLUGIN" "$MARKET" "$CITATION"
 fi
 run git commit -q -m "chore: release ${NEW}"
 run git tag -a "$TAG" -m "${TAG}"
