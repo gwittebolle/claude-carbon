@@ -6,7 +6,7 @@
 [![npm](https://img.shields.io/npm/v/claude-carbon)](https://www.npmjs.com/package/claude-carbon)
 [![CI](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml/badge.svg)](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml)
 
-Track the carbon footprint of your Claude Code sessions.
+claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate in the status line, computed locally from your token usage, next to the session cost.
 
 ![Live CO2 in the Claude Code status line](docs/demo.gif)
 
