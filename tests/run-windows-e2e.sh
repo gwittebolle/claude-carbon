@@ -117,6 +117,7 @@ ROW="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE session_id='${SES
 check "row persisted from a native path" "1" "$ROW"
 check "output tokens captured"           "5000"   "$(sqlite3 "$DB_PATH" "SELECT output_tokens FROM sessions WHERE session_id='${SESSION}';")"
 check "cache reads captured"             "100000" "$(sqlite3 "$DB_PATH" "SELECT cache_read_tokens FROM sessions WHERE session_id='${SESSION}';")"
+check "decode context captured"          "650000000" "$(sqlite3 "$DB_PATH" "SELECT output_context_sum FROM sessions WHERE session_id='${SESSION}';")"
 check "project derived from native cwd"  "myproj" "$(sqlite3 "$DB_PATH" "SELECT project FROM sessions WHERE session_id='${SESSION}';")"
 check "branch captured"                  "main"   "$(sqlite3 "$DB_PATH" "SELECT git_branch FROM sessions WHERE session_id='${SESSION}';")"
 

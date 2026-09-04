@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   cache_read_tokens INTEGER DEFAULT 0,
   cache_creation_tokens INTEGER DEFAULT 0,
   cache_creation_1h_tokens INTEGER DEFAULT 0,
+  output_context_sum INTEGER DEFAULT 0,
   cost_usd REAL,
   co2_grams REAL,
   started_at TEXT,
@@ -61,6 +62,7 @@ sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN methodology_version INTEGER 
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN excluded INTEGER DEFAULT 0;" 2>/dev/null || true
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN git_branch TEXT DEFAULT '';" 2>/dev/null || true
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_1h_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
+sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN output_context_sum INTEGER DEFAULT 0;" 2>/dev/null || true
 
 echo "  Schema created."
 

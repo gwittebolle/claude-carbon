@@ -35,6 +35,7 @@ DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cl
 
 # The cache-write TTL split may postdate this DB (idempotent; no-ops once present).
 sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_1h_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
+sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN output_context_sum INTEGER DEFAULT 0;" 2>/dev/null || true
 
 # Default: CO2 only. --with-cost / --prices also re-derives cost_usd (see header caveat).
 WITH_COST=0

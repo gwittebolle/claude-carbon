@@ -315,6 +315,64 @@ check "statusline: unknown session falls back to the window estimate"    "16g CO
 check "statusline: excluded row does not leak, falls back"               "0g CO₂"     "$(sl_co2 sess-excluded glm-4.7)"
 check "statusline: no session_id falls back"                             "16g CO₂"    "$(sl_co2 '')"
 
+# ------------------------------------------------------- 11. decode-context sum
+
+# Every session stores sum(output_tokens x context) over its assistant messages, main
+# transcript and subagents alike, after the same (message.id, requestId) dedup as the
+# token counts. Both writers (Stop hook, backfill) must agree, and backfill must fill
+# the column on rows that predate it while the transcript is still on disk.
+if ! command -v sqlite3 >/dev/null 2>&1; then
+  echo "SKIP decode-context sum: sqlite3 not available"
+else
+  CFG="${TMPROOT}/octx"
+  OCTX_DB="${CFG}/claude-carbon/carbon.db"
+  OCTX_SESSION="12345678-1234-1234-1234-123456789abc"
+  OCTX_PROJ="${TMPROOT}/octx-proj"
+  OCTX_DIR="${CFG}/projects/-octx-proj"
+  mkdir -p "${CFG}/claude-carbon" "$OCTX_PROJ" "${OCTX_DIR}/${OCTX_SESSION}/subagents"
+  # A DB created before the column existed: the writers must add it themselves.
+  sqlite3 "$OCTX_DB" "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT DEFAULT 'live', methodology_version INTEGER DEFAULT 1, excluded INTEGER DEFAULT 0, git_branch TEXT DEFAULT '');"
+  # msg_1 is written twice (streaming snapshot then final): only the last counts,
+  # 500 x (1000 + 20000 + 100000) = 60,500,000. msg_2: 2000 x 121500 = 243,000,000.
+  # Subagent: 300 x (500 + 5000) = 1,650,000. Total 305,150,000.
+  OCTX_MAIN="${OCTX_DIR}/${OCTX_SESSION}.jsonl"
+  cat > "$OCTX_MAIN" <<EOF
+{"type":"user","cwd":"${OCTX_PROJ}","gitBranch":"main","sessionId":"${OCTX_SESSION}","timestamp":"2026-09-04T10:00:00Z","message":{"role":"user","content":"go"}}
+{"type":"assistant","requestId":"req_1","timestamp":"2026-09-04T10:00:01Z","message":{"id":"msg_1","model":"claude-opus-5","usage":{"input_tokens":1000,"cache_creation_input_tokens":20000,"cache_read_input_tokens":100000,"output_tokens":100}}}
+{"type":"assistant","requestId":"req_1","timestamp":"2026-09-04T10:00:02Z","message":{"id":"msg_1","model":"claude-opus-5","usage":{"input_tokens":1000,"cache_creation_input_tokens":20000,"cache_read_input_tokens":100000,"output_tokens":500}}}
+{"type":"assistant","requestId":"req_2","timestamp":"2026-09-04T10:00:03Z","message":{"id":"msg_2","model":"claude-opus-5","usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":121500,"output_tokens":2000}}}
+EOF
+  cat > "${OCTX_DIR}/${OCTX_SESSION}/subagents/agent-1.jsonl" <<EOF
+{"type":"assistant","requestId":"req_s1","timestamp":"2026-09-04T10:00:04Z","message":{"id":"msg_s1","model":"claude-haiku-4-5","usage":{"input_tokens":500,"cache_creation_input_tokens":5000,"cache_read_input_tokens":0,"output_tokens":300}}}
+EOF
+  octx_col() { sqlite3 "$OCTX_DB" "SELECT COALESCE(output_context_sum, -1) FROM sessions WHERE session_id='${OCTX_SESSION}';" 2>/dev/null; }
+
+  jq -n --arg s "$OCTX_SESSION" --arg t "$OCTX_MAIN" --arg c "$OCTX_PROJ" '{session_id: $s, transcript_path: $t, cwd: $c}' \
+    | CLAUDE_CONFIG_DIR="$CFG" bash "${REPO_DIR}/scripts/persist-session.sh" >/dev/null 2>&1
+  check "decode context: Stop hook stores sum(output x context), deduplicated, subagents included" "305150000" "$(octx_col)"
+  check "decode context: Stop hook token counts unchanged by the new column" "2800|221500" "$(sqlite3 "$OCTX_DB" "SELECT output_tokens || '|' || cache_read_tokens FROM sessions WHERE session_id='${OCTX_SESSION}';")"
+  LIVE_CO2="$(sqlite3 "$OCTX_DB" "SELECT co2_grams FROM sessions WHERE session_id='${OCTX_SESSION}';")"
+
+  sqlite3 "$OCTX_DB" "DELETE FROM sessions;"
+  CLAUDE_CONFIG_DIR="$CFG" bash "${REPO_DIR}/scripts/backfill.sh" >/dev/null 2>&1
+  check "decode context: backfill stores the same sum"      "305150000" "$(octx_col)"
+  check "decode context: backfill CO2 matches the Stop hook" "$LIVE_CO2" "$(sqlite3 "$OCTX_DB" "SELECT co2_grams FROM sessions WHERE session_id='${OCTX_SESSION}';")"
+
+  # A row captured before the column existed: backfill fills it from the transcript.
+  sqlite3 "$OCTX_DB" "UPDATE sessions SET output_context_sum = 0 WHERE session_id='${OCTX_SESSION}';"
+  BF_OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "${REPO_DIR}/scripts/backfill.sh" 2>/dev/null)"
+  check "decode context: backfill fills a pre-existing row" "305150000" "$(octx_col)"
+  case "$BF_OUT" in
+    *"Filled the decode-context sum (output_context_sum) on 1 existing row(s)"*) ok "decode context: fill is reported" ;;
+    *) bad "decode context: fill is reported" "a 'Filled ... 1 existing row(s)' line" "$BF_OUT" ;;
+  esac
+  BF_OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "${REPO_DIR}/scripts/backfill.sh" 2>/dev/null)"
+  case "$BF_OUT" in
+    *"Filled the decode-context sum"*) bad "decode context: a filled row is not re-filled" "no 'Filled' line" "$BF_OUT" ;;
+    *) ok "decode context: a filled row is not re-filled" ;;
+  esac
+fi
+
 # ----------------------------------------------------------------
 
 echo ""

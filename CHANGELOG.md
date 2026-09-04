@@ -1,5 +1,54 @@
 # Changelog
 
+## 2026-09-04
+
+### feat: store the decode-context term, and date the methodology against the 2026 literature
+
+Each generated token re-reads the whole KV cache, so its energy grows with the
+context it is generated against, and batching does not amortise that part (weights
+are shared across a batch, each request's cache is not). The formula has no such
+term: the output factor is a constant calibrated on Jegham's points at 10k context
+or less, while the median Claude Code message here carries 160k. Measured on open
+models the term is x2.3 per output token from 1k to 16k context on GQA, and nothing
+is measured beyond. On the author's own 30 days a term of the form
+`output x (1 + context / C0)` moves the total by x1.3 to x5.6 depending on C0, more
+than every other parameter combined.
+
+No slope can be defended today, so no factor moves. What changes is that the data
+stops being lost: every session now stores `output_context_sum`, the sum over its
+assistant messages of `output_tokens x (input + cache_write + cache_read)`, after
+the same dedup as the token counts, main transcript and subagents alike. Both
+writers (`persist-session.sh`, `backfill.sh`) add the column to an existing DB, and
+`backfill.sh` fills it on rows that predate it while their transcript is still
+inside the 30-day window. No formula reads it yet; CO2 and cost are unchanged.
+
+METHODOLOGY gains a dated section, "Where the estimate stands (September 2026)":
+each parameter against what was published between April and September 2026
+(Oviedo et al. in Joule, the Watershed framework, four HotCarbon 2026 papers, the
+Amazon and Google 2026 reports), the swing it produces on the same 30 days, and
+the decision. The output factor sits 2-3x above production-conditions figures and
+the input factor 2.6x below Watershed's; rebalancing either without the context
+term would be cosmetic, so both stay. The Colossus line in Limitations is brought
+up to date (Anthropic took the whole site in May 2026). The README now points at
+that section. `run-install-tests.sh` covers the new column through both writers,
+the fill pass and its idempotence; the Windows end-to-end run checks it too.
+
+### docs: a social preview rendered from the demo, and a demo prompt a newcomer recognises
+
+`docs/social-preview.gif` (1280x640, the GitHub "Social preview" format) puts the
+animated status line under the project name on the brand ground (cream, the 56 px
+rule grid and orange glow of tokenclimate.com, Clash Display and Owners, drawn by
+`docs/demo/social-preview-bg.py`), composed from `docs/demo.gif` by
+`docs/demo/render-social-preview.sh` so it cannot drift from the real status line
+the way the data-flow diagram once did; `docs/social-preview.png`
+is the last frame for hosts that show a still. The demo prompt was "recalibrate the
+emission factors and replay the golden vectors", the project's own jargon, which
+read as if the tool recalibrated something. It is now "fix the flaky integration
+test and open a PR": an ordinary task, so the status line is the only thing left
+to notice. In the recording the CO2 figure is tinted brand orange; the real status
+line stays uncoloured, it sits in every terminal all day and an orange segment
+there would be glare.
+
 ## 2026-09-03
 
 ### feat: the monthly nudge names the month it wraps, and stays through the 10th

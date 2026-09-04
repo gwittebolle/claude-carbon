@@ -35,7 +35,7 @@ Same command to install and to update to the latest version (all three run the s
 **2. Restart Claude Code.** Your CO2 appears in the status line:
 
 ```
-claude-carbon ⌥ main | 🟢 Opus 4.7 ▓▓▓░░░░░░░ 35% | $0.50 · 65g CO₂ | Use 24% ↻13:00
+claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 · 65g CO₂ | Use 24% ↻13:00
 ```
 
 Segments, left to right: project + git branch, model + context window %, session cost + CO2, 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
@@ -295,7 +295,8 @@ Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), an arXiv pr
 
 - Sonnet factors are a 3-point least-squares fit to the three Claude 3.7 Sonnet per-query energies estimated in Jegham et al. v6 (0.950 / 2.989 / 5.671 Wh), giving a ~21:1 output:input ratio. The value is consistent with [EcoLogits](https://ecologits.ai): its independent estimate for Sonnet brackets the same range (a wide band, so this is a consistency check, not proof). Fable, Opus and Haiku are extrapolated (no public data from Anthropic on per-model energy consumption); Opus = 2x Sonnet matches both the current EcoLogits Opus 4.5+ parameter ratio and the Anthropic price ratio (honest band 2x-5x).
 - Sessions run on non-Anthropic models (e.g. local models behind `ANTHROPIC_BASE_URL`) are stored with their raw tokens but zero cost/CO2 and excluded from reports - a datacenter factor doesn't apply to them. Add patterns to `exclude_models` in `data/factors.json` to exclude more models by name.
-- Cache read tokens are counted at a reduced factor (default 0.08 of an input token, set in `data/factors.json`). A cached token skips prefill compute but still incurs decode-phase memory reads, so it is cheap but not free. This is an engineering estimate derived from the literature, not Anthropic's 0.1x billing ratio. See [METHODOLOGY.md](METHODOLOGY.md).
+- Cache read tokens are counted at a reduced factor (default 0.08 of an input token, set in `data/factors.json`). A cached token skips most of the prefill compute; the factor is the residual. This is an engineering estimate derived from the literature, not Anthropic's 0.1x billing ratio. The decode-phase re-read of the cache grows with context length x generated tokens and is not modelled yet; every session stores that product (`output_context_sum`) so a calibrated term can be applied to history later. See [METHODOLOGY.md](METHODOLOGY.md).
+- Reviewed against the April-September 2026 literature (measurement papers, provider disclosures, the Watershed framework) with a sensitivity run on 30 days of real transcripts: no factor moved, the displayed figure is more likely low than high, next review March 2027. See [Where the estimate stands](METHODOLOGY.md#where-the-estimate-stands-september-2026).
 - Carbon intensity uses the AWS region grid (location-based, 0.287 kgCO2e/kWh), not real-time grid data. This sits at the low end of the location-based range; the US national average is ~380 g/kWh.
 - Anthropic does not publish Scope 1, 2, or 3 emissions. These estimates are independent and based on academic research, not provider data.
 
