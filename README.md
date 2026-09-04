@@ -10,6 +10,14 @@ claude-carbon is an open source Claude Code plugin that tracks the carbon footpr
 
 ![Live CO2 in the Claude Code status line](docs/demo.gif)
 
+## What claude-carbon does
+
+- Adds a live CO2 estimate to the Claude Code status line, next to the session cost
+- Persists each session to a local SQLite database, so history survives the 30-day transcript purge
+- Backfills historical data from existing `~/.claude` transcripts
+- Slash commands: `/carbon-report` (text), `/carbon-card` (PNG), `/carbon-pr` (footprint of a pull request)
+- A README badge with your all-time total, and a public methodology with every factor sourced
+
 **1. Install (or update):**
 
 macOS, Linux, WSL:
@@ -54,13 +62,6 @@ Accurate on every plan, including Max 20x.
 - `/carbon-report` - text report with totals, equivalences, top sessions
 - `/carbon-card` - generate shareable PNG report cards (requires `playwright-core`, see [Dependencies](#dependencies))
 - `/carbon-update` - update to the latest version and re-price history (see [Updating](#updating))
-
-## What it does
-
-- Adds a live CO2 estimate to the Claude Code status line, next to the session cost
-- Persists each session to a local SQLite database
-- Backfills historical data from existing `~/.claude` transcripts
-- Two slash commands: `/carbon-report` (text) and `/carbon-card` (PNG)
 
 ## Example report
 
@@ -201,7 +202,7 @@ Turning it off is the default: nothing is posted unless you run it. `--dry-run` 
 
 ## How it works
 
-![Data flow](docs/data-flow.svg)
+![claude-carbon data flow: Claude Code transcripts and status line JSON to a local SQLite database and a CO2 estimate](docs/data-flow.svg)
 
 **Three data paths, two levels of accuracy:**
 

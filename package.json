@@ -21,12 +21,20 @@
   "author": "Gaetan Wittebolle (https://github.com/gwittebolle)",
   "license": "MIT",
   "keywords": [
+    "claude-carbon",
     "carbon-footprint",
+    "carbon-emissions",
+    "co2",
+    "co2-tracker",
     "sustainability",
-    "claude-code",
-    "claude",
     "green-it",
-    "co2"
+    "green-ai",
+    "claude-code",
+    "claude-code-plugin",
+    "claude",
+    "anthropic",
+    "statusline",
+    "llm"
   ],
   "engines": {
     "node": ">=18"
