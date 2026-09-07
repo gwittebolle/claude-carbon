@@ -2,6 +2,21 @@
 
 ## 2026-09-07
 
+### data: Sonnet list price is 2/10 (Claude Sonnet 5), re-read 2026-09-07
+
+`data/prices.json` still carried Sonnet at 3/15, the price of Sonnet 4.6 and
+4.5. Anthropic launched Claude Sonnet 5 on 2026-06-30 at 2/10 as an
+introductory price and has since made it the standard price (the increase
+to 3/15 scheduled for 2026-09-01 was cancelled). Since this plugin prices
+per family, the family follows its current default model: Sonnet is now
+2/10, and the note says plainly that a Sonnet 4.6 session is under-billed
+by a third. Fable 5.1 and Mythos 5.1 bill cache reads at 0.025x input
+instead of 0.1x; the plugin has a single `cache_read_multiplier`, so this
+is documented as not modelled rather than approximated. The golden vectors
+move on `expected_cost_usd` only (three Sonnet vectors); no CO2 value
+changes. After updating, run `scripts/recompute.sh --with-cost` to
+re-derive `cost_usd` on stored rows.
+
 ### docs: the "Reduce your footprint" section explains each lever, without percentages
 
 The README keeps a short version, one line per lever with its command, and the

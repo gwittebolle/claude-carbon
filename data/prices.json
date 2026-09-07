@@ -1,11 +1,11 @@
 {
   "_units": "USD per million tokens — current Anthropic list price (pay-as-you-go API value).",
-  "_note": "Fable 5 (claude-fable-5 / claude-mythos-5) is 10/50. Opus 4.6+ is 5/25 (the retired 4.0/4.1 was 15/75). cache_read = input x cache_read_multiplier. Cache writes are billed per TTL tier: input x cache_write_multiplier (5-minute) or input x cache_write_multiplier_1h (1-hour). The tier is not assumed: the split is read per session from usage.cache_creation.ephemeral_1h_input_tokens / ephemeral_5m_input_tokens. After editing prices, run `scripts/recompute.sh --with-cost` to re-derive cost_usd for all raw-token rows (plain `recompute.sh` re-derives CO2 only), without needing the (purged) JSONL.",
-  "_updated": "2026-08-24",
+  "_note": "Fable 5 and 5.1 (claude-fable-5 / claude-mythos-5 / claude-fable-5-1) are 10/50. Opus 4.6+ is 5/25 (the retired 4.0/4.1 was 15/75). Sonnet is 2/10: the Claude Sonnet 5 introductory price (since 2026-06-30) became the standard price, the increase to 3/15 scheduled for 2026-09-01 was cancelled (platform.claude.com/docs/en/about-claude/pricing, re-read 2026-09-07); Sonnet 4.6 and 4.5 still list 3/15, and since pricing is per family a 4.6 session is under-billed by a third. Fable 5.1 and Mythos 5.1 bill cache reads at 0.025x input (0.25 USD/Mtok) instead of 0.1x: not modelled here (single cache_read_multiplier), so Fable 5.1 cache reads are over-billed 4x until a per-model multiplier exists. cache_read = input x cache_read_multiplier. Cache writes are billed per TTL tier: input x cache_write_multiplier (5-minute) or input x cache_write_multiplier_1h (1-hour). The tier is not assumed: the split is read per session from usage.cache_creation.ephemeral_1h_input_tokens / ephemeral_5m_input_tokens. After editing prices, run `scripts/recompute.sh --with-cost` to re-derive cost_usd for all raw-token rows (plain `recompute.sh` re-derives CO2 only), without needing the (purged) JSONL.",
+  "_updated": "2026-09-07",
   "models": {
     "fable": { "input": 10, "output": 50 },
     "opus": { "input": 5, "output": 25 },
-    "sonnet": { "input": 3, "output": 15 },
+    "sonnet": { "input": 2, "output": 10 },
     "haiku": { "input": 1, "output": 5 }
   },
   "_cache_write_multipliers": "Anthropic bills a cache write at 1.25x input for the 5-minute TTL and 2x input for the 1-hour TTL. The tier is set per cache_control block, so one request can mix both. Claude Code writes at the 1-hour tier: 174,465,500 ephemeral_1h tokens against 0 ephemeral_5m over 24,978 assistant requests (measured 2026-08-24). Rows captured before the split existed carry cache_creation_1h_tokens = 0 and are priced at the 5-minute tier; backfill.sh repairs them while their transcript is still on disk.",
