@@ -408,86 +408,17 @@ hook and the status line, hook manifests spawned the way Claude Code spawns them
 
 ## Reduce your footprint
 
-Measuring is step one. Here are concrete levers to reduce your AI carbon footprint, ranked by impact.
+Measuring is step one. The levers below are ordered by what the 2026 measurement literature and this tool's own sensitivity run on real transcripts say matters most. None of them comes with a percentage: the emission factors carry a wider uncertainty band than any gain figure would. `/carbon-report` before and after a change, over several sessions, is the measurement that applies to you. The mechanism, the direction and the sources of each lever are in [docs/reduce.md](docs/reduce.md).
 
-### Use the right model for the task
+- **Keep the context short when the model generates.** Almost every token of a session is a cache read, and the energy of a generated token grows with the context it is generated in. One session per task, `/clear` when the subject changes, `/btw` for side questions, subagents for exploration and verbose operations.
+- **Compact on your terms.** `/compact <instructions>` at a natural break, `/rewind` when abandoning a path, `/autocompact 150k` to bound the window, `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` on models that run at 1M by default.
+- **Trim what every turn carries.** `/context` shows it. A short `CLAUDE.md` with the rest in skills, unused MCP servers off with `/mcp`, a CLI over an MCP server where both exist.
+- **Do not break the cache mid-session.** Pick the model and the effort level at the start; `/usage` shows the hit ratio and the likely cause of the last miss.
+- **Fewer turns, fewer failed loops.** A spec and a test the agent can run, a deterministic tool over a retry, `/clear` after two failed corrections, no `/loop` left running on an idle session.
+- **Ask the agent only what needs an agent.** An agentic task runs on the order of a thousand times the tokens of a chat exchange. A `--help` costs nothing.
+- **Match reasoning and model to the task.** `/effort low` on routine work, set at session start; Haiku for subagents via `CLAUDE_CODE_SUBAGENT_MODEL`.
 
-Output tokens cost ~21x more energy than input tokens (the marginal output:input ratio fit on Jegham v6). Opus is estimated at ~2x Sonnet per token (uncertainty band 2x-5x, see METHODOLOGY.md).
-
-```json
-{
-  "env": {
-    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-haiku-4-5"
-  }
-}
-```
-
-Use Opus for architecture and planning. Sonnet for daily work. Haiku for subagents (exploration, file reading, reviews). As an indicative estimate with this tool's factors, this alone can cut your emissions by up to ~60% vs all-Opus.
-
-### Install RTK (Rust Token Killer)
-
-[RTK](https://github.com/rtk-ai/rtk) is a CLI proxy that filters noise from shell outputs (progress bars, verbose logs, passing tests) before they hit the context window. 60-90% token reduction on CLI commands, zero quality loss.
-
-```bash
-brew install rtk-ai/tap/rtk
-rtk init -g
-```
-
-### Reduce thinking tokens
-
-Claude's extended thinking can use up to 32k hidden tokens per message. Capping it reduces consumption without degrading quality on routine tasks.
-
-```json
-{
-  "env": {
-    "MAX_THINKING_TOKENS": "10000"
-  }
-}
-```
-
-### Compact earlier
-
-By default, Claude Code compacts context at 95% usage. Compacting earlier keeps context cleaner and avoids bloated sessions.
-
-```json
-{
-  "env": {
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50"
-  }
-}
-```
-
-### Disconnect unused MCP servers
-
-Every connected MCP server ships its full tool schemas into the context window with every request, whether the session uses them or not. Most of that overhead is served from prompt cache after the first turn, and cache reads carry a much lower energy factor (see METHODOLOGY.md), so the saving per turn is modest; the gain comes from repetition across every turn of every session.
-
-```bash
-claude mcp list
-```
-
-Keep the servers the project actually uses, remove the rest with `claude mcp remove <name>`.
-
-### Write concise instructions
-
-Add to your project's CLAUDE.md:
-
-```
-Be concise. No preamble, no summaries unless asked.
-```
-
-Output tokens are the most expensive in both cost and energy.
-
-### Combined impact
-
-These reductions are indicative estimates, not measurements on a benchmark workload. The RTK figure comes from RTK's own documentation. The Haiku rows follow from this tool's own factors (Haiku = 0.5x Sonnet = 0.25x Opus per token): -50% when your subagents would otherwise run Sonnet, -75% when they would run Opus. They inherit the 0.5x extrapolation, the widest uncertainty band in the tool (see METHODOLOGY.md); if most of your usage is already Haiku, your absolute total rides on that band, so read it as an order of magnitude.
-
-| Lever                | Estimated reduction          |
-| -------------------- | ---------------------------- |
-| Right model per task | -60% vs all-Opus             |
-| RTK                  | -70% on CLI tokens           |
-| Thinking cap at 10k  | -70% on thinking tokens      |
-| Haiku subagents      | -75% vs Opus, -50% vs Sonnet |
-| **All combined**     | **-50 to 70% total**         |
+The same document covers what does not hold up (shell output filters, prompt compressors, adding up percentages), the harness as a lever, and what is out of your hands for now.
 
 ### Related projects
 

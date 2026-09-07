@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-09-07
+
+### docs: the "Reduce your footprint" section explains each lever, without percentages
+
+The README keeps a short version, one line per lever with its command, and the
+long form with mechanisms and sources moves to `docs/reduce.md`. The section listed levers with an estimated reduction each and a combined
+"-50 to 70%" figure. Those figures came from the tools' own documentation or
+from arithmetic on this tool's factors, whose uncertainty band is wider than
+any of them. The section is rewritten by mechanism: it opens with the
+observation that almost all tokens of a session are cache reads and that the
+energy of a generated token grows with the context it is generated in, then
+gives each lever its direction and its physical reason. New levers: keeping
+the context short when the model generates (one session per task, `/clear`,
+`/btw`, scoped investigations, subagents for broad low-context work), not
+breaking the prompt cache mid-session, fewer turns and failed loops, asking
+the agent only what needs an agent, the fixed cost per request, deterministic
+tools over retries, the length and language of the answer, and the effort
+level per task type, and a note that the harness itself decides most of
+these. The intro says to compare several sessions, not one. Three facts are
+aligned with the current Claude Code docs: MCP schemas are deferred by
+default, editing CLAUDE.md mid-session neither breaks the cache nor applies,
+and the auto-compact window is set with `/autocompact` (the percentage
+override the section used to show is no longer documented). The thinking
+snippet becomes `/effort`, since adaptive-reasoning models ignore a token
+budget.
+Compaction is described as a trade-off (the summary is generated output and
+re-writes the cache) rather than a free gain, and unused MCP servers as
+overhead at every decode step rather than a modest cached cost. A "What does
+not hold up" list covers shell output filters, prompt compressors that
+invalidate the prefix cache, and the addition of percentages; the tool that was
+recommended by name is no longer cited. The closing section says the grid is
+out of the user's hands for now, and that trying other models on part of the
+work is a lever too. The combined-impact table is removed. The settings
+snippets are unchanged.
+
 ## 2026-09-04
 
 ### docs: the README says in a sentence what the tool is
