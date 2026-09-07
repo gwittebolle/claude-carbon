@@ -12,16 +12,40 @@
     "cache_write_multiplier_1h": 2.0,
     "cache_read_multiplier": 0.1,
     "factors_gco2e_per_mtok": {
-      "fable": { "input": 156, "output": 3304 },
-      "opus": { "input": 78, "output": 1652 },
-      "sonnet": { "input": 39, "output": 826 },
-      "haiku": { "input": 20, "output": 413 }
+      "fable": {
+        "input": 156,
+        "output": 3304
+      },
+      "opus": {
+        "input": 78,
+        "output": 1652
+      },
+      "sonnet": {
+        "input": 39,
+        "output": 826
+      },
+      "haiku": {
+        "input": 20,
+        "output": 413
+      }
     },
     "prices_usd_per_mtok": {
-      "fable": { "input": 10, "output": 50 },
-      "opus": { "input": 5, "output": 25 },
-      "sonnet": { "input": 3, "output": 15 },
-      "haiku": { "input": 1, "output": 5 }
+      "fable": {
+        "input": 10,
+        "output": 50
+      },
+      "opus": {
+        "input": 5,
+        "output": 25
+      },
+      "sonnet": {
+        "input": 2,
+        "output": 10
+      },
+      "haiku": {
+        "input": 1,
+        "output": 5
+      }
     }
   },
   "_rounding": "All token counts are multiples of 10,000 so every expected value is EXACT at <= 3 decimals for co2_grams and <= 4 decimals for cost_usd. This makes the vectors implementation-agnostic: the bash plugin prints co2 at 4 decimals / cost at 6 decimals, the SaaS rounds co2 to 3 decimals / cost to 4 decimals, and both land on the exact value. Runners compare with a relative tolerance of 1e-6.",
@@ -58,7 +82,7 @@
       "cache_read_tokens": 12000000,
       "output_tokens": 80000,
       "expected_co2_grams": 110.15,
-      "expected_cost_usd": 5.4225
+      "expected_cost_usd": 3.615
     },
     {
       "id": "haiku-mixed",
@@ -91,7 +115,7 @@
       "cache_read_tokens": 1000000,
       "output_tokens": 0,
       "expected_co2_grams": 3.12,
-      "expected_cost_usd": 0.3
+      "expected_cost_usd": 0.2
     },
     {
       "id": "all-zeros",
@@ -195,7 +219,7 @@
       "cache_read_tokens": 0,
       "output_tokens": 0,
       "expected_co2_grams": 3.9,
-      "expected_cost_usd": 0.6
+      "expected_cost_usd": 0.4
     },
     {
       "id": "haiku-cache-read-only",
@@ -208,5 +232,6 @@
       "expected_co2_grams": 16.0,
       "expected_cost_usd": 1.0
     }
-  ]
+  ],
+  "_reprice_2026_09_07": "Sonnet family repriced 3/15 -> 2/10 (Claude Sonnet 5 list price, permanent since 2026-06-30). Only expected_cost_usd moves on the Sonnet vectors; every expected_co2_grams is unchanged."
 }
