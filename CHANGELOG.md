@@ -2,19 +2,16 @@
 
 ## 2026-09-04
 
-### docs: name the tool where search engines read it
+### docs: the README says in a sentence what the tool is
 
-Google ranked metztim/claude-carbon, a homonymous and unmaintained macOS app,
-above this repo for the exact query "claude-carbon", and put this repo outside
-the top 20. Google ignores stars; a name query is won by prose that carries the
-phrase, and this README only had it in code blocks and URLs. The GitHub
-description now starts with the name, the intro under the badges is a sentence
-that says what claude-carbon is, the feature list moved up under the demo GIF
-as "What claude-carbon does", the data-flow diagram has a descriptive alt text,
-and the npm keywords grew from 6 to 14 (they reach npm at the next publish).
-Discussions are enabled on the repo. The plugin also has a page at
-https://tokenclimate.com/en/claude-carbon, the first page about it whose HTML
-we control. Nothing that runs on a user's machine changed.
+The README carried the name only in code blocks and URLs, and nothing under the
+badges said in plain words what claude-carbon does. The GitHub description now
+starts with the name, the intro under the badges is one sentence that says what
+the plugin is, the feature list moved up under the demo GIF as "What
+claude-carbon does", the data-flow diagram has a descriptive alt text, and the
+npm keywords grew from 6 to 14 (they reach npm at the next publish).
+Discussions are enabled on the repo. Nothing that runs on a user's machine
+changed.
 
 ### chore: CITATION.cff follows the release version
 
