@@ -175,7 +175,7 @@ in a file that runs on a user's machine must go through the conversion.
 
 Writing that guard exposed a worse problem in the suite itself. The list of runtime
 files was a space-joined string expanded unquoted, so on a checkout under a directory
-whose name contains a space (`~/Claude OS/code/claude-carbon`) it split into filenames
+whose name contains a space (`~/My Projects/claude-carbon`) it split into filenames
 that do not exist. grep read nothing, and the `bc`, `python3` and `/tmp` guards had
 been reporting "ok" while checking zero files. They are now an array expanded quoted,
 and two positive controls assert the list is real and that grep can read it, because a
@@ -427,11 +427,11 @@ Incident behind it: on a machine running both a git clone (statusline, manual sc
 
 - statusline.sh shows `📊 /carbon-card` to the first 3 distinct sessions of each month (tunable via `CLAUDE_CARBON_CARD_NUDGE_SESSIONS`), then goes quiet until next month, so it never nags: generate-report.sh stamps the month in `last-card-month` (clears the nudge immediately) and prints a `Totals since ...` summary line. Opt-out via `CLAUDE_CARBON_NO_CARD_NUDGE`. No auto-posting anywhere: the action stays human.
 - /carbon-card now offers a paste-ready social post draft built only from the printed totals, factual register enforced (numbers and equivalences, no self-congratulation); attribution stays in the card footer, not in the draft.
-- skills: fixed REPO_DIR resolution when `statusLine.command` contains a shell-escaped path (e.g. `~/Claude\ OS/...`): tilde and escaped spaces are now expanded, so /carbon-card and /carbon-update run the install actually wired into the statusline instead of falling back to `~/code/claude-carbon` or the plugin cache.
+- skills: fixed REPO_DIR resolution when `statusLine.command` contains a shell-escaped path (e.g. `~/My\ Projects/...`): tilde and escaped spaces are now expanded, so /carbon-card and /carbon-update run the install actually wired into the statusline instead of falling back to `~/code/claude-carbon` or the plugin cache.
 
 ### docs: CITATION.cff and a Citing section in the README
 
-License stays plain MIT. Citation is encouraged, not required: CITATION.cff enables GitHub's "Cite this repository" button, the README documents the short form, and the report cards keep carrying the repo + tokenclimate.com attribution in their footer (the highest-reach citation channel).
+License stays plain MIT. Citation is encouraged, not required: CITATION.cff enables GitHub's "Cite this repository" button, the README documents the short form, and the report cards keep carrying the repo + tokenclimate.com attribution in their footer.
 
 ### docs: correct source framing and refresh report equivalences
 
@@ -479,7 +479,7 @@ Default behaviour is unchanged when `--until` is absent.
 
 ### feat: weekly traffic snapshot (stats/)
 
-GitHub's traffic API only keeps a 14-day rolling window, so `scripts/traffic-snapshot.sh` merges per-day views/clones into `stats/traffic.json` (latest fetch wins on overlapping days) and appends dated referrer/path snapshots as JSONL. Runs Mondays via `.github/workflows/traffic.yml` (workflow_dispatch too); needs a `TRAFFIC_TOKEN` fine-grained PAT secret with repository Administration read, because the traffic endpoints reject the default Actions token. Seeded with the current window: unique cloners ≈ real installs (install.sh and npx both end in `git clone`; updates are `git pull` and don't count).
+GitHub's traffic API only keeps a 14-day rolling window, so `scripts/traffic-snapshot.sh` merges per-day views/clones into `stats/traffic.json` (latest fetch wins on overlapping days) and appends dated referrer/path snapshots as JSONL. Runs Mondays via `.github/workflows/traffic.yml` (workflow_dispatch too); needs a `TRAFFIC_TOKEN` fine-grained PAT secret with repository Administration read, because the traffic endpoints reject the default Actions token. Seeded with the current window.
 
 ### feat: `--segment` mode for embedding in other status lines
 
@@ -497,7 +497,7 @@ Literature check (July 2026): Jegham et al. still at v6, EcoLogits now a publish
 - `docs/demo.gif` at the top of the README: a scripted session replayed through the real `scripts/statusline.sh` (driver: `docs/demo/fake-session.sh`, recorder: `docs/demo/demo.tape` via vhs). Every frame is the actual renderer output; only the JSON snapshots are fabricated.
 - `templates/social-preview.html`: 1280x640 GitHub social preview in the report-card visual style, rendered to `exports/social-preview.png` (local, exports/ is gitignored) for manual upload in Settings > General.
 - README badges: npm version and CI workflow status next to the existing three.
-- `.gitignore`: `promo/` (local marketing drafts stay out of the repo).
+- `.gitignore`: `promo/` (local drafts stay out of the repo).
 
 ### docs: complete the GitHub community standards checklist
 
@@ -524,11 +524,11 @@ Publishing (`npm publish`) is manual for now; a GitHub Action on tag can automat
 
 ### feat: contextual TokenClimate pointers in report and cards (1.1.1)
 
-The OSS now routes "what about my team?" intent to the hosted layer at the moment it appears, without any ambient nagging or data collection:
+The OSS points to the hosted layer in two places, without any ambient nagging or data collection:
 
 - `/carbon-report` ends with a single footer line: `Team view (same methodology): tokenclimate.com`.
 - The four `/carbon-card` PNG templates carry a small muted credit under the open-source badge (`vue équipe · tokenclimate.com` / `team view · tokenclimate.com`), so shared cards surface the link to viewers.
-- Deliberately no status-line promo and no email capture: the update notice stays the only status-line extra, and lead capture remains on tokenclimate.com.
+- Deliberately no status-line promo and no email capture: the update notice stays the only status-line extra.
 - The README "For teams" section documents both pointers explicitly, so the link in the output is an announced choice, not a surprise.
 - Bumped the plugin version to **1.1.1** (`plugin.json` + `marketplace.json`).
 
@@ -640,7 +640,7 @@ Restructured as official Claude Code plugin. Installable via `/plugin install cl
 
 ### chore: add GitHub badges to README
 
-Stars, license, and release badges for social proof.
+Stars, license, and release badges.
 
 ## 2026-04-05
 
