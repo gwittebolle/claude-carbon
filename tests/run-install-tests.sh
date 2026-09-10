@@ -75,6 +75,7 @@ CMD_BASE="$(cc_native_path "$REPO_DIR")"
 STATUSLINE="${CMD_BASE}/scripts/statusline.sh"
 STOP="${CMD_BASE}/scripts/persist-session.sh"
 RESCAN="${CMD_BASE}/scripts/safety-rescan.sh"
+SESSIONEND="${CMD_BASE}/scripts/persist-on-exit.sh"
 
 # ---------------------------------------------------------------- 1. cold start
 
@@ -87,6 +88,7 @@ check "cold start: settings.json created"  "yes" "$([ -f "$S" ] && echo yes || e
 check "cold start: statusLine"             "$STATUSLINE" "$(jq -r '.statusLine.command // ""' "$S" 2>/dev/null)"
 check "cold start: Stop hook"              "$STOP"       "$(hook_commands "$S" Stop)"
 check "cold start: SessionStart hook"      "$RESCAN"     "$(hook_commands "$S" SessionStart)"
+check "cold start: SessionEnd hook"        "$SESSIONEND" "$(hook_commands "$S" SessionEnd)"
 
 # Symlinked everywhere a symlink works. Git Bash cannot create one without Windows
 # Developer Mode, so there the commands are copied on purpose and configure-settings.sh
@@ -120,6 +122,7 @@ CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
 S="${CFG}/settings.json"
 
 check "legacy install: SessionStart added"   "$RESCAN" "$(hook_commands "$S" SessionStart)"
+check "legacy install: SessionEnd added"     "$SESSIONEND" "$(hook_commands "$S" SessionEnd)"
 check "legacy install: Stop not duplicated"  "1"       "$(hook_count "$S" Stop)"
 check "legacy install: unrelated keys kept"  "opus"    "$(jq -r '.model // ""' "$S" 2>/dev/null)"
 
@@ -358,8 +361,11 @@ EOF
   check "decode context: backfill stores the same sum"      "305150000" "$(octx_col)"
   check "decode context: backfill CO2 matches the Stop hook" "$LIVE_CO2" "$(sqlite3 "$OCTX_DB" "SELECT co2_grams FROM sessions WHERE session_id='${OCTX_SESSION}';")"
 
-  # A row captured before the column existed: backfill fills it from the transcript.
-  sqlite3 "$OCTX_DB" "UPDATE sessions SET output_context_sum = 0 WHERE session_id='${OCTX_SESSION}';"
+  # A row captured before the column existed: backfill fills it from the transcript. Its
+  # ended_at is set to now, as the Stop hook would have left it: the fixture messages carry
+  # fixed timestamps while the file was written just now, which backfill would otherwise
+  # read as a transcript that grew after its row, and refresh instead of fill.
+  sqlite3 "$OCTX_DB" "UPDATE sessions SET output_context_sum = 0, ended_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE session_id='${OCTX_SESSION}';"
   BF_OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "${REPO_DIR}/scripts/backfill.sh" 2>/dev/null)"
   check "decode context: backfill fills a pre-existing row" "305150000" "$(octx_col)"
   case "$BF_OUT" in

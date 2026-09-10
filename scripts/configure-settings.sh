@@ -34,6 +34,7 @@ CMD_DIR="$(cc_native_path "$INSTALL_DIR")"
 STATUSLINE_CMD="${CMD_DIR}/scripts/statusline.sh"
 STOP_CMD="${CMD_DIR}/scripts/persist-session.sh"
 SESSIONSTART_CMD="${CMD_DIR}/scripts/safety-rescan.sh"
+SESSIONEND_CMD="${CMD_DIR}/scripts/persist-on-exit.sh"
 
 # Resolve a hook command to a comparable form. The same script reaches settings.json spelled
 # several ways: the README's manual block uses `~/code/claude-carbon/...`, this script writes
@@ -112,9 +113,11 @@ if [ -f "$SETTINGS_FILE" ]; then
     echo "  statusLine: added"
   fi
 
-  # Stop: persist the session that just ended. SessionStart: throttled safety rescan, which
-  # also drives the daily update check the status line reads.
+  # Stop: persist the session after each turn. SessionEnd: persist it once more as it closes,
+  # which catches a last turn interrupted before Stop fired. SessionStart: throttled safety
+  # rescan, which also drives the daily update check the status line reads.
   add_hook Stop "$STOP_CMD"
+  add_hook SessionEnd "$SESSIONEND_CMD"
   add_hook SessionStart "$SESSIONSTART_CMD"
 
   # Write via tmp + mv: a truncating redirect would destroy the user's settings if jq failed.
@@ -126,12 +129,16 @@ if [ -f "$SETTINGS_FILE" ]; then
     echo "  WARNING: could not write ${SETTINGS_FILE}; it was left unchanged." >&2
   fi
 else
-  jq -n --arg sl "$STATUSLINE_CMD" --arg stop "$STOP_CMD" --arg start "$SESSIONSTART_CMD" '{
+  jq -n --arg sl "$STATUSLINE_CMD" --arg stop "$STOP_CMD" --arg end "$SESSIONEND_CMD" --arg start "$SESSIONSTART_CMD" '{
     statusLine: {type: "command", command: $sl},
     hooks: {
       Stop: [{
         matcher: "",
         hooks: [{type: "command", command: $stop}]
+      }],
+      SessionEnd: [{
+        matcher: "",
+        hooks: [{type: "command", command: $end}]
       }],
       SessionStart: [{
         matcher: "",

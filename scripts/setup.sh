@@ -126,6 +126,17 @@ if [ "${CLAUDE_CARBON_INSTALLER:-}" != "1" ]; then
         ]
       }
     ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${PLUGIN_DIR}/scripts/persist-on-exit.sh"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "",

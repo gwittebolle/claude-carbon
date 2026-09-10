@@ -57,6 +57,18 @@ jobs:
       - name: Assert branch capture and the dev PR report
         run: bash tests/run-pr-tests.sh
 
+  session-end:
+    name: session end capture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fixture transcripts with an interrupted last turn, through the SessionEnd hook
+      # (detached run) and the backfill refresh. Throwaway CLAUDE_CONFIG_DIR and TMPDIR.
+      - name: Assert the interrupted-turn tail is recorded
+        run: bash tests/run-session-end-tests.sh
+
   portability:
     name: portability contract
     runs-on: ubuntu-latest
@@ -128,6 +140,11 @@ jobs:
       - name: carbon-pr pipeline
         if: always()
         run: bash tests/run-pr-tests.sh
+
+      # The detached run goes through nohup or a bare background job under Git Bash.
+      - name: Session end capture
+        if: always()
+        run: bash tests/run-session-end-tests.sh
 
       # The assertions no other runner can make: a real cygpath, a native path
       # pointing at a real file, and the hook manifests spawned the way Claude Code
