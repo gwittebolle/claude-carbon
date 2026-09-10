@@ -156,6 +156,17 @@ The second script merges the block below into `~/.claude/settings.json` (additiv
         ]
       }
     ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/code/claude-carbon/scripts/persist-on-exit.sh"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "",
@@ -171,7 +182,7 @@ The second script merges the block below into `~/.claude/settings.json` (additiv
 }
 ```
 
-The `Stop` hook records the session that just ended. The `SessionStart` one re-scans for sessions that hook missed (crash, kill) and drives the daily update check the status line reads; without it you are never told a new version exists.
+The `Stop` hook records the session after each turn, and `SessionEnd` records it once more as it closes, so a last turn interrupted before `Stop` fired is still counted. The `SessionStart` one re-scans for sessions both missed (crash, kill) and drives the daily update check the status line reads; without it you are never told a new version exists.
 
 Restart Claude Code.
 
@@ -209,7 +220,7 @@ Turning it off is the default: nothing is posted unless you run it. `--dry-run` 
 | Script               | Trigger                 | Data source           | Subagents    | Cache reads         | Accuracy      |
 | -------------------- | ----------------------- | --------------------- | ------------ | ------------------- | ------------- |
 | `backfill.sh`        | Manual / setup          | JSONL files           | Included     | Counted (8% energy) | Best estimate |
-| `persist-session.sh` | Stop hook (session end) | JSONL files           | Included     | Counted (8% energy) | Best estimate |
+| `persist-session.sh` | Stop + SessionEnd hooks | JSONL files           | Included     | Counted (8% energy) | Best estimate |
 | `statusline.sh`      | Every turn (live)       | `carbon.db` row       | Included     | Counted (8% energy) | One turn late |
 
 **backfill** and **persist-session** parse the raw JSONL transcripts (main session + subagent files), applying per-model emission factors. They deduplicate assistant messages by `(message.id, requestId)`, so resumed and compacted sessions are not double-counted (this matches `ccusage`; without it the token sum inflates roughly 3x). Each session stores its raw token breakdown (input, cache write, cache read, output), which feeds the SQLite database used by reports.
@@ -220,7 +231,7 @@ Turning it off is the default: nothing is posted unless you run it. `--dry-run` 
 
 ### Surviving the 30-day transcript purge
 
-Claude Code deletes JSONL transcripts after about 30 days, so the SQLite database is the durable record. The `Stop` hook captures each session before its transcript ages out, and a once-a-day background re-scan (`SessionStart` hook, `safety-rescan.sh`) catches any session the `Stop` hook missed while its transcript still exists. Because each row stores raw token counts, `recompute.sh` regenerates cost and CO2 from `data/factors.json` + `data/prices.json` at any time, with no transcript needed. When Anthropic changes a price or a factor is revised, edit the config and run:
+Claude Code deletes JSONL transcripts after about 30 days, so the SQLite database is the durable record. The `Stop` and `SessionEnd` hooks capture each session before its transcript ages out, and a once-a-day background re-scan (`SessionStart` hook, `safety-rescan.sh`) catches any session they missed while its transcript still exists, including one whose transcript kept growing after its row was written. Because each row stores raw token counts, `recompute.sh` regenerates cost and CO2 from `data/factors.json` + `data/prices.json` at any time, with no transcript needed. When Anthropic changes a price or a factor is revised, edit the config and run:
 
 ```bash
 bash scripts/recompute.sh
@@ -243,7 +254,8 @@ bash scripts/recompute.sh
 | -------------------- | ----------------------------------------------------------------------------------------- |
 | `setup.sh`           | Init database, backfill historical sessions, show total                                   |
 | `statusline.sh`      | Status line script (called automatically by Claude Code)                                  |
-| `persist-session.sh` | Stop hook (saves session data on exit)                                                    |
+| `persist-session.sh` | Stop hook (saves session data after each turn)                                            |
+| `persist-on-exit.sh` | SessionEnd hook (saves the session once more as it closes, in the background)             |
 | `safety-rescan.sh`   | SessionStart hook (throttled background re-scan, catches missed sessions)                 |
 | `backfill.sh`        | Re-parse all historical JSONL transcripts (incl. subagents)                               |
 | `recompute.sh`       | Re-derive cost/CO2 from stored tokens after a price/factor change (no transcripts needed) |

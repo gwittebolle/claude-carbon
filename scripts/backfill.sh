@@ -62,7 +62,13 @@ ADDED=0
 SKIPPED=0
 REPAIRED=0
 FILLED=0
+REFRESHED=0
 ERRORS=0
+
+# A row is refreshed when its transcript was written more than this many seconds after
+# the row's ended_at. The slack absorbs the transcript's asynchronous writes landing just
+# after the Stop hook recorded the turn.
+REFRESH_SLACK=60
 
 # UUID regex pattern
 UUID_PATTERN='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
@@ -248,7 +254,17 @@ while IFS= read -r JSONL_FILE; do
 
   # Skip if already in DB (SESSION_ID is a validated UUID, safe for SQL)
   EXISTS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}';")"
+  # Refresh check: a row whose transcript was written well after its ended_at is missing
+  # the session's tail (a turn interrupted before the Stop hook, then a crash, a kill, or a
+  # window closed without SessionEnd running). Such a row is re-aggregated below instead of
+  # skipped. Keyed on the file's mtime, so an unchanged session costs a stat, not a parse.
+  STALE=0
   if [ "$EXISTS" -gt 0 ]; then
+    MTIME="$(cc_mtime "$JSONL_FILE")"
+    case "$MTIME" in ''|*[!0-9]*) MTIME=0 ;; esac
+    STALE="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}' AND COALESCE(methodology_version, 1) >= 2 AND ${MTIME} > COALESCE(CAST(strftime('%s', ended_at) AS INTEGER), 0) + ${REFRESH_SLACK};" 2>/dev/null || echo 0)"
+  fi
+  if [ "$EXISTS" -gt 0 ] && [ "$STALE" != "1" ]; then
     # Repair pass: rows captured before the git_branch column existed get their
     # branch backfilled while the transcript is still on disk (30-day window).
     BRANCH_MISSING="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}' AND COALESCE(git_branch, '') = '';" 2>/dev/null || echo 0)"
@@ -382,6 +398,16 @@ while IFS= read -r JSONL_FILE; do
   LAST_TS="${LAST_TS//\'/\'\'}"
   GIT_BRANCH="${GIT_BRANCH//\'/\'\'}"
 
+  # Refresh a stale row. It keeps when it started and which path first recorded it, and
+  # ends when its transcript was last written: that is also what the refresh check compares
+  # against, so the same session is not parsed again on the next rescan.
+  if [ "$EXISTS" -gt 0 ]; then
+    LAST_TS="$(sqlite3 "$DB_PATH" "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ${MTIME}, 'unixepoch');" 2>/dev/null)" || LAST_TS=""
+    sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${TOTAL_INPUT}, ${OUTPUT_TOKENS}, ${CACHE_READ}, ${CACHE_CREATION}, ${CACHE_CREATION_1H}, ${OUTPUT_CONTEXT}, ${COST_USD}, ${CO2_G}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${FIRST_TS}'), '${LAST_TS}', COALESCE((SELECT source FROM sessions WHERE session_id='${SESSION_ID}'), 'backfill'), ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}');" 2>/dev/null || { ERRORS=$((ERRORS + 1)); continue; }
+    REFRESHED=$((REFRESHED + 1))
+    continue
+  fi
+
   # Insert into DB
   sqlite3 "$DB_PATH" "INSERT OR IGNORE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${TOTAL_INPUT}, ${OUTPUT_TOKENS}, ${CACHE_READ}, ${CACHE_CREATION}, ${CACHE_CREATION_1H}, ${OUTPUT_CONTEXT}, ${COST_USD}, ${CO2_G}, '${FIRST_TS}', '${LAST_TS}', 'backfill', ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}');" 2>/dev/null || { ERRORS=$((ERRORS + 1)); continue; }
 
@@ -390,6 +416,9 @@ while IFS= read -r JSONL_FILE; do
 done < <(find "${CONFIG_DIR}/projects" -maxdepth 2 -name "*.jsonl" 2>/dev/null)
 
 echo "  Backfill complete: ${ADDED} sessions added, ${SKIPPED} skipped, ${ERRORS} errors."
+if [ "$REFRESHED" -gt 0 ]; then
+  echo "  Refreshed ${REFRESHED} session(s) whose transcript grew after they were last recorded."
+fi
 if [ "$REPAIRED" -gt 0 ]; then
   echo "  Repaired the cache-write TTL split on ${REPAIRED} existing row(s); run 'scripts/recompute.sh --with-cost' to re-price them."
 fi

@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-09-10
+
+### fix: a session whose last turn is interrupted is still recorded in full
+
+The Stop hook only runs when a turn completes. A turn interrupted with Esc,
+followed by `/exit`, `/clear` or a closed terminal window, left that turn's
+tokens out of the database for good, because the daily re-scan skipped any
+session already recorded. Two changes close the gap. A `SessionEnd` hook
+(`scripts/persist-on-exit.sh`) records the session once more as it closes. It
+saves the hook payload and runs `persist-session.sh` detached, after a two
+second wait for the transcript's last writes: SessionEnd hooks are killed after
+1.5 s, and closing the window hangs up the process group. A payload carrying
+`agent_id`, which only a hook running inside a subagent receives, is dropped:
+that subagent's tokens already count in its parent's row. `backfill.sh` now
+re-aggregates a recorded session whose transcript was written more than 60 s
+after the row's `ended_at`, which covers a crash, a kill, or an exit where
+SessionEnd did not run. The refreshed row keeps its `started_at` and `source`,
+and its `ended_at` becomes the transcript's last write, so the next re-scan
+does not parse it again. An unchanged session still costs a `stat`, not a
+parse. Rows older than methodology version 2 are never refreshed. The hook is
+declared in `hooks/hooks.json`, added by `configure-settings.sh` (so
+`/carbon-update` wires it on clone installs), and listed in the README's manual
+block and in `setup.sh`. The detach helper of `safety-rescan.sh` moves to
+`portable-lib.sh` as `cc_detach`. New suite `tests/run-session-end-tests.sh`,
+run in CI on Linux and Windows.
+
 ## 2026-09-07
 
 ### docs: the "Reduce your footprint" section explains each lever, without percentages

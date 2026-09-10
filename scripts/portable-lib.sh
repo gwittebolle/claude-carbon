@@ -131,6 +131,22 @@ cc_mtime() {
   stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
 }
 
+# ── Processes ───────────────────────────────────────────────────────────────
+# cc_detach <command> [args…]: run a command fully in the background, so it outlives
+# the hook that started it: session start moving on, the SessionEnd budget expiring, or
+# the terminal window closing (nohup ignores the hangup). setsid is absent on macOS, so
+# it is probed. (The old `( setsid … & ) || ( … & )` idiom never reached its fallback,
+# because backgrounding always makes the subshell exit 0 — so on macOS nothing ran.)
+cc_detach() {
+  if command -v setsid >/dev/null 2>&1; then
+    setsid "$@" >/dev/null 2>&1 </dev/null &
+  elif command -v nohup >/dev/null 2>&1; then
+    nohup "$@" >/dev/null 2>&1 </dev/null &
+  else
+    "$@" >/dev/null 2>&1 </dev/null &
+  fi
+}
+
 # cc_link_or_copy <src> <dst> — symlink where symlinks work, copy where they do
 # not. Git Bash silently degrades `ln -s` to a copy unless Windows Developer Mode
 # is on, so doing the copy ourselves keeps the outcome predictable; the caller is

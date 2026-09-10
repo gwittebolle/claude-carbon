@@ -12,19 +12,6 @@ DB_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
 DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${DB_DIR}/carbon.db}")"
 STAMP="${DB_DIR}/.last-rescan"
 
-# Portable detach: fully background a command so it survives session-start exit. setsid is
-# absent on macOS, so probe it. (The old `( setsid … & ) || ( … & )` idiom never reached its
-# fallback, because backgrounding always makes the subshell exit 0 — so on macOS nothing ran.)
-detach() {
-  if command -v setsid >/dev/null 2>&1; then
-    setsid "$@" >/dev/null 2>&1 </dev/null &
-  elif command -v nohup >/dev/null 2>&1; then
-    nohup "$@" >/dev/null 2>&1 </dev/null &
-  else
-    "$@" >/dev/null 2>&1 </dev/null &
-  fi
-}
-
 # Drain stdin so the hook never blocks on an unread pipe
 cat >/dev/null 2>&1 || true
 
@@ -41,7 +28,7 @@ if [ -f "$UPD_FILE" ] && command -v jq >/dev/null 2>&1; then
   [ "$(( $(date +%s) - CA ))" -lt 86400 ] 2>/dev/null && NEED_CHECK=0
 fi
 if [ "$NEED_CHECK" = "1" ]; then
-  detach bash "${SCRIPT_DIR}/check-update.sh"
+  cc_detach bash "${SCRIPT_DIR}/check-update.sh"
 fi
 
 # Throttle: skip if a rescan ran in the last 24h
@@ -53,6 +40,6 @@ fi
 
 # Mark now, then run backfill fully detached so session start is never delayed
 touch "$STAMP" 2>/dev/null || true
-detach bash "${SCRIPT_DIR}/backfill.sh"
+cc_detach bash "${SCRIPT_DIR}/backfill.sh"
 
 exit 0
