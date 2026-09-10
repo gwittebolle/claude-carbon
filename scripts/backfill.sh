@@ -261,7 +261,6 @@ while IFS= read -r JSONL_FILE; do
   STALE=0
   if [ "$EXISTS" -gt 0 ]; then
     MTIME="$(cc_mtime "$JSONL_FILE")"
-    case "$MTIME" in ''|*[!0-9]*) MTIME=0 ;; esac
     STALE="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}' AND COALESCE(methodology_version, 1) >= 2 AND ${MTIME} > COALESCE(CAST(strftime('%s', ended_at) AS INTEGER), 0) + ${REFRESH_SLACK};" 2>/dev/null || echo 0)"
   fi
   if [ "$EXISTS" -gt 0 ] && [ "$STALE" != "1" ]; then

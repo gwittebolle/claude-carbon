@@ -102,6 +102,31 @@ if command -v bc >/dev/null 2>&1; then
   [ "$BC_MISMATCH" = "0" ] && ok "agrees with bc on all sampled comparisons"
 fi
 
+# ── 2b. cc_mtime: one integer on every stat flavour ──────────────────────────
+# GNU stat (Linux, Git Bash) and BSD stat (macOS) spell "mtime in epoch seconds"
+# differently, and trying the BSD form on GNU printed a multi-line block before
+# failing. Every caller does arithmetic on the result, so anything but a bare
+# integer kills it. Runs with the native stat of each CI runner.
+echo ""
+echo "cc_mtime (native stat)"
+MT_FILE="$(mktemp "$(cc_tmpdir)/cc-mtime.XXXXXX")"
+MT="$(cc_mtime "$MT_FILE")"
+case "$MT" in
+  ''|*[!0-9]*) bad "a bare integer" "got '$MT'" ;;
+  *) ok "a bare integer" ;;
+esac
+MT_NOW="$(date +%s)"
+if [ "${MT:-0}" -ge $((MT_NOW - 60)) ] 2>/dev/null && [ "${MT:-0}" -le $((MT_NOW + 60)) ] 2>/dev/null; then
+  ok "within a minute of now"
+else
+  bad "within a minute of now" "got '$MT', now $MT_NOW"
+fi
+# Off macOS the BSD syntax is only a fallback after the GNU one; forcing the
+# platform exercises that order on whichever stat this runner has.
+is "same epoch with the non-macOS order" "$MT" "$(CC_OS=linux; cc_mtime "$MT_FILE")"
+is "missing file gives 0"                "0"   "$(cc_mtime "${MT_FILE}.absent")"
+rm -f "$MT_FILE"
+
 # ── 3. install.sh's inline fallback must not drift ───────────────────────────
 # The installer is curl-piped with no clone on disk, so it carries its own copy of
 # cc_path and cc_install_hint. Extract that copy and diff its behaviour against the

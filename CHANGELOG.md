@@ -2,6 +2,20 @@
 
 ## 2026-09-10
 
+### fix: the daily re-scan runs again on Linux and Windows
+
+`cc_mtime` tried BSD `stat -f %m` first. GNU stat, which Linux and Git Bash
+ship, reads that as a file-system status request, prints a multi-line block
+for the file and then fails, so the fallback appended the epoch to that block.
+`safety-rescan.sh` does arithmetic on the value to throttle itself to once a
+day: once its stamp file existed, the script stopped there, and the daily
+backfill never ran again on those platforms. The update check, which runs
+before that line, was not affected. The status line's check of its OAuth usage
+cache did the same arithmetic and failed the same way, on the path taken when
+Claude Code does not pass rate limits in its input. `cc_mtime` now picks the
+stat syntax by platform and returns 0 for anything that is not an integer. A
+portability test pins it on each CI runner.
+
 ### fix: a session whose last turn is interrupted is still recorded in full
 
 The Stop hook only runs when a turn completes. A turn interrupted with Esc,

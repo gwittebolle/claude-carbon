@@ -125,10 +125,21 @@ cc_num_ge() {
 
 # ── Filesystem ──────────────────────────────────────────────────────────────
 # cc_mtime <file> — modification time in epoch seconds, 0 when unavailable.
-# BSD stat first (macOS, the majority of installs): GNU stat then costs a second
-# spawn only on Linux and Git Bash.
+# Picked by platform, not by trial: GNU stat (Linux, Git Bash) reads `-f %m` as
+# "file-system status of the files %m and <file>", prints a multi-line block for
+# the real file and only then fails, so a `stat -f … || stat -c …` chain returned
+# that block with the epoch appended, and every caller doing arithmetic on it died.
+# Off macOS, `-f %m` stays as a fallback for the other BSDs, after `-c` has failed
+# without printing anything.
 cc_mtime() {
-  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
+  local m
+  if [ "$CC_OS" = "darwin" ]; then
+    m="$(stat -f %m "$1" 2>/dev/null)"
+  else
+    m="$(stat -c %Y "$1" 2>/dev/null)" || m="$(stat -f %m "$1" 2>/dev/null)"
+  fi
+  case "$m" in ''|*[!0-9]*) m=0 ;; esac
+  printf '%s\n' "$m"
 }
 
 # ── Processes ───────────────────────────────────────────────────────────────
