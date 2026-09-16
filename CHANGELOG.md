@@ -2,6 +2,15 @@
 
 ## 2026-09-16
 
+### chore: the author line carries the accented name and the personal site
+
+The README footer and `package.json` credited "Gaetan Wittebolle" with a
+GitHub link only, while every other surface spells the name with the
+diaeresis and points at gaetanwittebolle.com. Answer engines reconcile
+entities on exact strings, so the footer now reads "Gaëtan Wittebolle",
+links to the personal site and names TokenClimate as the team version. The
+npm page picks up the new `author` at the next release.
+
 ### docs: what to do when the community-marketplace copy fails to load
 
 The README's install section now says that the `co2-tracker@claude-community`

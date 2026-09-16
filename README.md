@@ -466,4 +466,4 @@ The shareable report cards already carry this attribution in their footer, so re
 
 claude-carbon is free and open source under the [MIT license](LICENSE). Contributions welcome.
 
-Built by [Gaetan Wittebolle](https://github.com/gwittebolle).
+Built by [Gaëtan Wittebolle](https://gaetanwittebolle.com), carbon consultant turned solo builder in Bordeaux, France. Team version: [TokenClimate](https://tokenclimate.com).
