@@ -18,7 +18,7 @@
     "url": "git+https://github.com/gwittebolle/claude-carbon.git"
   },
   "bugs": "https://github.com/gwittebolle/claude-carbon/issues",
-  "author": "Gaetan Wittebolle (https://github.com/gwittebolle)",
+  "author": "Gaëtan Wittebolle <gaetan.wittebolle@gmail.com> (https://gaetanwittebolle.com)",
   "license": "MIT",
   "keywords": [
     "claude-carbon",
