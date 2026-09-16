@@ -40,6 +40,8 @@ npx claude-carbon
 
 Same command to install and to update to the latest version (all three run the same installer).
 
+> **Installed from Anthropic's community marketplace and the plugin fails to load?** The `co2-tracker@claude-community` entry is pinned to a release from August 2026 that current Claude Code rejects ("Duplicate hooks file detected"). Run `/plugin uninstall co2-tracker@claude-community`, then install with one of the commands above.
+
 **2. Restart Claude Code.** Your CO2 appears in the status line:
 
 ```

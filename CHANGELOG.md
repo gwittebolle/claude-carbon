@@ -2,6 +2,7 @@
 
 ## 2026-09-16
 
+<<<<<<< HEAD
 ### feat: the badge is dated and links to the methodology
 
 `/carbon-badge` now appends the month the snapshot was taken to the badge
@@ -14,6 +15,14 @@ team or organisation repository. `CLAUDE_CARBON_BADGE_MONTH` overrides the
 month; the badge tests pin it to keep their expected URLs stable, and two new
 assertions check the default month's shape and value. The README's own badge is
 refreshed to the author's total as of September 2026 (1,208 sessions).
+=======
+### docs: what to do when the community-marketplace copy fails to load
+
+The README's install section now says that the `co2-tracker@claude-community`
+entry is pinned to an August 2026 release that current Claude Code rejects with
+"Duplicate hooks file detected", and gives the two steps that fix it: uninstall
+that plugin, then run the installer.
+>>>>>>> 822a519 (docs: what to do when the community-marketplace copy fails to load)
 
 ## 2026-09-10
 
