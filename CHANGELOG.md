@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-16
+
+### feat: the badge is dated and links to the methodology
+
+`/carbon-badge` now appends the month the snapshot was taken to the badge
+message (`1139.2 kg CO2e, 2026-09`), and the markdown snippet links to
+`METHODOLOGY.md` instead of the repository root. A reader of a README can tell
+how old the figure is and how it was produced without leaving the badge. The
+script's output ends with a note on where the badge belongs: it is one
+developer's all-time total, so a profile README or a personal project, not a
+team or organisation repository. `CLAUDE_CARBON_BADGE_MONTH` overrides the
+month; the badge tests pin it to keep their expected URLs stable, and two new
+assertions check the default month's shape and value. The README's own badge is
+refreshed to the author's total as of September 2026 (1,208 sessions).
+
 ## 2026-09-10
 
 ### fix: the daily re-scan runs again on Linux and Windows

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # run-badge-tests.sh — assert scripts/generate-badge.sh output against fixture DBs:
 # unit tiers (g/kg/t), shields escaping (double dash, %20, %2C), FR decimal comma,
-# excluded-session filtering, the clickable snippet, and the missing-DB failure.
+# excluded-session filtering, the dated message, the clickable snippet, and the
+# missing-DB failure.
 # Also unit-checks scripts/format-lib.sh directly: generate-report.sh sources it,
 # and the golden vectors do not cover display formatting.
 #
@@ -60,7 +61,9 @@ make_db() {
 }
 
 # run_badge <db> <locale> — full stdout; url_of / snippet_of extract one line each.
-run_badge()  { CLAUDE_CARBON_DB="$1" CLAUDE_CARBON_LOCALE="$2" bash "$BADGE" 2>/dev/null; }
+# The snapshot month is pinned so every expected URL below is stable; case 6b
+# checks the default (current month) separately.
+run_badge()  { CLAUDE_CARBON_DB="$1" CLAUDE_CARBON_LOCALE="$2" CLAUDE_CARBON_BADGE_MONTH="2026-01" bash "$BADGE" 2>/dev/null; }
 url_of()     { echo "$1" | grep '^https://img.shields.io/'; }
 snippet_of() { echo "$1" | grep '^\[!\['; }
 
@@ -69,14 +72,14 @@ snippet_of() { echo "$1" | grep '^\[!\['; }
 DB="${TMPROOT}/grams.db"
 make_db "$DB" 431.7
 OUT="$(run_badge "$DB" en_US)"
-check "gram tier: URL" "https://img.shields.io/badge/claude--carbon-432%20g%20CO2e-2f6f4f" "$(url_of "$OUT")"
+check "gram tier: URL" "https://img.shields.io/badge/claude--carbon-432%20g%20CO2e%2C%202026--01-2f6f4f" "$(url_of "$OUT")"
 
 # ---------------------------------------------------------------- 2. kg tier
 
 DB="${TMPROOT}/kg.db"
 make_db "$DB" 12000 400
 OUT="$(run_badge "$DB" en_US)"
-check "kg tier: URL" "https://img.shields.io/badge/claude--carbon-12.4%20kg%20CO2e-2f6f4f" "$(url_of "$OUT")"
+check "kg tier: URL" "https://img.shields.io/badge/claude--carbon-12.4%20kg%20CO2e%2C%202026--01-2f6f4f" "$(url_of "$OUT")"
 
 # ---------------------------------------------------------------- 3. tonne tier
 
@@ -86,19 +89,19 @@ check "kg tier: URL" "https://img.shields.io/badge/claude--carbon-12.4%20kg%20CO
 DB="${TMPROOT}/below-tonne-tier.db"
 make_db "$DB" 1234000
 OUT="$(run_badge "$DB" en_US)"
-check "below tonne tier: still kg" "https://img.shields.io/badge/claude--carbon-1234.0%20kg%20CO2e-2f6f4f" "$(url_of "$OUT")"
+check "below tonne tier: still kg" "https://img.shields.io/badge/claude--carbon-1234.0%20kg%20CO2e%2C%202026--01-2f6f4f" "$(url_of "$OUT")"
 
 DB="${TMPROOT}/tonne.db"
 make_db "$DB" 12340000
 OUT="$(run_badge "$DB" en_US)"
-check "tonne tier: URL" "https://img.shields.io/badge/claude--carbon-12.3%20t%20CO2e-2f6f4f" "$(url_of "$OUT")"
+check "tonne tier: URL" "https://img.shields.io/badge/claude--carbon-12.3%20t%20CO2e%2C%202026--01-2f6f4f" "$(url_of "$OUT")"
 
 # ---------------------------------------------------------------- 4. FR comma, escaped
 
 DB="${TMPROOT}/fr.db"
 make_db "$DB" 12400
 OUT="$(run_badge "$DB" fr_FR)"
-check "fr locale: decimal comma escaped" "https://img.shields.io/badge/claude--carbon-12%2C4%20kg%20CO2e-2f6f4f" "$(url_of "$OUT")"
+check "fr locale: decimal comma escaped" "https://img.shields.io/badge/claude--carbon-12%2C4%20kg%20CO2e%2C%202026--01-2f6f4f" "$(url_of "$OUT")"
 
 # ---------------------------------------------------------------- 5. excluded sessions ignored
 
@@ -106,16 +109,30 @@ DB="${TMPROOT}/excluded.db"
 make_db "$DB" 500
 sqlite3 "$DB" "INSERT INTO sessions (session_id, model, co2_grams, excluded) VALUES ('sx', 'glm-4.7-flash', 99000, 1);"
 OUT="$(run_badge "$DB" en_US)"
-check "excluded rows: not counted" "https://img.shields.io/badge/claude--carbon-500%20g%20CO2e-2f6f4f" "$(url_of "$OUT")"
+check "excluded rows: not counted" "https://img.shields.io/badge/claude--carbon-500%20g%20CO2e%2C%202026--01-2f6f4f" "$(url_of "$OUT")"
 
 # ---------------------------------------------------------------- 6. snippet is clickable
 
 DB="${TMPROOT}/snippet.db"
 make_db "$DB" 12400
 OUT="$(run_badge "$DB" en_US)"
-check "snippet: clickable to the repo" \
-  "[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-12.4%20kg%20CO2e-2f6f4f)](https://github.com/gwittebolle/claude-carbon)" \
+check "snippet: clickable to the methodology" \
+  "[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-12.4%20kg%20CO2e%2C%202026--01-2f6f4f)](https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md)" \
   "$(snippet_of "$OUT")"
+
+# ---------------------------------------------------------------- 6b. month defaults to now
+
+# Without the override the message ends with the current month, so a reader can
+# tell how old the figure is. Only the shape is pinned (YYYY--MM, dash doubled
+# for shields), not the value.
+OUT="$(CLAUDE_CARBON_DB="$DB" CLAUDE_CARBON_LOCALE=en_US bash "$BADGE" 2>/dev/null)"
+URL="$(url_of "$OUT")"
+case "$URL" in
+  *"%2C%20"[0-9][0-9][0-9][0-9]--[0-1][0-9]-2f6f4f) ok "default month: YYYY-MM at the end of the message" ;;
+  *) bad "default month: YYYY-MM at the end of the message" "...%2C%20YYYY--MM-2f6f4f" "$URL" ;;
+esac
+check "default month: matches the system clock" \
+  "https://img.shields.io/badge/claude--carbon-12.4%20kg%20CO2e%2C%20$(date +%Y--%m)-2f6f4f" "$URL"
 
 # ---------------------------------------------------------------- 7. missing DB fails loudly
 

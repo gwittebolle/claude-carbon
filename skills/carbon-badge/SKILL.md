@@ -47,6 +47,6 @@ fi
 bash "$REPO_DIR/scripts/generate-badge.sh"
 ```
 
-The script prints a ready-to-paste markdown snippet and the raw badge URL. Show both exactly as printed — never recompute, reformat or re-escape the number or the URL. Tell the user to paste the markdown line into any README of theirs; the badge is a static image, so re-running `/carbon-badge` is how they refresh the figure.
+The script prints a ready-to-paste markdown snippet, the raw badge URL and a short note on where the badge belongs. Show all of it exactly as printed — never recompute, reformat or re-escape the number, the month or the URL. The badge is one developer's total, dated with the month it was generated, and it links to the methodology. It belongs in the user's profile README or a personal project, not in a team or organisation repository. The badge is a static image, so re-running `/carbon-badge` is how they refresh the figure and its month.
 
 If the script is missing (an install that predates the badge), suggest `/carbon-update`.
