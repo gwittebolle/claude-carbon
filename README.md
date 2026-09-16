@@ -269,17 +269,19 @@ Note: backfill now derives project names from the transcript's `cwd` (matching t
 
 ## Badge
 
-`/carbon-badge` prints a ready-to-paste shields.io badge with your measured all-time footprint, clickable back to this repo:
+`/carbon-badge` prints a ready-to-paste shields.io badge with your measured all-time footprint and the month it was taken, clickable to the methodology:
 
-[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-972.0%20kg%20CO2e-2f6f4f)](https://github.com/gwittebolle/claude-carbon)
+[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-1139.2%20kg%20CO2e%2C%202026--09-2f6f4f)](https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md)
 
-<sub>That badge is live, not a mockup: the author's own total, 1,025 sessions measured between 15 January 2026 and 20 August 2026. It is one developer's footprint, not the project's.</sub>
+<sub>That badge is live, not a mockup: the author's own total, 1,208 sessions measured between 15 January 2026 and 16 September 2026. It is one developer's footprint, not the project's.</sub>
 
 ```markdown
-[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-972.0%20kg%20CO2e-2f6f4f)](https://github.com/gwittebolle/claude-carbon)
+[![Claude Code carbon footprint](https://img.shields.io/badge/claude--carbon-1139.2%20kg%20CO2e%2C%202026--09-2f6f4f)](https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md)
 ```
 
-The badge is a static image built from your local database, so the number is measured, not estimated on the fly. Re-run `/carbon-badge` whenever you want to refresh it.
+The badge is a static image built from your local database, so the number is measured, not estimated on the fly, and nothing is sent anywhere. The month in the message says how old the figure is; re-run `/carbon-badge` whenever you want to refresh both.
+
+It is one developer's total, so it belongs in your profile README or a personal project. In a team or organisation repository, reviewers will ask what produced the number and why it links out of the organisation, and they will be right to.
 
 Numbers follow the locale the report uses (`fr` prints `12,4 kg`, `us` and the world default print `12.4 kg`); `CLAUDE_CARBON_LOCALE` forces a set.
 
