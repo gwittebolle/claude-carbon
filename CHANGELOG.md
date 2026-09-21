@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-21
+
+### docs: two source attributions in the methodology say what the sources say
+
+A full re-read of two sources cited in "Where the estimate stands" showed
+wording that went further than the texts. The 4.3x attributed to Vellaisamy et
+al. is a ratio computed from their Table V (548 to 2,358 mJ per output token,
+Llama-3.1-8B on H200, batch 16, 512-token prompt, amortised prefill included),
+not a figure the paper states, and the row now says so with its conditions.
+Hausfather's three methods were described as "within a factor of ~5"; his own
+wording is a 70 to 330 kWh range, uncertain by a factor of ~2 in either
+direction, and the paragraph now uses it. No factor changes.
+
 ## 2026-09-16
 
 ### chore: the author line carries the accented name and the personal site
