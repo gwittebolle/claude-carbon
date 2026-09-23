@@ -42,6 +42,9 @@ if [ ! -f "$DB_PATH" ]; then
   exit 1
 fi
 
+# session_models may postdate this DB (idempotent; one probe once migrated).
+cc_ensure_schema "$DB_PATH"
+
 # ── Git context: the branch is the attribution key ──────────
 if ! TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"; then
   echo "Error: not inside a git repository." >&2
@@ -79,9 +82,10 @@ format_tokens() {
 # The DB input_tokens column already folds cache write in (schema v2), so the
 # tokens metric is input + output, cache reads shown separately, matching the
 # report and the CI action.
-SQL_PROJECT="${PROJECT//\'/\'\'}"
-SQL_BRANCH="${BRANCH//\'/\'\'}"
+SQL_PROJECT="${PROJECT//$CC_SQ/$CC_SQ$CC_SQ}"
+SQL_BRANCH="${BRANCH//$CC_SQ/$CC_SQ$CC_SQ}"
 WHERE="WHERE project = '${SQL_PROJECT}' AND git_branch = '${SQL_BRANCH}' AND COALESCE(excluded, 0) = 0"
+S_WHERE="WHERE s.project = '${SQL_PROJECT}' AND s.git_branch = '${SQL_BRANCH}' AND COALESCE(s.excluded, 0) = 0"
 
 read -r N_SESSIONS TOTAL_CO2 TOTAL_COST TOTAL_TOKENS TOTAL_CACHE_READ <<EOF
 $(sqlite3 "$DB_PATH" "SELECT COUNT(*), COALESCE(SUM(co2_grams), 0), COALESCE(SUM(cost_usd), 0), COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0), COALESCE(SUM(cache_read_tokens), 0) FROM sessions ${WHERE};" | tr '|' ' ')
@@ -97,13 +101,27 @@ fi
 # The DB folds cache write into input_tokens (schema v2), so pure input is
 # input_tokens - cache_creation_tokens; legacy v1 rows default the cache
 # columns to 0 and show their whole input in the Input column.
+# Per model at message grain: a session's session_models rows (main transcript and
+# subagents, each message under the model that produced it) when it has them; the
+# whole session under its dominant model otherwise (recorded before the table
+# existed). The Sessions column counts the sessions that used each model, so it can
+# add up to more than the total.
+PER_MODEL="SELECT s.session_id AS session_id,
+    CASE WHEN m.session_id IS NULL THEN s.model ELSE m.model END AS model,
+    CASE WHEN m.session_id IS NULL THEN s.input_tokens ELSE m.input_tokens END AS inp,
+    CASE WHEN m.session_id IS NULL THEN s.cache_creation_tokens ELSE m.cache_creation_tokens END AS cw,
+    CASE WHEN m.session_id IS NULL THEN s.cache_read_tokens ELSE m.cache_read_tokens END AS cr,
+    CASE WHEN m.session_id IS NULL THEN s.output_tokens ELSE m.output_tokens END AS outp,
+    CASE WHEN m.session_id IS NULL THEN s.co2_grams ELSE m.co2_grams END AS co2,
+    CASE WHEN m.session_id IS NULL THEN s.cost_usd ELSE m.cost_usd END AS cost
+  FROM sessions s LEFT JOIN session_models m ON m.session_id = s.session_id ${S_WHERE}"
 MODEL_ROWS=""
 while IFS="$(printf '\t')" read -r MODEL M_N M_IN M_CW M_CR M_OUT M_CO2 M_COST; do
   [ -n "$MODEL" ] || continue
   MODEL_ROWS="${MODEL_ROWS}| \`${MODEL}\` | ${M_N} | $(format_tokens "$M_IN") | $(format_tokens "$M_CW") | $(format_tokens "$M_CR") | $(format_tokens "$M_OUT") | $(format_co2 "$M_CO2") | \$$(echo "$M_COST" | awk '{printf "%.2f", $1}') |
 "
 done <<EOF
-$(sqlite3 -separator "$(printf '\t')" "$DB_PATH" "SELECT model, COUNT(*), COALESCE(SUM(input_tokens), 0) - COALESCE(SUM(cache_creation_tokens), 0), COALESCE(SUM(cache_creation_tokens), 0), COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(co2_grams), 0), COALESCE(SUM(cost_usd), 0) FROM sessions ${WHERE} GROUP BY model ORDER BY SUM(co2_grams) DESC;")
+$(sqlite3 -separator "$(printf '\t')" "$DB_PATH" "SELECT model, COUNT(DISTINCT session_id), COALESCE(SUM(inp), 0) - COALESCE(SUM(cw), 0), COALESCE(SUM(cw), 0), COALESCE(SUM(cr), 0), COALESCE(SUM(outp), 0), COALESCE(SUM(co2), 0), COALESCE(SUM(cost), 0) FROM (${PER_MODEL}) GROUP BY model ORDER BY SUM(co2) DESC;")
 EOF
 
 # ── Format ──────────────────────────────────────────────────

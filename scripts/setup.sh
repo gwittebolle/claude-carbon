@@ -55,14 +55,9 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_year ON sessions(started_at);
 SQL
 
-# Migrate pre-existing DBs that lack the newer columns (idempotent; errors ignored when present).
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_read_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN methodology_version INTEGER DEFAULT 1;" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN excluded INTEGER DEFAULT 0;" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN git_branch TEXT DEFAULT '';" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_1h_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN output_context_sum INTEGER DEFAULT 0;" 2>/dev/null || true
+# Migrate pre-existing DBs that lack the newer columns, and add the per-model table
+# session_models (idempotent; see cc_ensure_schema in portable-lib.sh).
+cc_ensure_schema "$DB_PATH"
 
 echo "  Schema created."
 
