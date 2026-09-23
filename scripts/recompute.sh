@@ -7,22 +7,32 @@ set -euo pipefail
 # co2_grams ONLY. Pass --with-cost (alias --prices) to ALSO re-derive cost_usd — only do
 # that after editing prices.json.
 #
-# NEITHER MODE IS FREE ON MIXED-MODEL ROWS. The original insert is model-accurate per
-# subagent; recompute has only the row's dominant model to work with, so a session whose
-# subagents ran on a cheaper model is re-derived entirely at the expensive one. Measured
-# on 226 rows of heavy multi-agent use (2026-08-24): cost +44%, CO2 +16%. An older note
-# here claimed ~6% on cost and said nothing about CO2; both were wrong. Run it when a
-# factor or a price actually changed, not as routine hygiene, and prefer a targeted UPDATE
-# when you only need to adjust one line item.
+# Per model where the DB knows the split. A session recorded since session_models exists
+# carries one child row per model (main transcript and subagents, message by message):
+# each child row is re-derived at its own model, and the session's co2_grams and cost_usd
+# become the sum over its children. That is exact, and matches what the Stop hook stores.
+#
+# Left as stored otherwise, by default. A session recorded before session_models existed
+# only knows its main transcript's dominant model, while its stored co2_grams and cost_usd
+# were computed at insert per file, each subagent at its own model: those stored values are
+# the best available, and re-deriving the whole row at the dominant model loses that. On
+# subagent-heavy rows the drift is large: cost +44%, CO2 +16% over 226 rows (2026-08-24).
+# backfill.sh gives such rows their per-model split while their transcript is still on disk
+# (30 days); past that, the split is lost.
+#
+# --include-unsplit opts those rows in anyway: each is re-derived entirely at its dominant
+# model. Use it only when a factor or a price actually changed and the approximation above
+# is acceptable. install.sh and update.sh never pass it.
 #
 # This is the answer to Anthropic's 30-day transcript purge: the raw token breakdown is
 # captured once (by the Stop hook, within the 30-day window) and frozen; everything derived
 # from it (cost, CO2) stays regenerable forever. Only rows with methodology_version >= 2
 # carry the full breakdown (regular input, cache_write, cache_read, output); earlier "legacy"
-# rows lack cache_read and are left untouched.
+# rows lack cache_read and are left untouched. install.sh and update.sh run this script for
+# every user, so that gate is what keeps legacy rows from being rewritten.
 #
-# Mixed-model sessions (subagents on a different model) are recomputed at the row's dominant
-# model. This is not a small approximation on subagent-heavy workloads; see the note above.
+# Model resolution (family factors, per-model prices) is cc_model_params in portable-lib.sh,
+# the same one the Stop hook uses.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/portable-lib.sh
@@ -33,91 +43,118 @@ DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cl
 
 [ -f "$DB_PATH" ] || { echo "No database at ${DB_PATH}" >&2; exit 1; }
 
-# The cache-write TTL split may postdate this DB (idempotent; no-ops once present).
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_1h_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN output_context_sum INTEGER DEFAULT 0;" 2>/dev/null || true
+# Columns and the session_models table may postdate this DB (idempotent).
+cc_ensure_schema "$DB_PATH"
 
-# Default: CO2 only. --with-cost / --prices also re-derives cost_usd (see header caveat).
+# Default: CO2 only. --with-cost / --prices also re-derives cost_usd.
 WITH_COST=0
-case "${1:-}" in --with-cost|--prices) WITH_COST=1 ;; esac
-
-# Emission factors (gCO2e per million tokens) + cache_read energy fraction
-F_FAB_IN="$(jq -r '.models.fable.input // 156' "$FACTORS_FILE")"; F_FAB_OUT="$(jq -r '.models.fable.output // 3304' "$FACTORS_FILE")"
-F_OPUS_IN="$(jq -r '.models.opus.input' "$FACTORS_FILE")";    F_OPUS_OUT="$(jq -r '.models.opus.output' "$FACTORS_FILE")"
-F_SON_IN="$(jq -r '.models.sonnet.input' "$FACTORS_FILE")";   F_SON_OUT="$(jq -r '.models.sonnet.output' "$FACTORS_FILE")"
-F_HAI_IN="$(jq -r '.models.haiku.input' "$FACTORS_FILE")";    F_HAI_OUT="$(jq -r '.models.haiku.output' "$FACTORS_FILE")"
-CRF="$(jq -r '.cache_read_factor // 0.08' "$FACTORS_FILE")"
-
-# Prices (USD per million tokens) + cache multipliers
-P_FAB_IN="$(jq -r '.models.fable.input // 10' "$PRICES_FILE")"; P_FAB_OUT="$(jq -r '.models.fable.output // 50' "$PRICES_FILE")"
-P_OPUS_IN="$(jq -r '.models.opus.input' "$PRICES_FILE")";     P_OPUS_OUT="$(jq -r '.models.opus.output' "$PRICES_FILE")"
-P_SON_IN="$(jq -r '.models.sonnet.input' "$PRICES_FILE")";    P_SON_OUT="$(jq -r '.models.sonnet.output' "$PRICES_FILE")"
-P_HAI_IN="$(jq -r '.models.haiku.input' "$PRICES_FILE")";     P_HAI_OUT="$(jq -r '.models.haiku.output' "$PRICES_FILE")"
-CW_MULT="$(jq -r '.cache_write_multiplier // 1.25' "$PRICES_FILE")"
-CW_MULT_1H="$(jq -r '.cache_write_multiplier_1h // 2.0' "$PRICES_FILE")"
-CR_MULT="$(jq -r '.cache_read_multiplier // 0.1' "$PRICES_FILE")"
-
-# These values are interpolated directly into the UPDATE SQL below, and the installers auto-run
-# this script against freshly-pulled data files. Refuse anything that isn't a plain number so a
-# malformed or hostile factors.json/prices.json can never inject SQL.
-for _v in "$F_FAB_IN" "$F_FAB_OUT" "$F_OPUS_IN" "$F_OPUS_OUT" "$F_SON_IN" "$F_SON_OUT" \
-          "$F_HAI_IN" "$F_HAI_OUT" "$CRF" \
-          "$P_FAB_IN" "$P_FAB_OUT" "$P_OPUS_IN" "$P_OPUS_OUT" "$P_SON_IN" "$P_SON_OUT" \
-          "$P_HAI_IN" "$P_HAI_OUT" "$CW_MULT" "$CW_MULT_1H" "$CR_MULT"; do
-  case "$_v" in
-    ''|*[!0-9.eE+-]*)
-      echo "recompute: non-numeric value in factors/prices ('${_v}'); refusing to run." >&2
-      exit 1 ;;
+INCLUDE_UNSPLIT=0
+for _arg in "$@"; do
+  case "$_arg" in
+    --with-cost|--prices) WITH_COST=1 ;;
+    --include-unsplit) INCLUDE_UNSPLIT=1 ;;
+    *) echo "Usage: recompute.sh [--with-cost] [--include-unsplit]" >&2; exit 2 ;;
   esac
 done
 
-# co2  = (input_tokens * fin + cache_read_tokens * (fin*CRF) + output_tokens * fout) / 1e6
+EXCLUDE_MODELS="$(cc_exclude_regex "$FACTORS_FILE")"
+
+# Rows recompute may touch: raw-token rows (methodology_version >= 2) not excluded.
+ELIGIBLE="methodology_version >= 2 AND COALESCE(excluded, 0) = 0"
+HAS_CHILDREN="EXISTS (SELECT 1 FROM session_models m WHERE m.session_id = sessions.session_id)"
+
+# co2  = (input_tokens * fin + cache_read_tokens * (fin*crf) + output_tokens * fout) / 1e6
 #        (input_tokens already = regular_input + cache_write, both at the input factor)
 # cost = ((input_tokens - cache_creation_tokens) * pin                        -- regular input
-#         + cache_creation_1h_tokens * (pin*CW_MULT_1H)                        -- cache write, 1-hour TTL
-#         + (cache_creation_tokens - cache_creation_1h_tokens) * (pin*CW_MULT) -- cache write, 5-minute TTL
-#         + cache_read_tokens * (pin*CR_MULT)                                  -- cache read
+#         + cache_creation_1h_tokens * (pin*cwm1h)                             -- cache write, 1-hour TTL
+#         + (cache_creation_tokens - cache_creation_1h_tokens) * (pin*cwm)     -- cache write, 5-minute TTL
+#         + cache_read_tokens * (pin*crm)                                      -- cache read
 #         + output_tokens * pout) / 1e6
-# Rows predating the TTL split carry cache_creation_1h_tokens = 0, so their whole cache
-# write stays priced at the 5-minute tier until backfill.sh repairs the column from a
-# still-on-disk transcript. The 1-hour subset is clamped to the total in SQL, so a
-# malformed value can never produce a negative 5-minute remainder.
-update_family() {
-  local where="$1" fin="$2" fout="$3" pin="$4" pout="$5"
+# Same columns in sessions and session_models. Rows predating the TTL split carry
+# cache_creation_1h_tokens = 0, so their whole cache write stays priced at the 5-minute
+# tier until backfill.sh repairs the column from a still-on-disk transcript. The 1-hour
+# subset is clamped to the total in SQL, so a malformed value can never produce a
+# negative 5-minute remainder.
+set_clause() {
+  local fin="$1" fout="$2" crf="$3" pin="$4" pout="$5" cwm="$6" cwm1h="$7" crm="$8"
+  printf 'co2_grams = (input_tokens*%s + cache_read_tokens*(%s*%s) + output_tokens*%s) / 1000000.0' \
+    "$fin" "$fin" "$crf" "$fout"
   if [ "$WITH_COST" = "1" ]; then
-    sqlite3 -cmd ".timeout 5000" "$DB_PATH" "
-      UPDATE sessions SET
-        co2_grams = (input_tokens*${fin} + cache_read_tokens*(${fin}*${CRF}) + output_tokens*${fout}) / 1000000.0,
-        cost_usd  = ((input_tokens - cache_creation_tokens)*${pin}
-                     + MIN(COALESCE(cache_creation_1h_tokens, 0), cache_creation_tokens)*(${pin}*${CW_MULT_1H})
-                     + (cache_creation_tokens - MIN(COALESCE(cache_creation_1h_tokens, 0), cache_creation_tokens))*(${pin}*${CW_MULT})
-                     + cache_read_tokens*(${pin}*${CR_MULT})
-                     + output_tokens*${pout}) / 1000000.0
-      WHERE methodology_version >= 2 AND COALESCE(excluded, 0) = 0 AND ${where};
-    "
-  else
-    sqlite3 -cmd ".timeout 5000" "$DB_PATH" "
-      UPDATE sessions SET
-        co2_grams = (input_tokens*${fin} + cache_read_tokens*(${fin}*${CRF}) + output_tokens*${fout}) / 1000000.0
-      WHERE methodology_version >= 2 AND COALESCE(excluded, 0) = 0 AND ${where};
-    "
+    printf ', cost_usd = ((input_tokens - cache_creation_tokens)*%s + MIN(COALESCE(cache_creation_1h_tokens, 0), cache_creation_tokens)*(%s*%s) + (cache_creation_tokens - MIN(COALESCE(cache_creation_1h_tokens, 0), cache_creation_tokens))*(%s*%s) + cache_read_tokens*(%s*%s) + output_tokens*%s) / 1000000.0' \
+      "$pin" "$pin" "$cwm1h" "$pin" "$cwm" "$pin" "$crm" "$pout"
   fi
 }
 
-update_family "(model LIKE '%fable%' OR model LIKE '%mythos%')" "$F_FAB_IN" "$F_FAB_OUT" "$P_FAB_IN" "$P_FAB_OUT"
-update_family "model LIKE '%opus%'"  "$F_OPUS_IN" "$F_OPUS_OUT" "$P_OPUS_IN" "$P_OPUS_OUT"
-update_family "model LIKE '%haiku%'" "$F_HAI_IN"  "$F_HAI_OUT"  "$P_HAI_IN"  "$P_HAI_OUT"
-update_family "model NOT LIKE '%fable%' AND model NOT LIKE '%mythos%' AND model NOT LIKE '%opus%' AND model NOT LIKE '%haiku%'" "$F_SON_IN" "$F_SON_OUT" "$P_SON_IN" "$P_SON_OUT"
+# Every distinct model id the update can reach, resolved in one jq call.
+MODELS="$(sqlite3 "$DB_PATH" "
+  SELECT DISTINCT model FROM session_models
+    WHERE session_id IN (SELECT session_id FROM sessions WHERE ${ELIGIBLE})
+  UNION
+  SELECT DISTINCT model FROM sessions WHERE ${INCLUDE_UNSPLIT} = 1 AND ${ELIGIBLE} AND model IS NOT NULL AND NOT ${HAS_CHILDREN};")"
+PARAMS=""
+if [ -n "$MODELS" ]; then
+  PARAMS="$(printf '%s\n' "$MODELS" | cc_model_params "$FACTORS_FILE" "$PRICES_FILE")"
+fi
 
-RECOMPUTED="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE methodology_version >= 2 AND COALESCE(excluded, 0) = 0;")"
+# Build one script, applied in one transaction.
+SQL="BEGIN IMMEDIATE;
+"
+while IFS="	" read -r MODEL FAMILY FIN FOUT CRF PIN POUT CWM CWM1H CRM; do
+  [ -n "${FAMILY:-}" ] || continue
+  # These values are interpolated into the SQL, and the installers auto-run this script
+  # against freshly-pulled data files. Refuse anything that isn't a plain number so a
+  # malformed or hostile factors.json/prices.json can never inject SQL.
+  for _v in "$FIN" "$FOUT" "$CRF" "$PIN" "$POUT" "$CWM" "$CWM1H" "$CRM"; do
+    case "$_v" in
+      ''|*[!0-9.eE+-]*)
+        echo "recompute: non-numeric value in factors/prices ('${_v}' for ${FAMILY}); refusing to run." >&2
+        exit 1 ;;
+    esac
+  done
+  QMODEL="$(cc_sql_quote "$MODEL")"
+  # Child rows: priced at their own model; an excluded model (not Claude, or matching
+  # exclude_models) keeps its tokens at 0 CO2 and 0 cost, as the Stop hook stores it.
+  if cc_is_excluded_model "$MODEL" "$EXCLUDE_MODELS"; then
+    CHILD_SET="co2_grams = 0"
+    [ "$WITH_COST" = "1" ] && CHILD_SET="${CHILD_SET}, cost_usd = 0"
+  else
+    CHILD_SET="$(set_clause "$FIN" "$FOUT" "$CRF" "$PIN" "$POUT" "$CWM" "$CWM1H" "$CRM")"
+  fi
+  SQL="${SQL}UPDATE session_models SET ${CHILD_SET} WHERE model = ${QMODEL} AND session_id IN (SELECT session_id FROM sessions WHERE ${ELIGIBLE});
+"
+  # Rows without children, only with --include-unsplit: the whole row at its dominant model.
+  if [ "$INCLUDE_UNSPLIT" = "1" ]; then
+    SQL="${SQL}UPDATE sessions SET $(set_clause "$FIN" "$FOUT" "$CRF" "$PIN" "$POUT" "$CWM" "$CWM1H" "$CRM") WHERE model = ${QMODEL} AND ${ELIGIBLE} AND NOT ${HAS_CHILDREN};
+"
+  fi
+done <<EOF
+$PARAMS
+EOF
+
+# Rows with children: the sum over them.
+SUM_SET="co2_grams = (SELECT COALESCE(SUM(m.co2_grams), 0) FROM session_models m WHERE m.session_id = sessions.session_id)"
+if [ "$WITH_COST" = "1" ]; then
+  SUM_SET="${SUM_SET}, cost_usd = (SELECT COALESCE(SUM(m.cost_usd), 0) FROM session_models m WHERE m.session_id = sessions.session_id)"
+fi
+SQL="${SQL}UPDATE sessions SET ${SUM_SET} WHERE ${ELIGIBLE} AND ${HAS_CHILDREN};
+COMMIT;"
+
+sqlite3 -cmd ".timeout 5000" "$DB_PATH" "$SQL"
+
+SPLIT_ROWS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE ${ELIGIBLE} AND ${HAS_CHILDREN};")"
+WHOLE_ROWS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE ${ELIGIBLE} AND NOT ${HAS_CHILDREN};")"
 LEGACY="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE methodology_version IS NULL OR methodology_version < 2;")"
 TOTAL_COST="$(sqlite3 "$DB_PATH" "SELECT printf('%.0f', COALESCE(SUM(cost_usd),0)) FROM sessions;")"
 TOTAL_CO2_KG="$(sqlite3 "$DB_PATH" "SELECT printf('%.0f', COALESCE(SUM(co2_grams),0)/1000.0) FROM sessions;")"
 
 if [ "$WITH_COST" = "1" ]; then
-  echo "Re-priced cost at the dominant model for mixed-model rows (measured +44% on heavy subagent use)."
-  echo "Recomputed CO2 + cost for ${RECOMPUTED} rows (left ${LEGACY} legacy rows untouched)."
+  WHAT="CO2 + cost"
 else
-  echo "Recomputed CO2 for ${RECOMPUTED} rows (cost unchanged; left ${LEGACY} legacy rows untouched)."
+  WHAT="CO2 (cost unchanged)"
+fi
+if [ "$INCLUDE_UNSPLIT" = "1" ]; then
+  echo "Recomputed ${WHAT}: ${SPLIT_ROWS} rows model by model, ${WHOLE_ROWS} rows without a per-model split approximated at their dominant model (--include-unsplit); left ${LEGACY} legacy rows untouched."
+else
+  echo "Recomputed ${WHAT}: ${SPLIT_ROWS} rows model by model; kept the stored values of ${WHOLE_ROWS} rows without a per-model split (--include-unsplit re-derives them at their dominant model, approximate) and ${LEGACY} legacy rows."
 fi
 echo "DB totals now: \$${TOTAL_COST} / ${TOTAL_CO2_KG} kg CO2."

@@ -69,6 +69,19 @@ jobs:
       - name: Assert the interrupted-turn tail is recorded
         run: bash tests/run-session-end-tests.sh
 
+  per-model:
+    name: per-model split
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fixture transcripts on four models through the Stop hook, recompute and backfill,
+      # against throwaway CLAUDE_CONFIG_DIR / CLAUDE_CARBON_DB. Asserts the session_models
+      # rows and SUM(children) = session on every column.
+      - name: Assert tokens per model and the session invariant
+        run: bash tests/run-per-model-tests.sh
+
   portability:
     name: portability contract
     runs-on: ubuntu-latest
@@ -140,6 +153,10 @@ jobs:
       - name: carbon-pr pipeline
         if: always()
         run: bash tests/run-pr-tests.sh
+
+      - name: Per-model split
+        if: always()
+        run: bash tests/run-per-model-tests.sh
 
       # The detached run goes through nohup or a bare background job under Git Bash.
       - name: Session end capture

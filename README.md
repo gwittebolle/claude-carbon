@@ -239,6 +239,8 @@ Claude Code deletes JSONL transcripts after about 30 days, so the SQLite databas
 bash scripts/recompute.sh
 ```
 
+Sessions recorded since September 2026 are re-derived model by model, exactly. Older sessions without a per-model split keep their stored values; `--include-unsplit` re-derives them at their dominant model, an approximation (see METHODOLOGY.md, "Surviving the 30-day transcript purge").
+
 ## Commands
 
 | Command          | What it does                                        |

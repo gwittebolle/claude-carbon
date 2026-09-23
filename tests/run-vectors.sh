@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
-# run-vectors.sh — Replay tests/methodology-vectors.json against the plugin's
-# cost/CO2 formulas (the exact math of scripts/persist-session.sh compute_co2
-# and scripts/recompute.sh) using the CURRENT data/factors.json + data/prices.json.
+# run-vectors.sh: Replay the golden vectors against the plugin's own cost/CO2 code, using
+# the CURRENT data/factors.json + data/prices.json. The model resolution is the shared
+# cc_model_params and the formulas are the shared CC_AWK_PRICE (scripts/portable-lib.sh),
+# the exact code the Stop hook and backfill run, so a vector cannot pass against a copy of
+# the math that has drifted from it. Exits 1 if any vector deviates beyond the tolerance.
+#
+# Two files:
+#   tests/methodology-vectors.json            the family-level contract, byte-identical to
+#                                             the copy downstream consumers keep. Replayed
+#                                             with prices.json's model_overrides removed:
+#                                             its expected values are family prices, and some
+#                                             of its ids (claude-sonnet-4, a dated Sonnet 4.5)
+#                                             now carry an override in the plugin.
+#   tests/methodology-vectors-per-model.json  the per-model resolution, full prices.json.
+#
 # Cache writes are priced per TTL tier: cache_creation_1h_tokens (optional, default 0)
 # is billed at cache_write_multiplier_1h, the remainder at cache_write_multiplier.
-# Exits 1 on the first relative deviation above the tolerance.
 #
 # bash 3.2 compatible (macOS default): no associative arrays, no mapfile.
 # Dependencies: jq, awk (same as the rest of the plugin).
@@ -12,41 +23,25 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
-PRICES_FILE="${SCRIPT_DIR}/../data/prices.json"
-VECTORS_FILE="${SCRIPT_DIR}/methodology-vectors.json"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=scripts/portable-lib.sh
+. "${REPO_DIR}/scripts/portable-lib.sh"
+FACTORS_FILE="${REPO_DIR}/data/factors.json"
+PRICES_FILE="${REPO_DIR}/data/prices.json"
+FAMILY_VECTORS="${SCRIPT_DIR}/methodology-vectors.json"
+MODEL_VECTORS="${SCRIPT_DIR}/methodology-vectors-per-model.json"
 REL_TOL="0.000001" # 1e-6
 
 command -v jq >/dev/null 2>&1 || { echo "FAIL: jq is required" >&2; exit 1; }
-[ -f "$FACTORS_FILE" ] || { echo "FAIL: missing $FACTORS_FILE" >&2; exit 1; }
-[ -f "$PRICES_FILE" ] || { echo "FAIL: missing $PRICES_FILE" >&2; exit 1; }
-[ -f "$VECTORS_FILE" ] || { echo "FAIL: missing $VECTORS_FILE" >&2; exit 1; }
+for f in "$FACTORS_FILE" "$PRICES_FILE" "$FAMILY_VECTORS" "$MODEL_VECTORS"; do
+  [ -f "$f" ] || { echo "FAIL: missing $f" >&2; exit 1; }
+done
 
-# Emission factors (gCO2e per Mtok) + cache_read energy fraction
-F_FAB_IN="$(jq -r '.models.fable.input' "$FACTORS_FILE")";  F_FAB_OUT="$(jq -r '.models.fable.output' "$FACTORS_FILE")"
-F_OPUS_IN="$(jq -r '.models.opus.input' "$FACTORS_FILE")";  F_OPUS_OUT="$(jq -r '.models.opus.output' "$FACTORS_FILE")"
-F_SON_IN="$(jq -r '.models.sonnet.input' "$FACTORS_FILE")"; F_SON_OUT="$(jq -r '.models.sonnet.output' "$FACTORS_FILE")"
-F_HAI_IN="$(jq -r '.models.haiku.input' "$FACTORS_FILE")";  F_HAI_OUT="$(jq -r '.models.haiku.output' "$FACTORS_FILE")"
-CRF="$(jq -r '.cache_read_factor // 0.08' "$FACTORS_FILE")"
+FAMILY_PRICES="$(mktemp "$(cc_tmpdir)/claude-carbon-family-prices.XXXXXX")" || { echo "FAIL: mktemp" >&2; exit 1; }
+trap 'rm -f "$FAMILY_PRICES"' EXIT
+jq 'del(.model_overrides)' "$PRICES_FILE" > "$FAMILY_PRICES" || { echo "FAIL: cannot read $PRICES_FILE" >&2; exit 1; }
 
-# Prices (USD per Mtok) + cache multipliers
-P_FAB_IN="$(jq -r '.models.fable.input' "$PRICES_FILE")";  P_FAB_OUT="$(jq -r '.models.fable.output' "$PRICES_FILE")"
-P_OPUS_IN="$(jq -r '.models.opus.input' "$PRICES_FILE")";  P_OPUS_OUT="$(jq -r '.models.opus.output' "$PRICES_FILE")"
-P_SON_IN="$(jq -r '.models.sonnet.input' "$PRICES_FILE")"; P_SON_OUT="$(jq -r '.models.sonnet.output' "$PRICES_FILE")"
-P_HAI_IN="$(jq -r '.models.haiku.input' "$PRICES_FILE")";  P_HAI_OUT="$(jq -r '.models.haiku.output' "$PRICES_FILE")"
-CW_MULT="$(jq -r '.cache_write_multiplier // 1.25' "$PRICES_FILE")"
-CW_MULT_1H="$(jq -r '.cache_write_multiplier_1h // 2.0' "$PRICES_FILE")"
-CR_MULT="$(jq -r '.cache_read_multiplier // 0.1' "$PRICES_FILE")"
-
-EXCLUDE_MODELS="$(jq -r '(.exclude_models // []) | join("|")' "$FACTORS_FILE")"
-
-# Same exclusion rule as persist-session.sh is_excluded_model()
-is_excluded_model() {
-  local model="$1"
-  if ! echo "$model" | grep -qi "claude"; then return 0; fi
-  if [ -n "$EXCLUDE_MODELS" ] && echo "$model" | grep -qiE "$EXCLUDE_MODELS"; then return 0; fi
-  return 1
-}
+EXCLUDE_MODELS="$(cc_exclude_regex "$FACTORS_FILE")"
 
 # Relative-tolerance comparison (absolute when expected == 0). Returns 0 on match.
 close_enough() {
@@ -59,80 +54,79 @@ close_enough() {
   }'
 }
 
-N="$(jq '.vectors | length' "$VECTORS_FILE")"
+TOTAL=0
 FAILURES=0
 PASSED=0
-i=0
-while [ "$i" -lt "$N" ]; do
-  ROW="$(jq -r --argjson i "$i" '.vectors[$i] | [
-    .id, .model,
-    (.input_tokens // 0), (.cache_creation_tokens // 0),
-    (.cache_creation_1h_tokens // 0),
-    (.cache_read_tokens // 0), (.output_tokens // 0),
-    (if .excluded == true then "1" else "0" end),
-    (.expected_co2_grams // 0), (.expected_cost_usd // 0)
-  ] | @tsv' "$VECTORS_FILE")"
-  IFS="$(printf '\t')" read -r ID MODEL IN CW CW1H CR OUT EXCLUDED EXP_CO2 EXP_COST <<EOF
-$ROW
+
+# replay <vectors.json> <prices.json> <label>
+replay() {
+  local vectors="$1" prices="$2" label="$3"
+  local n i row id model in cw cw1h cr out excluded exp_co2 exp_cost params excl_flag res co2 cost ok
+  n="$(jq '.vectors | length' "$vectors")"
+  echo "── ${label} (${n} vectors)"
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    row="$(jq -r --argjson i "$i" '.vectors[$i] | [
+      .id, .model,
+      (.input_tokens // 0), (.cache_creation_tokens // 0),
+      (.cache_creation_1h_tokens // 0),
+      (.cache_read_tokens // 0), (.output_tokens // 0),
+      (if .excluded == true then "1" else "0" end),
+      (.expected_co2_grams // 0), (.expected_cost_usd // 0)
+    ] | @tsv' "$vectors")"
+    IFS="$(printf '\t')" read -r id model in cw cw1h cr out excluded exp_co2 exp_cost <<EOF
+$row
 EOF
+    TOTAL=$((TOTAL + 1))
 
-  # Same clamp/split as persist-session.sh compute_co2: an absent or oversized
-  # 1-hour subset falls back to pricing the whole write at the 5-minute tier.
-  CW1H="$(echo "$CW1H $CW" | LC_ALL=C awk '{printf "%d", ($1 > $2 ? $2 : $1)}')"
-  CW5M="$(echo "$CW $CW1H" | LC_ALL=C awk '{printf "%d", $1 - $2}')"
-
-  # Mirror persist-session.sh compute_co2: exclusion first, then family pick.
-  if is_excluded_model "$MODEL"; then
-    CO2="0"; COST="0"
-    if [ "$EXCLUDED" != "1" ]; then
-      echo "FAIL ${ID}: model '${MODEL}' is excluded by the plugin but the vector is not marked excluded"
-      FAILURES=$((FAILURES + 1)); i=$((i + 1)); continue
+    if cc_is_excluded_model "$model" "$EXCLUDE_MODELS"; then
+      excl_flag=1
+      if [ "$excluded" != "1" ]; then
+        echo "FAIL ${id}: model '${model}' is excluded by the plugin but the vector is not marked excluded"
+        FAILURES=$((FAILURES + 1)); i=$((i + 1)); continue
+      fi
+      # Excluded vectors expect 0/0 from the plugin (expected_* is null upstream).
+      exp_co2="0"; exp_cost="0"
+    else
+      excl_flag=0
+      if [ "$excluded" = "1" ]; then
+        echo "FAIL ${id}: vector marked excluded but model '${model}' is not excluded by the plugin"
+        FAILURES=$((FAILURES + 1)); i=$((i + 1)); continue
+      fi
     fi
-    # Excluded vectors expect 0/0 from the plugin (expected_* is null upstream).
-    EXP_CO2="0"; EXP_COST="0"
-  else
-    if [ "$EXCLUDED" = "1" ]; then
-      echo "FAIL ${ID}: vector marked excluded but model '${MODEL}' is not excluded by the plugin"
-      FAILURES=$((FAILURES + 1)); i=$((i + 1)); continue
-    fi
-    FAMILY="sonnet"
-    echo "$MODEL" | grep -qiE "fable|mythos" && FAMILY="fable"
-    echo "$MODEL" | grep -qi "opus" && FAMILY="opus"
-    echo "$MODEL" | grep -qi "haiku" && FAMILY="haiku"
-    case "$FAMILY" in
-      fable) FIN="$F_FAB_IN";  FOUT="$F_FAB_OUT";  PIN="$P_FAB_IN";  POUT="$P_FAB_OUT" ;;
-      opus)  FIN="$F_OPUS_IN"; FOUT="$F_OPUS_OUT"; PIN="$P_OPUS_IN"; POUT="$P_OPUS_OUT" ;;
-      haiku) FIN="$F_HAI_IN";  FOUT="$F_HAI_OUT";  PIN="$P_HAI_IN";  POUT="$P_HAI_OUT" ;;
-      *)     FIN="$F_SON_IN";  FOUT="$F_SON_OUT";  PIN="$P_SON_IN";  POUT="$P_SON_OUT" ;;
-    esac
-    # Same awk expressions and printf precision as persist-session.sh
-    CO2="$(echo "$IN $CW $CR $OUT $FIN $FOUT $CRF" | LC_ALL=C awk \
-      '{printf "%.4f", (($1 + $2) * $5 + $3 * ($5 * $7) + $4 * $6) / 1000000}')"
-    COST="$(echo "$IN $CW1H $CW5M $CR $OUT $PIN $POUT $CW_MULT_1H $CW_MULT $CR_MULT" | LC_ALL=C awk \
-      '{printf "%.6f", ($1 * $6 + $2 * ($6 * $8) + $3 * ($6 * $9) + $4 * ($6 * $10) + $5 * $7) / 1000000}')"
-  fi
 
-  OK=1
-  if ! close_enough "$CO2" "$EXP_CO2"; then
-    echo "FAIL ${ID}: co2_grams ${CO2} != expected ${EXP_CO2} (model ${MODEL})"
-    OK=0
-  fi
-  if ! close_enough "$COST" "$EXP_COST"; then
-    echo "FAIL ${ID}: cost_usd ${COST} != expected ${EXP_COST} (model ${MODEL})"
-    OK=0
-  fi
-  if [ "$OK" = "1" ]; then
-    echo "PASS ${ID}: co2=${CO2} g, cost=\$${COST}"
-    PASSED=$((PASSED + 1))
-  else
-    FAILURES=$((FAILURES + 1))
-  fi
-  i=$((i + 1))
-done
+    # The Stop hook's own pipeline: shared resolution, then the shared awk.
+    params="$(printf '%s\n' "$model" | cc_model_params "$FACTORS_FILE" "$prices" | cut -f3-)"
+    res="$(printf 'M\t%s\t%s\t%s\t%s\t%s\t%s\t0\t%s\t%s\n' "$model" "$in" "$cw" "$cw1h" "$cr" "$out" "$params" "$excl_flag" \
+             | LC_ALL=C awk "$CC_AWK_PRICE" | awk -F '\t' '$1 == "R" { print $8 " " $9 }')"
+    co2="${res% *}"; cost="${res#* }"
+
+    ok=1
+    if ! close_enough "$co2" "$exp_co2"; then
+      echo "FAIL ${id}: co2_grams ${co2} != expected ${exp_co2} (model ${model})"
+      ok=0
+    fi
+    if ! close_enough "$cost" "$exp_cost"; then
+      echo "FAIL ${id}: cost_usd ${cost} != expected ${exp_cost} (model ${model})"
+      ok=0
+    fi
+    if [ "$ok" = "1" ]; then
+      echo "PASS ${id}: co2=${co2} g, cost=\$${cost}"
+      PASSED=$((PASSED + 1))
+    else
+      FAILURES=$((FAILURES + 1))
+    fi
+    i=$((i + 1))
+  done
+}
+
+replay "$FAMILY_VECTORS" "$FAMILY_PRICES" "family contract: methodology-vectors.json (model_overrides off)"
+echo ""
+replay "$MODEL_VECTORS" "$PRICES_FILE" "per-model prices: methodology-vectors-per-model.json"
 
 echo ""
 if [ "$FAILURES" -gt 0 ]; then
-  echo "${FAILURES}/${N} vector(s) FAILED (${PASSED} passed)."
+  echo "${FAILURES}/${TOTAL} vector(s) FAILED (${PASSED} passed)."
   exit 1
 fi
-echo "All ${N} methodology vectors passed."
+echo "All ${TOTAL} methodology vectors passed."

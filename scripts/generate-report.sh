@@ -115,8 +115,9 @@ fi
 
 mkdir -p "$EXPORT_DIR"
 
-# Ensure the excluded column exists on pre-existing DBs (idempotent)
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN excluded INTEGER DEFAULT 0;" 2>/dev/null || true
+# Bring pre-existing DBs up to the current schema: the excluded column, session_models
+# (idempotent; one probe once migrated)
+cc_ensure_schema "$DB_PATH"
 
 # ── Query DB ────────────────────────────────────────────────
 echo "Querying carbon.db (since ${SINCE_LABEL})..."
@@ -127,7 +128,10 @@ read -r TOTAL_SESSIONS TOTAL_CO2_RAW TOTAL_COST_RAW FIRST_DATE_RAW <<< \
 # Top 5 projects
 TOP_PROJECTS="$(sqlite3 -separator '|' "$DB_PATH" "SELECT project, SUM(co2_grams), COUNT(*) FROM sessions ${WHERE} GROUP BY project ORDER BY SUM(co2_grams) DESC LIMIT 5;")"
 
-TOP_MODEL="$(sqlite3 "$DB_PATH" "SELECT model FROM sessions ${WHERE} GROUP BY model ORDER BY COUNT(*) DESC LIMIT 1;")"
+# Top model by tokens (input + cache write + output), at message grain: a session's
+# session_models rows when it has them, the whole session under its dominant model
+# otherwise (recorded before the table existed).
+TOP_MODEL="$(sqlite3 "$DB_PATH" "SELECT model FROM (SELECT CASE WHEN m.session_id IS NULL THEN s.model ELSE m.model END AS model, CASE WHEN m.session_id IS NULL THEN COALESCE(s.input_tokens, 0) + COALESCE(s.output_tokens, 0) ELSE m.input_tokens + m.output_tokens END AS tokens FROM (SELECT * FROM sessions ${WHERE}) s LEFT JOIN session_models m ON m.session_id = s.session_id) GROUP BY model ORDER BY SUM(tokens) DESC LIMIT 1;")"
 
 # Total tokens
 TOTAL_TOKENS_RAW="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) FROM sessions ${WHERE};")"

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # backfill.sh — Parse all historical Claude Code JSONL transcripts and insert into carbon.db.
-# Includes subagent JSONL files in the calculation (each with its own model/factor).
+# Includes subagent JSONL files in the calculation (each message priced at its own model).
 # Deduplicates assistant messages by (message.id, requestId) so resumed/compacted sessions
 # that replay prior messages within a file are not double-counted (matches ccusage).
 # Stores raw token counts (input, cache_write, cache_read, output) per session so cost and
@@ -12,6 +12,14 @@ set -euo pipefail
 # over assistant messages of output_tokens x (input + cache_write + cache_read), the KV
 # cache size each generated token re-reads; stored for a future context-dependent decode
 # term, not used by any formula yet (METHODOLOGY.md, "Cache read energy").
+#
+# Tokens are also stored per model in session_models (see cc_session_usage in
+# portable-lib.sh), written in the same transaction as the sessions row. An existing
+# methodology-v2 row that has no child rows yet (recorded before the table existed) gets
+# them from its transcript while that is still on disk, provided the transcript still
+# yields the row's stored token totals: its token columns stay as they are, and its
+# co2_grams and cost_usd become the sum over its models, which is what the Stop hook
+# would store today. A row whose totals disagree with its transcript is left alone.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/portable-lib.sh
@@ -26,43 +34,17 @@ METHODOLOGY_VERSION=2
 
 # Ensure schema exists and is migrated (idempotent; safe on fresh or pre-existing DBs).
 sqlite3 "$DB_PATH" "CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT DEFAULT 'live', methodology_version INTEGER DEFAULT 1, excluded INTEGER DEFAULT 0, git_branch TEXT DEFAULT '', cache_creation_1h_tokens INTEGER DEFAULT 0, output_context_sum INTEGER DEFAULT 0); CREATE INDEX IF NOT EXISTS idx_sessions_year ON sessions(started_at);" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_read_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN methodology_version INTEGER DEFAULT 1;" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN excluded INTEGER DEFAULT 0;" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN git_branch TEXT DEFAULT '';" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN cache_creation_1h_tokens INTEGER DEFAULT 0;" 2>/dev/null || true
-sqlite3 "$DB_PATH" "ALTER TABLE sessions ADD COLUMN output_context_sum INTEGER DEFAULT 0;" 2>/dev/null || true
-
-# Load emission factors once (gCO2e per million tokens)
-FACTOR_FABLE_IN="$(jq -r '.models.fable.input // 156' "$FACTORS_FILE")"
-FACTOR_FABLE_OUT="$(jq -r '.models.fable.output // 3304' "$FACTORS_FILE")"
-FACTOR_OPUS_IN="$(jq -r '.models.opus.input' "$FACTORS_FILE")"
-FACTOR_OPUS_OUT="$(jq -r '.models.opus.output' "$FACTORS_FILE")"
-FACTOR_SONNET_IN="$(jq -r '.models.sonnet.input' "$FACTORS_FILE")"
-FACTOR_SONNET_OUT="$(jq -r '.models.sonnet.output' "$FACTORS_FILE")"
-FACTOR_HAIKU_IN="$(jq -r '.models.haiku.input' "$FACTORS_FILE")"
-FACTOR_HAIKU_OUT="$(jq -r '.models.haiku.output' "$FACTORS_FILE")"
-# Energy of a cache_read token as a fraction of an uncached input token (see METHODOLOGY.md).
-CACHE_READ_FACTOR="$(jq -r '.cache_read_factor // 0.08' "$FACTORS_FILE")"
+cc_ensure_schema "$DB_PATH"
 
 # User-defined exclusion patterns (grep -E, case-insensitive), joined with |
-EXCLUDE_MODELS="$(jq -r '(.exclude_models // []) | join("|")' "$FACTORS_FILE" 2>/dev/null || true)"
-
-# Load pricing once (USD per million tokens, current Anthropic list price)
-PRICE_FABLE_IN="$(jq -r '.models.fable.input // 10' "$PRICES_FILE")"; PRICE_FABLE_OUT="$(jq -r '.models.fable.output // 50' "$PRICES_FILE")"
-PRICE_OPUS_IN="$(jq -r '.models.opus.input' "$PRICES_FILE")";     PRICE_OPUS_OUT="$(jq -r '.models.opus.output' "$PRICES_FILE")"
-PRICE_SONNET_IN="$(jq -r '.models.sonnet.input' "$PRICES_FILE")"; PRICE_SONNET_OUT="$(jq -r '.models.sonnet.output' "$PRICES_FILE")"
-PRICE_HAIKU_IN="$(jq -r '.models.haiku.input' "$PRICES_FILE")";   PRICE_HAIKU_OUT="$(jq -r '.models.haiku.output' "$PRICES_FILE")"
-CACHE_WRITE_MULT="$(jq -r '.cache_write_multiplier // 1.25' "$PRICES_FILE")"
-CACHE_WRITE_MULT_1H="$(jq -r '.cache_write_multiplier_1h // 2.0' "$PRICES_FILE")"
-CACHE_READ_MULT="$(jq -r '.cache_read_multiplier // 0.1' "$PRICES_FILE")"
+EXCLUDE_MODELS="$(cc_exclude_regex "$FACTORS_FILE")"
 
 ADDED=0
 SKIPPED=0
 REPAIRED=0
 FILLED=0
 REFRESHED=0
+SPLIT=0
 ERRORS=0
 
 # A row is refreshed when its transcript was written more than this many seconds after
@@ -73,165 +55,29 @@ REFRESH_SLACK=60
 # UUID regex pattern
 UUID_PATTERN='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
-# Helper: aggregate tokens from a JSONL file.
-# Deduplicates assistant messages by (message.id|requestId), keeping the LAST occurrence
-# (streaming snapshots grow output_tokens; the last carries the final value). Tracks
-# input, cache_creation (write, plus its 1-hour-TTL subset), cache_read, and output separately,
-# plus output_context: the sum of output_tokens x context (input + cache_write + cache_read).
-# Tries fast jq -s first, falls back to line-by-line for corrupted files.
-aggregate_jsonl() {
-  local file="$1"
-  local result
-  # Fast path: slurp entire file
-  result="$(jq -s '
-    [.[] | select(.type == "assistant" and .message.usage != null)] as $all
-    | (
-        ($all | map(select(.message.id != null and .requestId != null))
-              | reduce .[] as $m ({}; .[($m.message.id|tostring) + "|" + ($m.requestId|tostring)] = $m)
-              | [.[]])
-        + ($all | map(select(.message.id == null or .requestId == null)))
-      ) as $d
-    | {
-        input_tokens:   ($d | map(.message.usage.input_tokens // 0) | add // 0),
-        cache_creation: ($d | map(.message.usage.cache_creation_input_tokens // 0) | add // 0),
-        cache_creation_1h: ($d | map(.message.usage.cache_creation.ephemeral_1h_input_tokens // 0) | add // 0),
-        cache_read:     ($d | map(.message.usage.cache_read_input_tokens // 0) | add // 0),
-        output_tokens:  ($d | map(.message.usage.output_tokens // 0) | add // 0),
-        output_context: ($d | map((.message.usage.output_tokens // 0) * ((.message.usage.input_tokens // 0) + (.message.usage.cache_creation_input_tokens // 0) + (.message.usage.cache_read_input_tokens // 0))) | add // 0),
-        models:         ($d | map(.message.model // "") | map(select(length > 0))),
-        first_ts:       ($d | map(.timestamp // "") | map(select(length > 0)) | sort | first // ""),
-        last_ts:        ($d | map(.timestamp // "") | map(select(length > 0)) | sort | last // "")
-      }
-  ' "$file" 2>/dev/null)" && echo "$result" && return 0
-
-  # Slow path: line-by-line (tolerates corrupted lines), same dedup applied at the end.
-  while IFS= read -r line; do
-    echo "$line" | jq -c 'select(.type == "assistant" and .message.usage != null) | {
-      input_tokens: (.message.usage.input_tokens // 0),
-      cache_creation: (.message.usage.cache_creation_input_tokens // 0),
-      cache_creation_1h: (.message.usage.cache_creation.ephemeral_1h_input_tokens // 0),
-      cache_read: (.message.usage.cache_read_input_tokens // 0),
-      output_tokens: (.message.usage.output_tokens // 0),
-      output_context: ((.message.usage.output_tokens // 0) * ((.message.usage.input_tokens // 0) + (.message.usage.cache_creation_input_tokens // 0) + (.message.usage.cache_read_input_tokens // 0))),
-      model: (.message.model // ""),
-      id: (.message.id // null),
-      rid: (.requestId // null),
-      ts: (.timestamp // "")
-    }' 2>/dev/null
-  done < "$file" | jq -s '
-    . as $all
-    | (
-        ($all | map(select(.id != null and .rid != null))
-              | reduce .[] as $m ({}; .[($m.id|tostring) + "|" + ($m.rid|tostring)] = $m)
-              | [.[]])
-        + ($all | map(select(.id == null or .rid == null)))
-      ) as $d
-    | {
-        input_tokens:   ($d | map(.input_tokens) | add // 0),
-        cache_creation: ($d | map(.cache_creation) | add // 0),
-        cache_creation_1h: ($d | map(.cache_creation_1h) | add // 0),
-        cache_read:     ($d | map(.cache_read) | add // 0),
-        output_tokens:  ($d | map(.output_tokens) | add // 0),
-        output_context: ($d | map(.output_context) | add // 0),
-        models:         ($d | map(.model) | map(select(length > 0))),
-        first_ts:       ($d | map(.ts) | map(select(length > 0)) | sort | first // ""),
-        last_ts:        ($d | map(.ts) | map(select(length > 0)) | sort | last // "")
-      }
-  ' 2>/dev/null
-}
-
-# Helper: resolve model family from model string
-resolve_family() {
-  local model="$1"
-  if echo "$model" | grep -qiE "fable|mythos"; then echo "fable"
-  elif echo "$model" | grep -qi "opus"; then echo "opus"
-  elif echo "$model" | grep -qi "haiku"; then echo "haiku"
-  else echo "sonnet"
+# session_usage <main.jsonl> <session_id>: cc_session_usage over the main transcript and
+# its subagents (each message priced at its own model; see portable-lib.sh).
+session_usage() {
+  local main="$1" sid="$2" sub dir
+  local subs=()
+  dir="$(dirname "$main")/${sid}/subagents"
+  if [ -d "$dir" ]; then
+    for sub in "$dir"/*.jsonl; do
+      [ -f "$sub" ] && subs+=("$sub")
+    done
   fi
+  cc_session_usage "$FACTORS_FILE" "$PRICES_FILE" "$main" ${subs[@]+"${subs[@]}"}
 }
 
-# Helper: returns 0 when the model should be excluded from cost/CO2 accounting:
-# not an Anthropic Claude model (e.g. a local model behind ANTHROPIC_BASE_URL,
-# or the "<synthetic>" marker), or matching a user pattern in exclude_models.
-is_excluded_model() {
-  local model="$1"
-  if ! echo "$model" | grep -qi "claude"; then return 0; fi
-  if [ -n "$EXCLUDE_MODELS" ] && echo "$model" | grep -qiE "$EXCLUDE_MODELS"; then return 0; fi
-  return 1
-}
-
-# Helper: get factors and pricing for a model family
-get_factor_in() {
-  case "$1" in
-    fable) echo "$FACTOR_FABLE_IN" ;; opus) echo "$FACTOR_OPUS_IN" ;; haiku) echo "$FACTOR_HAIKU_IN" ;; *) echo "$FACTOR_SONNET_IN" ;;
-  esac
-}
-get_factor_out() {
-  case "$1" in
-    fable) echo "$FACTOR_FABLE_OUT" ;; opus) echo "$FACTOR_OPUS_OUT" ;; haiku) echo "$FACTOR_HAIKU_OUT" ;; *) echo "$FACTOR_SONNET_OUT" ;;
-  esac
-}
-get_price_in() {
-  case "$1" in
-    fable) echo "$PRICE_FABLE_IN" ;; opus) echo "$PRICE_OPUS_IN" ;; haiku) echo "$PRICE_HAIKU_IN" ;; *) echo "$PRICE_SONNET_IN" ;;
-  esac
-}
-get_price_out() {
-  case "$1" in
-    fable) echo "$PRICE_FABLE_OUT" ;; opus) echo "$PRICE_OPUS_OUT" ;; haiku) echo "$PRICE_HAIKU_OUT" ;; *) echo "$PRICE_SONNET_OUT" ;;
-  esac
-}
-
-# Helper: compute CO2 and theoretical API cost for a JSONL file with its own model.
-# CO2  = (input + cache_write) * factor_in + cache_read * (factor_in * CACHE_READ_FACTOR) + output * factor_out
-#        (cache write is a full prefill, so both TTL tiers cost the same energy)
-# Cost = input * pin + cw_1h * (CACHE_WRITE_MULT_1H*pin) + cw_5m * (CACHE_WRITE_MULT*pin)
-#        + cache_read * (CACHE_READ_MULT*pin) + output * pout
-# Returns: total_input(=input+cache_write) cache_creation cache_creation_1h cache_read output co2 cost output_context_sum
-compute_co2_cost() {
-  local aggregated="$1"
-  local it cw cw1h cw5m cr out octx family fin fout pin pout co2 cost total_input model_raw
-
-  it="$(echo "$aggregated" | jq -r '.input_tokens // 0')"
-  cw="$(echo "$aggregated" | jq -r '.cache_creation // 0')"
-  cw1h="$(echo "$aggregated" | jq -r '.cache_creation_1h // 0')"
-  cr="$(echo "$aggregated" | jq -r '.cache_read // 0')"
-  out="$(echo "$aggregated" | jq -r '.output_tokens // 0')"
-  # %.0f rather than %d: the product reaches 1e12 on a long session, past 32-bit awk ints.
-  octx="$(echo "$aggregated" | jq -r '.output_context // 0' | LC_ALL=C awk '{printf "%.0f", $1}')"
-
-  # Clamp: the 1-hour subset can never exceed the total cache write. Transcripts
-  # predating the per-tier fields report cache_creation without the breakdown, so
-  # cw1h stays 0 there and the whole write is priced at the 5-minute tier.
-  cw1h="$(echo "$cw1h $cw" | LC_ALL=C awk '{printf "%d", ($1 > $2 ? $2 : $1)}')"
-  cw5m="$(echo "$cw $cw1h" | LC_ALL=C awk '{printf "%d", $1 - $2}')"
-
-  model_raw="$(echo "$aggregated" | jq -r '
-    .models |
-    if length == 0 then "claude-sonnet"
-    else group_by(.) | sort_by(-length) | first | first
-    end
-  ')"
-
-  if is_excluded_model "$model_raw"; then
-    # Non-Anthropic / user-excluded model: keep raw tokens, no cost/CO2 estimate
-    co2="0"
-    cost="0"
-  else
-    family="$(resolve_family "$model_raw")"
-    fin="$(get_factor_in "$family")"
-    fout="$(get_factor_out "$family")"
-    pin="$(get_price_in "$family")"
-    pout="$(get_price_out "$family")"
-
-    co2="$(echo "$it $cw $cr $out $fin $fout $CACHE_READ_FACTOR" | LC_ALL=C awk \
-      '{printf "%.4f", (($1 + $2) * $5 + $3 * ($5 * $7) + $4 * $6) / 1000000}')"
-    cost="$(echo "$it $cw1h $cw5m $cr $out $pin $pout $CACHE_WRITE_MULT_1H $CACHE_WRITE_MULT $CACHE_READ_MULT" | LC_ALL=C awk \
-      '{printf "%.6f", ($1 * $6 + $2 * ($6 * $8) + $3 * ($6 * $9) + $4 * ($6 * $10) + $5 * $7) / 1000000}')"
+# parse_once: parse the current session (JSONL_FILE, SESSION_ID) the first time a repair
+# pass needs it, then reuse the result. Exit 0 when the transcript yielded something.
+parse_once() {
+  if [ "$PARSED" = "0" ]; then
+    PARSED=1
+    USAGE="$(session_usage "$JSONL_FILE" "$SESSION_ID" 2>/dev/null)" || USAGE=""
+    cc_parse_usage "$USAGE"
   fi
-
-  total_input="$(echo "$it $cw" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
-  echo "$total_input $cw $cw1h $cr $out $co2 $cost $octx"
+  [ -n "$USAGE" ]
 }
 
 # Scan all JSONL files under $CONFIG_DIR/projects/, max 2 levels deep
@@ -270,30 +116,51 @@ while IFS= read -r JSONL_FILE; do
     if [ "$BRANCH_MISSING" = "1" ]; then
       GIT_BRANCH="$(jq -rn '[inputs | .gitBranch? // empty | select(type == "string" and length > 0)] | last // ""' "$JSONL_FILE" 2>/dev/null)" || GIT_BRANCH=""
       if [ -n "$GIT_BRANCH" ]; then
-        GIT_BRANCH="${GIT_BRANCH//\'/\'\'}"
+        GIT_BRANCH="${GIT_BRANCH//$CC_SQ/$CC_SQ$CC_SQ}"
         sqlite3 "$DB_PATH" "UPDATE sessions SET git_branch='${GIT_BRANCH}' WHERE session_id='${SESSION_ID}';" 2>/dev/null || true
       fi
     fi
+
+    # The transcript is parsed at most once per session below, and only when a pass needs it.
+    USAGE=""
+    PARSED=0
+
+    # Split pass: a v2 row recorded before session_models existed gets its per-model
+    # rows, if its transcript still yields the row's stored token totals. Token columns
+    # are left as stored; co2_grams and cost_usd become the per-model sum; the 1-hour
+    # cache-write subset and output_context_sum are refilled from the same parse, which
+    # covers the two repair passes below.
+    SPLIT_MISSING="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions s WHERE s.session_id='${SESSION_ID}' AND COALESCE(s.methodology_version, 1) >= 2 AND NOT EXISTS (SELECT 1 FROM session_models m WHERE m.session_id = s.session_id);" 2>/dev/null || echo 0)"
+    if [ "$SPLIT_MISSING" = "1" ] && parse_once; then
+      STORED="$(sqlite3 "$DB_PATH" "SELECT COALESCE(input_tokens, 0) || '|' || COALESCE(cache_creation_tokens, 0) || '|' || COALESCE(cache_read_tokens, 0) || '|' || COALESCE(output_tokens, 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null || echo "")"
+      case "$USAGE" in
+        *"
+R	"*)
+          if [ "$STORED" = "${CC_U_IN}|${CC_U_CW}|${CC_U_CR}|${CC_U_OUT}" ]; then
+            if sqlite3 -cmd ".timeout 5000" "$DB_PATH" "BEGIN IMMEDIATE;
+$(cc_session_models_sql "$SESSION_ID" "$USAGE")
+UPDATE sessions SET cache_creation_1h_tokens = ${CC_U_CW1H}, output_context_sum = ${CC_U_OCTX}, co2_grams = ${CC_U_CO2}, cost_usd = ${CC_U_COST} WHERE session_id='${SESSION_ID}';
+COMMIT;" >/dev/null 2>&1; then
+              SPLIT=$((SPLIT + 1))
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+          fi
+          ;;
+      esac
+    fi
+
     # Repair pass: rows captured before the cache-write TTL split existed carry
     # cache_creation_1h_tokens = 0, which prices their whole cache write at the
     # 5-minute tier. Refill the raw column from the transcript while it is still
     # on disk; run `recompute.sh --with-cost` afterwards to re-derive cost_usd.
     # A genuinely 5-minute-tier session repairs to 0 and simply stays correct.
     TTL_MISSING="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}' AND COALESCE(cache_creation_1h_tokens, 0) = 0 AND COALESCE(cache_creation_tokens, 0) > 0 AND COALESCE(methodology_version, 1) >= 2;" 2>/dev/null || echo 0)"
-    if [ "$TTL_MISSING" = "1" ]; then
-      REPAIR_1H="$(aggregate_jsonl "$JSONL_FILE" 2>/dev/null | jq -r '.cache_creation_1h // 0' 2>/dev/null)" || REPAIR_1H=0
-      REPAIR_DIR="$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents"
-      if [ -d "$REPAIR_DIR" ]; then
-        for REPAIR_SUB in "$REPAIR_DIR"/*.jsonl; do
-          [ -f "$REPAIR_SUB" ] || continue
-          SUB_1H="$(aggregate_jsonl "$REPAIR_SUB" 2>/dev/null | jq -r '.cache_creation_1h // 0' 2>/dev/null)" || SUB_1H=0
-          REPAIR_1H="$(echo "$REPAIR_1H $SUB_1H" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
-        done
-      fi
-      case "$REPAIR_1H" in
+    if [ "$TTL_MISSING" = "1" ] && parse_once; then
+      case "$CC_U_CW1H" in
         ''|*[!0-9]*) ;;
         0) ;;
-        *) sqlite3 "$DB_PATH" "UPDATE sessions SET cache_creation_1h_tokens = MIN(${REPAIR_1H}, COALESCE(cache_creation_tokens, 0)) WHERE session_id='${SESSION_ID}';" 2>/dev/null || true
+        *) sqlite3 "$DB_PATH" "UPDATE sessions SET cache_creation_1h_tokens = MIN(${CC_U_CW1H}, COALESCE(cache_creation_tokens, 0)) WHERE session_id='${SESSION_ID}';" 2>/dev/null || true
            REPAIRED=$((REPAIRED + 1)) ;;
       esac
     fi
@@ -301,20 +168,11 @@ while IFS= read -r JSONL_FILE; do
     # from the transcript (main + subagents) while it is still on disk. No formula
     # reads the column yet, so nothing needs re-deriving afterwards.
     OCTX_MISSING="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}' AND COALESCE(output_context_sum, 0) = 0 AND COALESCE(output_tokens, 0) > 0 AND COALESCE(methodology_version, 1) >= 2;" 2>/dev/null || echo 0)"
-    if [ "$OCTX_MISSING" = "1" ]; then
-      FILL_OCTX="$(aggregate_jsonl "$JSONL_FILE" 2>/dev/null | jq -r '.output_context // 0' 2>/dev/null | LC_ALL=C awk '{printf "%.0f", $1}')" || FILL_OCTX=0
-      FILL_DIR="$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents"
-      if [ -d "$FILL_DIR" ]; then
-        for FILL_SUB in "$FILL_DIR"/*.jsonl; do
-          [ -f "$FILL_SUB" ] || continue
-          SUB_OCTX="$(aggregate_jsonl "$FILL_SUB" 2>/dev/null | jq -r '.output_context // 0' 2>/dev/null | LC_ALL=C awk '{printf "%.0f", $1}')" || SUB_OCTX=0
-          FILL_OCTX="$(echo "$FILL_OCTX $SUB_OCTX" | LC_ALL=C awk '{printf "%.0f", $1 + $2}')"
-        done
-      fi
-      case "$FILL_OCTX" in
+    if [ "$OCTX_MISSING" = "1" ] && parse_once; then
+      case "$CC_U_OCTX" in
         ''|*[!0-9]*) ;;
         0) ;;
-        *) sqlite3 "$DB_PATH" "UPDATE sessions SET output_context_sum = ${FILL_OCTX} WHERE session_id='${SESSION_ID}';" 2>/dev/null || true
+        *) sqlite3 "$DB_PATH" "UPDATE sessions SET output_context_sum = ${CC_U_OCTX} WHERE session_id='${SESSION_ID}';" 2>/dev/null || true
            FILLED=$((FILLED + 1)) ;;
       esac
     fi
@@ -332,83 +190,55 @@ while IFS= read -r JSONL_FILE; do
     PROJECT="unknown"
   fi
 
-  # Git branch at session end (last non-empty gitBranch envelope field),
-  # matching persist-session.sh. Empty outside a git repo. Feeds /carbon-pr.
-  GIT_BRANCH="$(jq -rn '[inputs | .gitBranch? // empty | select(type == "string" and length > 0)] | last // ""' "$JSONL_FILE" 2>/dev/null)" || GIT_BRANCH=""
-
-  # Aggregate main session JSONL
-  AGGREGATED="$(aggregate_jsonl "$JSONL_FILE")" || { ERRORS=$((ERRORS + 1)); continue; }
-
-  FIRST_TS="$(echo "$AGGREGATED" | jq -r '.first_ts // ""')"
-  LAST_TS="$(echo "$AGGREGATED" | jq -r '.last_ts // ""')"
-
-  # Compute CO2/cost for main session
-  read -r TOTAL_INPUT CACHE_CREATION CACHE_CREATION_1H CACHE_READ OUTPUT_TOKENS CO2_G COST_USD OUTPUT_CONTEXT <<< "$(compute_co2_cost "$AGGREGATED")"
-
-  # Aggregate subagent JSONL files (each has its own model)
-  SUBAGENT_DIR="$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents"
-  if [ -d "$SUBAGENT_DIR" ]; then
-    for SUB_FILE in "$SUBAGENT_DIR"/*.jsonl; do
-      [ -f "$SUB_FILE" ] || continue
-      SUB_AGG="$(aggregate_jsonl "$SUB_FILE")" || continue
-
-      read -r SUB_IN SUB_CW SUB_CW1H SUB_CR SUB_OUT SUB_CO2 SUB_COST SUB_OCTX <<< "$(compute_co2_cost "$SUB_AGG")"
-
-      # Add to session totals
-      TOTAL_INPUT="$(echo "$TOTAL_INPUT $SUB_IN" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
-      CACHE_CREATION="$(echo "$CACHE_CREATION $SUB_CW" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
-      CACHE_CREATION_1H="$(echo "$CACHE_CREATION_1H $SUB_CW1H" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
-      CACHE_READ="$(echo "$CACHE_READ $SUB_CR" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
-      OUTPUT_TOKENS="$(echo "$OUTPUT_TOKENS $SUB_OUT" | LC_ALL=C awk '{printf "%d", $1 + $2}')"
-      CO2_G="$(echo "$CO2_G $SUB_CO2" | LC_ALL=C awk '{printf "%.4f", $1 + $2}')"
-      COST_USD="$(echo "$COST_USD $SUB_COST" | LC_ALL=C awk '{printf "%.6f", $1 + $2}')"
-      OUTPUT_CONTEXT="$(echo "$OUTPUT_CONTEXT $SUB_OCTX" | LC_ALL=C awk '{printf "%.0f", $1 + $2}')"
-
-      # Update last timestamp if subagent ran later
-      SUB_LAST="$(echo "$SUB_AGG" | jq -r '.last_ts // ""')"
-      if [ -n "$SUB_LAST" ] && [[ "$SUB_LAST" > "$LAST_TS" ]]; then
-        LAST_TS="$SUB_LAST"
-      fi
-    done
-  fi
+  # One pass over main + subagents: tokens per model, CO2 and cost, the main transcript's
+  # dominant model, its git branch at session end (last non-empty gitBranch, feeds
+  # /carbon-pr), its first timestamp, and the last timestamp across all files.
+  USAGE="$(session_usage "$JSONL_FILE" "$SESSION_ID")" || { ERRORS=$((ERRORS + 1)); continue; }
+  cc_parse_usage "$USAGE"
+  FIRST_TS="$CC_U_FIRST_TS"
+  LAST_TS="$CC_U_LAST_TS"
+  GIT_BRANCH="$CC_U_BRANCH"
 
   # Skip empty sessions
-  if [ "$TOTAL_INPUT" -eq 0 ] 2>/dev/null && [ "$OUTPUT_TOKENS" -eq 0 ] 2>/dev/null; then
+  if [ "$CC_U_IN" = "0" ] && [ "$CC_U_OUT" = "0" ]; then
     SKIPPED=$((SKIPPED + 1))
     continue
   fi
 
-  # Get main model for display
-  MODEL_RAW="$(echo "$AGGREGATED" | jq -r '
-    .models |
-    if length == 0 then "claude-sonnet"
-    else group_by(.) | sort_by(-length) | first | first
-    end
-  ')"
+  # Main model for display
+  MODEL_RAW="$CC_U_MODEL"
 
   # Excluded flag (based on the session's dominant model)
   EXCLUDED=0
-  if is_excluded_model "$MODEL_RAW"; then EXCLUDED=1; fi
+  if cc_is_excluded_model "$MODEL_RAW" "$EXCLUDE_MODELS"; then EXCLUDED=1; fi
 
   # Sanitize strings for SQL (escape single quotes)
-  PROJECT="${PROJECT//\'/\'\'}"
-  MODEL_RAW="${MODEL_RAW//\'/\'\'}"
-  FIRST_TS="${FIRST_TS//\'/\'\'}"
-  LAST_TS="${LAST_TS//\'/\'\'}"
-  GIT_BRANCH="${GIT_BRANCH//\'/\'\'}"
+  PROJECT="${PROJECT//$CC_SQ/$CC_SQ$CC_SQ}"
+  MODEL_RAW="${MODEL_RAW//$CC_SQ/$CC_SQ$CC_SQ}"
+  FIRST_TS="${FIRST_TS//$CC_SQ/$CC_SQ$CC_SQ}"
+  LAST_TS="${LAST_TS//$CC_SQ/$CC_SQ$CC_SQ}"
+  GIT_BRANCH="${GIT_BRANCH//$CC_SQ/$CC_SQ$CC_SQ}"
+
+  CHILD_SQL="$(cc_session_models_sql "$SESSION_ID" "$USAGE")"
 
   # Refresh a stale row. It keeps when it started and which path first recorded it, and
   # ends when its transcript was last written: that is also what the refresh check compares
   # against, so the same session is not parsed again on the next rescan.
   if [ "$EXISTS" -gt 0 ]; then
     LAST_TS="$(sqlite3 "$DB_PATH" "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ${MTIME}, 'unixepoch');" 2>/dev/null)" || LAST_TS=""
-    sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${TOTAL_INPUT}, ${OUTPUT_TOKENS}, ${CACHE_READ}, ${CACHE_CREATION}, ${CACHE_CREATION_1H}, ${OUTPUT_CONTEXT}, ${COST_USD}, ${CO2_G}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${FIRST_TS}'), '${LAST_TS}', COALESCE((SELECT source FROM sessions WHERE session_id='${SESSION_ID}'), 'backfill'), ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}');" 2>/dev/null || { ERRORS=$((ERRORS + 1)); continue; }
+    sqlite3 -cmd ".timeout 5000" "$DB_PATH" "BEGIN IMMEDIATE;
+${CHILD_SQL}
+INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${CC_U_IN}, ${CC_U_OUT}, ${CC_U_CR}, ${CC_U_CW}, ${CC_U_CW1H}, ${CC_U_OCTX}, ${CC_U_COST}, ${CC_U_CO2}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${FIRST_TS}'), '${LAST_TS}', COALESCE((SELECT source FROM sessions WHERE session_id='${SESSION_ID}'), 'backfill'), ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}');
+COMMIT;" >/dev/null 2>&1 || { ERRORS=$((ERRORS + 1)); continue; }
     REFRESHED=$((REFRESHED + 1))
     continue
   fi
 
   # Insert into DB
-  sqlite3 "$DB_PATH" "INSERT OR IGNORE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${TOTAL_INPUT}, ${OUTPUT_TOKENS}, ${CACHE_READ}, ${CACHE_CREATION}, ${CACHE_CREATION_1H}, ${OUTPUT_CONTEXT}, ${COST_USD}, ${CO2_G}, '${FIRST_TS}', '${LAST_TS}', 'backfill', ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}');" 2>/dev/null || { ERRORS=$((ERRORS + 1)); continue; }
+  sqlite3 -cmd ".timeout 5000" "$DB_PATH" "BEGIN IMMEDIATE;
+${CHILD_SQL}
+INSERT OR IGNORE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${CC_U_IN}, ${CC_U_OUT}, ${CC_U_CR}, ${CC_U_CW}, ${CC_U_CW1H}, ${CC_U_OCTX}, ${CC_U_COST}, ${CC_U_CO2}, '${FIRST_TS}', '${LAST_TS}', 'backfill', ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}');
+COMMIT;" >/dev/null 2>&1 || { ERRORS=$((ERRORS + 1)); continue; }
 
   ADDED=$((ADDED + 1))
 
@@ -417,6 +247,9 @@ done < <(find "${CONFIG_DIR}/projects" -maxdepth 2 -name "*.jsonl" 2>/dev/null)
 echo "  Backfill complete: ${ADDED} sessions added, ${SKIPPED} skipped, ${ERRORS} errors."
 if [ "$REFRESHED" -gt 0 ]; then
   echo "  Refreshed ${REFRESHED} session(s) whose transcript grew after they were last recorded."
+fi
+if [ "$SPLIT" -gt 0 ]; then
+  echo "  Split ${SPLIT} existing session(s) by model from their transcripts; their CO2 and cost are now the sum over their models."
 fi
 if [ "$REPAIRED" -gt 0 ]; then
   echo "  Repaired the cache-write TTL split on ${REPAIRED} existing row(s); run 'scripts/recompute.sh --with-cost' to re-price them."
