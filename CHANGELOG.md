@@ -17,9 +17,14 @@ the sum over its models. Both tables are written in one transaction with a busy
 timeout, since the SessionEnd hook's detached run can overlap a Stop hook.
 
 `recompute.sh` re-derives each child row at its own model and sets the session
-to the sum; rows recorded before the table existed are still re-derived at
-their dominant model, and legacy (`methodology_version` 1) rows are still left
-alone. `backfill.sh` adds the per-model rows to existing sessions whose
+to the sum. Rows recorded before the table existed are no longer re-derived by
+default: their stored CO2 and cost, computed at insert per file at each file's
+model, are the best available, and re-deriving them at the dominant model
+drifted by +44% cost and +16% CO2 on subagent-heavy rows (on one real DB, one
+month's cost went from $2,509 to $4,394). `--include-unsplit` opts them in when
+a factor or price changed and the approximation is acceptable; the installers
+and `update.sh` never pass it. Legacy (`methodology_version` 1) rows are still
+left alone. `backfill.sh` adds the per-model rows to existing sessions whose
 transcript is still on disk and still yields the stored token totals; their CO2
 and cost become the per-model sum. The carbon-pr table and the report's top
 model read the split, with the row model as fallback. METHODOLOGY.md says which

@@ -157,7 +157,7 @@ LIVE_COST="$(q "SELECT printf('%.6f', cost_usd) FROM sessions WHERE session_id='
 # Rows recompute must treat differently: a v2 row without children (recorded before the
 # table existed), a legacy v1 row, and an excluded session.
 q "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, cost_usd, co2_grams, methodology_version, excluded) VALUES
-  ('nochild-sonnet46', 'p', 'claude-sonnet-4-6', 1050, 200, 30000, 1000, 1000, 0, 0, 2, 0),
+  ('nochild-sonnet46', 'p', 'claude-sonnet-4-6', 1050, 200, 30000, 1000, 1000, 0.7, 0.07, 2, 0),
   ('legacy-v1', 'p', 'claude-opus-4-6', 1000, 100, 0, 0, 0, 9.5, 9.5, 1, 0),
   ('excluded-local', 'p', 'glm-4.7', 1000, 100, 0, 0, 0, 0, 0, 2, 1);"
 
@@ -166,7 +166,7 @@ check "recompute: exits 0" "0" "$?"
 check "invariant after recompute --with-cost" "0" "$(q "$INVARIANT")"
 near "recompute: split session CO2 unchanged vs the Stop hook"  "$LIVE_CO2"  "$(q "SELECT co2_grams FROM sessions WHERE session_id='${SESSION}';")"
 near "recompute: split session cost unchanged vs the Stop hook" "$LIVE_COST" "$(q "SELECT cost_usd FROM sessions WHERE session_id='${SESSION}';")" 0.000005
-near "recompute: row without children priced at its own model (Sonnet 4.6, 3/15)" "0.01815" "$(q "SELECT cost_usd FROM sessions WHERE session_id='nochild-sonnet46';")" 0.0000005
+check "recompute: row without children keeps its stored CO2 and cost by default" "0.7|0.07" "$(q "SELECT cost_usd||'|'||co2_grams FROM sessions WHERE session_id='nochild-sonnet46';")"
 check "recompute: legacy v1 row untouched" "9.5|9.5" "$(q "SELECT co2_grams||'|'||cost_usd FROM sessions WHERE session_id='legacy-v1';")"
 check "recompute: excluded session untouched" "0.0|0.0" "$(q "SELECT co2_grams||'|'||cost_usd FROM sessions WHERE session_id='excluded-local';")"
 check "recompute: excluded model child stays at 0" "0.0|0.0" "$(q "SELECT co2_grams||'|'||cost_usd FROM session_models WHERE session_id='${SESSION}' AND model='glm-4.7-flash';")"
@@ -177,6 +177,23 @@ CLAUDE_CARBON_DB="$DB" bash "$RECOMPUTE" --with-cost >/dev/null 2>&1
 check "recompute: idempotent (second run changes nothing)" "$BEFORE" "$(q "$SNAP")"
 CLAUDE_CARBON_DB="$DB" bash "$RECOMPUTE" >/dev/null 2>&1
 check "recompute: CO2-only run changes nothing either" "$BEFORE" "$(q "$SNAP")"
+
+# --include-unsplit opts rows without children in: re-derived at their own model.
+OUT="$(CLAUDE_CARBON_DB="$DB" bash "$RECOMPUTE" --with-cost --include-unsplit 2>&1)"
+near "recompute --include-unsplit: row without children re-priced at its model (Sonnet 4.6, 3/15)" "0.01815" "$(q "SELECT cost_usd FROM sessions WHERE session_id='nochild-sonnet46';")" 0.0000005
+# co2 = (1050*39 + 30000*39*0.08 + 200*826) / 1e6 = 0.29975
+near "recompute --include-unsplit: its CO2 too" "0.29975" "$(q "SELECT co2_grams FROM sessions WHERE session_id='nochild-sonnet46';")" 0.0000005
+case "$OUT" in
+  *"approximated at their dominant model (--include-unsplit)"*) ok "recompute --include-unsplit: summary says so" ;;
+  *) bad "recompute --include-unsplit: summary says so" "the --include-unsplit summary" "$OUT" ;;
+esac
+check "recompute --include-unsplit: legacy v1 row still untouched" "9.5|9.5" "$(q "SELECT co2_grams||'|'||cost_usd FROM sessions WHERE session_id='legacy-v1';")"
+check "invariant after --include-unsplit" "0" "$(q "$INVARIANT")"
+CLAUDE_CARBON_DB="$DB" bash "$RECOMPUTE" --bogus >/dev/null 2>&1
+check "recompute: unknown flag refused" "2" "$?"
+BEFORE="$(q "$SNAP")"
+# The auto-runs on install and update must never approximate unsplit rows.
+check "install.sh and update.sh never pass --include-unsplit" "0" "$(grep -c -- '--include-unsplit' "${REPO_DIR}/install.sh" "${REPO_DIR}/scripts/update.sh" | awk -F: '{ n += $NF } END { print n + 0 }')"
 
 # A hostile prices file is refused before any SQL runs.
 EVIL="${TMPROOT}/evil-prices.json"

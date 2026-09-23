@@ -97,10 +97,10 @@ Claude Code purges JSONL transcripts after about 30 days, so the SQLite DB is th
 |---|---|---|
 | Recorded with `session_models` rows (Stop hook or backfill since September 2026) | tokens per model, message by message | exact: the same figure the Stop hook stores |
 | `methodology_version` >= 2 recorded before, transcript still on disk | `backfill.sh` adds the per-model rows while the transcript exists (30 days), as long as the transcript still yields the row's stored token totals; the row's CO2 and cost become the per-model sum | exact once backfilled |
-| `methodology_version` >= 2 recorded before, transcript purged | the session's totals and its main thread's dominant model only | approximate on mixed-model sessions: the whole session is re-derived at the dominant model. Measured over 226 such rows of heavy multi-agent use on 2026-08-24: cost +44%, CO2 +16% against the original per-file values. Run it when a factor or a price actually changed, not as routine hygiene |
+| `methodology_version` >= 2 recorded before, transcript purged | the session's totals and its main thread's dominant model only | kept as stored by default: the values computed at insert, per file at each file's model, are the best available. `recompute.sh --include-unsplit` re-derives them anyway, the whole session at its dominant model, which is approximate on mixed-model sessions: measured over 226 such rows of heavy multi-agent use on 2026-08-24, cost +44% and CO2 +16% against the stored values. Use it only when a factor or a price actually changed and that drift is acceptable; the installers and `update.sh` never pass it |
 | `methodology_version` 1 (legacy) | no cache-read breakdown | left untouched |
 
-The split that a purged transcript took with it cannot be rebuilt: for sessions older than the 30-day window at the time the per-model table shipped, only the CO2 and cost computed at insert (per file, at each file's dominant model) remain exact, and a recompute replaces them with the dominant-model approximation above.
+The split that a purged transcript took with it cannot be rebuilt: for sessions older than the 30-day window at the time the per-model table shipped, only the CO2 and cost computed at insert (per file, at each file's dominant model) remain exact. A plain recompute leaves them as they are, so those rows do not follow a later factor or price change; only `--include-unsplit` moves them, at the cost of the dominant-model approximation above.
 
 ## Cache read energy
 

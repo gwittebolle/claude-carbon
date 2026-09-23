@@ -12,13 +12,17 @@ set -euo pipefail
 # each child row is re-derived at its own model, and the session's co2_grams and cost_usd
 # become the sum over its children. That is exact, and matches what the Stop hook stores.
 #
-# At the row's model otherwise. A session recorded before session_models existed only
-# knows its main transcript's dominant model, and is re-derived entirely at that model.
-# That is NOT free on mixed-model rows: the original insert was model-accurate per
-# subagent, so a session whose subagents ran on a cheaper model moves to the expensive
-# one. Measured on 226 such rows of heavy multi-agent use (2026-08-24): cost +44%, CO2
-# +16%. backfill.sh gives those rows their per-model split while their transcript is
-# still on disk (30 days); past that, the split is lost.
+# Left as stored otherwise, by default. A session recorded before session_models existed
+# only knows its main transcript's dominant model, while its stored co2_grams and cost_usd
+# were computed at insert per file, each subagent at its own model: those stored values are
+# the best available, and re-deriving the whole row at the dominant model loses that. On
+# subagent-heavy rows the drift is large: cost +44%, CO2 +16% over 226 rows (2026-08-24).
+# backfill.sh gives such rows their per-model split while their transcript is still on disk
+# (30 days); past that, the split is lost.
+#
+# --include-unsplit opts those rows in anyway: each is re-derived entirely at its dominant
+# model. Use it only when a factor or a price actually changed and the approximation above
+# is acceptable. install.sh and update.sh never pass it.
 #
 # This is the answer to Anthropic's 30-day transcript purge: the raw token breakdown is
 # captured once (by the Stop hook, within the 30-day window) and frozen; everything derived
@@ -44,7 +48,14 @@ cc_ensure_schema "$DB_PATH"
 
 # Default: CO2 only. --with-cost / --prices also re-derives cost_usd.
 WITH_COST=0
-case "${1:-}" in --with-cost|--prices) WITH_COST=1 ;; esac
+INCLUDE_UNSPLIT=0
+for _arg in "$@"; do
+  case "$_arg" in
+    --with-cost|--prices) WITH_COST=1 ;;
+    --include-unsplit) INCLUDE_UNSPLIT=1 ;;
+    *) echo "Usage: recompute.sh [--with-cost] [--include-unsplit]" >&2; exit 2 ;;
+  esac
+done
 
 EXCLUDE_MODELS="$(cc_exclude_regex "$FACTORS_FILE")"
 
@@ -79,7 +90,7 @@ MODELS="$(sqlite3 "$DB_PATH" "
   SELECT DISTINCT model FROM session_models
     WHERE session_id IN (SELECT session_id FROM sessions WHERE ${ELIGIBLE})
   UNION
-  SELECT DISTINCT model FROM sessions WHERE ${ELIGIBLE} AND model IS NOT NULL AND NOT ${HAS_CHILDREN};")"
+  SELECT DISTINCT model FROM sessions WHERE ${INCLUDE_UNSPLIT} = 1 AND ${ELIGIBLE} AND model IS NOT NULL AND NOT ${HAS_CHILDREN};")"
 PARAMS=""
 if [ -n "$MODELS" ]; then
   PARAMS="$(printf '%s\n' "$MODELS" | cc_model_params "$FACTORS_FILE" "$PRICES_FILE")"
@@ -111,9 +122,11 @@ while IFS="	" read -r MODEL FAMILY FIN FOUT CRF PIN POUT CWM CWM1H CRM; do
   fi
   SQL="${SQL}UPDATE session_models SET ${CHILD_SET} WHERE model = ${QMODEL} AND session_id IN (SELECT session_id FROM sessions WHERE ${ELIGIBLE});
 "
-  # Rows without children: the whole row at its own (dominant) model, as before.
-  SQL="${SQL}UPDATE sessions SET $(set_clause "$FIN" "$FOUT" "$CRF" "$PIN" "$POUT" "$CWM" "$CWM1H" "$CRM") WHERE model = ${QMODEL} AND ${ELIGIBLE} AND NOT ${HAS_CHILDREN};
+  # Rows without children, only with --include-unsplit: the whole row at its dominant model.
+  if [ "$INCLUDE_UNSPLIT" = "1" ]; then
+    SQL="${SQL}UPDATE sessions SET $(set_clause "$FIN" "$FOUT" "$CRF" "$PIN" "$POUT" "$CWM" "$CWM1H" "$CRM") WHERE model = ${QMODEL} AND ${ELIGIBLE} AND NOT ${HAS_CHILDREN};
 "
+  fi
 done <<EOF
 $PARAMS
 EOF
@@ -139,5 +152,9 @@ if [ "$WITH_COST" = "1" ]; then
 else
   WHAT="CO2 (cost unchanged)"
 fi
-echo "Recomputed ${WHAT}: ${SPLIT_ROWS} rows model by model, ${WHOLE_ROWS} rows at their dominant model (no per-model split recorded); left ${LEGACY} legacy rows untouched."
+if [ "$INCLUDE_UNSPLIT" = "1" ]; then
+  echo "Recomputed ${WHAT}: ${SPLIT_ROWS} rows model by model, ${WHOLE_ROWS} rows without a per-model split approximated at their dominant model (--include-unsplit); left ${LEGACY} legacy rows untouched."
+else
+  echo "Recomputed ${WHAT}: ${SPLIT_ROWS} rows model by model; kept the stored values of ${WHOLE_ROWS} rows without a per-model split (--include-unsplit re-derives them at their dominant model, approximate) and ${LEGACY} legacy rows."
+fi
 echo "DB totals now: \$${TOTAL_COST} / ${TOTAL_CO2_KG} kg CO2."
