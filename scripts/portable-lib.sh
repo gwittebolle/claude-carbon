@@ -378,9 +378,12 @@ def cc_param_cols: [.fin, .fout, .crf, .pin, .pout, .cwm, .cwm1h, .crm];
 # line, and prints one tab-separated line per id:
 #   model family fin fout crf pin pout cwm cwm1h crm
 # (factors in gCO2e/Mtok, prices in USD/Mtok, the three cache price multipliers).
+# CR is stripped on both sides: on Windows, sqlite3 and jq emit CRLF, so a model id
+# would carry a trailing \r and the last column would fail the numeric check.
 cc_model_params() {
-  jq -R -r --slurpfile f "$1" --slurpfile p "$2" \
-    "${CC_JQ_MODEL_DEFS}"' . as $m | cc_params($f[0]; $p[0]) as $x | [$m, $x.family] + ($x | cc_param_cols) | @tsv'
+  tr -d '\r' | jq -R -r --slurpfile f "$1" --slurpfile p "$2" \
+    "${CC_JQ_MODEL_DEFS}"' . as $m | cc_params($f[0]; $p[0]) as $x | [$m, $x.family] + ($x | cc_param_cols) | @tsv' \
+    | tr -d '\r'
 }
 
 # cc_exclude_regex <factors.json>: the user's exclude_models patterns joined with "|".
