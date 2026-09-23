@@ -1,5 +1,60 @@
 # Changelog
 
+## 2026-09-23
+
+### feat: tokens are stored per model, message by message
+
+A session used to be one row under one model. The CO2 and cost stored at insert
+were right (each subagent file was priced at its own model), but anything that
+read the row afterwards saw a single model: `recompute.sh` re-derived the whole
+session at the main thread's model, and the per-model table of `/carbon-pr`
+filed every subagent token under it. A new table, `session_models`, stores one
+row per (session, model) with the same token columns, CO2 and cost. Each
+assistant message counts under the model that produced it, so a `/model`
+switch inside one transcript is now split too. The `sessions` row keeps its
+meaning: totals, the main thread's dominant model, and CO2 and cost equal to
+the sum over its models. Both tables are written in one transaction with a busy
+timeout, since the SessionEnd hook's detached run can overlap a Stop hook.
+
+`recompute.sh` re-derives each child row at its own model and sets the session
+to the sum; rows recorded before the table existed are still re-derived at
+their dominant model, and legacy (`methodology_version` 1) rows are still left
+alone. `backfill.sh` adds the per-model rows to existing sessions whose
+transcript is still on disk and still yields the stored token totals; their CO2
+and cost become the per-model sum. The carbon-pr table and the report's top
+model read the split, with the row model as fallback. METHODOLOGY.md says which
+rows are exact after a recompute and which are not.
+
+### feat: prices per model where a model's price differs from its family's
+
+`data/prices.json` gains `model_overrides`, matched on the exact id or the id
+followed by a dated snapshot suffix (so `claude-opus-5-5` never catches a
+`claude-opus-5-50`), longest key first. Opus 5.5 is billed at 4/20 with cache
+reads at 0.20, Fable 5.1 and Mythos 5.1 at 10/50 with cache reads at 0.025x
+input, and Sonnet 4.6, 4.5, 4, 3.7 and 3.5 at 3/15 (pricing page read
+2026-09-23). Before, a Sonnet 4.6 session was under-billed by a third and Fable
+5.1 cache reads were over-billed 4x. Emission factors stay per family; Opus 5.5
+uses the Opus factors. The family detection that five scripts each carried is
+now one function in `portable-lib.sh`. `tests/methodology-vectors.json` is
+unchanged (it is the family contract, replayed with overrides off); the new
+`tests/methodology-vectors-per-model.json` covers the resolution.
+
+### perf: the Stop hook reads a session in one pass
+
+The hook ran one `jq` per transcript plus about twenty `jq`/`awk` calls per
+file. It now reads the main transcript and all subagents in one `jq` pass and
+prices every model in one `awk`. On a synthetic 644 MB session (3,000 main
+messages, 200 subagent files) it went from 17 s to 3.5 s; on a 15 MB session
+with three subagents, from 0.45 s to 0.13 s.
+
+### fix: an apostrophe no longer drops a session on macOS
+
+The SQL quoting `"${X//\'/\'\'}"` keeps its backslashes under bash 3.2, the
+`/bin/bash` of macOS, so a project, branch or model name containing an
+apostrophe produced an invalid statement and the session was not recorded. The
+quote is now doubled through a variable, which every bash version expands the
+same way.
+
 ## 2026-09-21
 
 ### docs: two source attributions in the methodology say what the sources say
