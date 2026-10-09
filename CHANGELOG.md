@@ -1,5 +1,47 @@
 # Changelog
 
+## 2026-10-09
+
+### fix: Opus family priced as Opus 5.5
+
+Claude Code's `opus` alias resolves to Claude Opus 5.5 on the Anthropic API
+(code.claude.com/docs/en/model-config), launched 2026-09-22 at $4 / $20 with
+cache reads at $0.20 (0.05x input), unchanged since. The Opus family price in
+`data/prices.json` moves to 4 / 20. Opus 5, 4.8, 4.7, 4.6 and 4.5 are still
+sold at 5 / 25 and keep it through new overrides. The family uses the global
+0.1x cache-read multiplier, so the existing `claude-opus-5-5` override keeps
+the 0.05x read; an Opus id without an override (Opus 4.1, 4 and 3, all
+retired) is billed 4 / 20 with reads at $0.40.
+
+Golden vectors: the six Opus vectors of `tests/methodology-vectors.json`
+scale by 0.8 (CO2 unchanged, see `_reprice_2026_10_09_opus`);
+`tests/methodology-vectors-per-model.json` gains Opus 5 and Opus 4.8 override
+cases, and the `claude-opus-5-50` negative case moves to the new family price.
+
+### fix: Haiku family priced as Haiku 5.5, Sonnet 5.5 cache reads at 0.05x
+
+Anthropic launched Claude Haiku 5.5 on 2026-10-07 at $0.10 / $0.50 per million
+tokens, cache reads $0.01, ten times below Haiku 4.5. Claude Code's `haiku`
+alias now resolves to it (code.claude.com/docs/en/model-config), so the Haiku
+family price in `data/prices.json` moves to 0.1 / 0.5 and Haiku 4.5 keeps 1 / 5
+through a new `claude-haiku-4-5` override (dated ids like
+`claude-haiku-4-5-20251001` included). The same day Anthropic cut Sonnet 5.5
+cache reads from $0.20 to $0.10 (0.05x input): `claude-sonnet-5-5` gets an
+override with `cache_read_multiplier: 0.05`. The Sonnet family stays at Sonnet
+5's prices, since this file has one global cache-read multiplier. Pricing page
+re-read 2026-10-09.
+
+Haiku 5.5 bills 5x for a request whose prompt is over 100,000 tokens. That
+tier is not modelled: such requests are under-billed up to 5x. Haiku 3.5 and
+Haiku 3, both retired, have no override and fall to the new family price on a
+`recompute.sh --with-cost`.
+
+Golden vectors: the three Haiku vectors of `tests/methodology-vectors.json`
+move to the new family price (cost divided by 10, CO2 unchanged, see
+`_reprice_2026_10_09`); `tests/methodology-vectors-per-model.json` gains
+Sonnet 5.5, Haiku 4.5 (plain and dated) and Haiku 5.5 cases. Emission factors
+do not change.
+
 ## 2026-09-23
 
 ### feat: tokens are stored per model, message by message
