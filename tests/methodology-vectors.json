@@ -43,8 +43,8 @@
         "output": 10
       },
       "haiku": {
-        "input": 1,
-        "output": 5
+        "input": 0.1,
+        "output": 0.5
       }
     }
   },
@@ -93,7 +93,7 @@
       "cache_read_tokens": 500000,
       "output_tokens": 20000,
       "expected_co2_grams": 10.06,
-      "expected_cost_usd": 0.2025
+      "expected_cost_usd": 0.02025
     },
     {
       "id": "opus-cache-write-only",
@@ -171,7 +171,7 @@
       "cache_read_tokens": 0,
       "output_tokens": 10000,
       "expected_co2_grams": 4.33,
-      "expected_cost_usd": 0.06
+      "expected_cost_usd": 0.006
     },
     {
       "id": "opus-cache-write-1h-only",
@@ -230,8 +230,9 @@
       "cache_read_tokens": 10000000,
       "output_tokens": 0,
       "expected_co2_grams": 16.0,
-      "expected_cost_usd": 1.0
+      "expected_cost_usd": 0.1
     }
   ],
-  "_reprice_2026_09_07": "Sonnet family repriced 3/15 -> 2/10 (Claude Sonnet 5 list price, permanent since 2026-06-30). Only expected_cost_usd moves on the Sonnet vectors; every expected_co2_grams is unchanged."
+  "_reprice_2026_09_07": "Sonnet family repriced 3/15 -> 2/10 (Claude Sonnet 5 list price, permanent since 2026-06-30). Only expected_cost_usd moves on the Sonnet vectors; every expected_co2_grams is unchanged.",
+  "_reprice_2026_10_09": "Haiku family repriced 1/5 -> 0.1/0.5 (Claude Haiku 5.5, launched 2026-10-07, the model Claude Code's haiku alias resolves to; prompts up to 100,000 tokens). Only expected_cost_usd moves, on the three Haiku vectors (each divided by 10): haiku-mixed 0.2025 -> 0.02025, haiku-tiny-session 0.06 -> 0.006, haiku-cache-read-only 1.0 -> 0.1. Every expected_co2_grams is unchanged. haiku-mixed now needs 5 decimals, an exception to _rounding: a runner that rounds cost to 4 decimals reads 0.0203."
 }

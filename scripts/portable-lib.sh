@@ -361,7 +361,7 @@ def cc_params($f; $p):
   cc_family as $fam
   | cc_override($p.model_overrides) as $o
   | ({fable: [156, 3304], opus: [78, 1652], sonnet: [39, 826], haiku: [20, 413]}[$fam]) as $fd
-  | ({fable: [10, 50], opus: [5, 25], sonnet: [2, 10], haiku: [1, 5]}[$fam]) as $pd
+  | ({fable: [10, 50], opus: [5, 25], sonnet: [2, 10], haiku: [0.1, 0.5]}[$fam]) as $pd
   | { family: $fam,
       fin:   ($f.models[$fam].input  // $fd[0]),
       fout:  ($f.models[$fam].output // $fd[1]),

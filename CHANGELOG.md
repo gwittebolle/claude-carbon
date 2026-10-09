@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-10-09
+
+### fix: Haiku family priced as Haiku 5.5, Sonnet 5.5 cache reads at 0.05x
+
+Anthropic launched Claude Haiku 5.5 on 2026-10-07 at $0.10 / $0.50 per million
+tokens, cache reads $0.01, ten times below Haiku 4.5. Claude Code's `haiku`
+alias now resolves to it (code.claude.com/docs/en/model-config), so the Haiku
+family price in `data/prices.json` moves to 0.1 / 0.5 and Haiku 4.5 keeps 1 / 5
+through a new `claude-haiku-4-5` override (dated ids like
+`claude-haiku-4-5-20251001` included). The same day Anthropic cut Sonnet 5.5
+cache reads from $0.20 to $0.10 (0.05x input): `claude-sonnet-5-5` gets an
+override with `cache_read_multiplier: 0.05`. The Sonnet family stays at Sonnet
+5's prices, since this file has one global cache-read multiplier. Pricing page
+re-read 2026-10-09.
+
+Haiku 5.5 bills 5x for a request whose prompt is over 100,000 tokens. That
+tier is not modelled: such requests are under-billed up to 5x. Haiku 3.5 and
+Haiku 3, both retired, have no override and fall to the new family price on a
+`recompute.sh --with-cost`.
+
+Golden vectors: the three Haiku vectors of `tests/methodology-vectors.json`
+move to the new family price (cost divided by 10, CO2 unchanged, see
+`_reprice_2026_10_09`); `tests/methodology-vectors-per-model.json` gains
+Sonnet 5.5, Haiku 4.5 (plain and dated) and Haiku 5.5 cases. Emission factors
+do not change.
+
 ## 2026-09-23
 
 ### feat: tokens are stored per model, message by message

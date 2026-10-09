@@ -2,7 +2,7 @@
   "_purpose": "Golden vectors for the per-model price resolution (data/prices.json model_overrides). Companion to tests/methodology-vectors.json, which stays the family-level contract and is kept byte-identical because downstream consumers compare it byte for byte. Any change to model_overrides, to the family prices or factors, or to the matching rule MUST update these expected values in the same commit.",
   "_formulas": "Same co2_grams and cost_usd formulas as tests/methodology-vectors.json, with price_in, price_out and the three cache multipliers taken from the model's override when one matches, from the family and the global multipliers otherwise. Emission factors are always the family's.",
   "_matching": "An override key matches the model id exactly, or as a prefix followed only by a dated snapshot suffix -YYYYMMDD; a trailing context marker such as [1m] is ignored; the longest matching key wins. claude-opus-5-50 is the bounded-prefix negative case: it must NOT pick up the claude-opus-5-5 override.",
-  "_sources": "platform.claude.com/docs/en/about-claude/pricing, read 2026-09-23 (USD per Mtok): Opus 5.5 4/20, cache read 0.20; Fable 5.1 and Mythos 5.1 10/50, cache read 0.25; Fable 5 10/50, cache read 1; Opus 5 5/25; Sonnet 5 2/10; Sonnet 4.6 and 4.5 3/15; Haiku 4.5 1/5.",
+  "_sources": "platform.claude.com/docs/en/about-claude/pricing, read 2026-09-23 (USD per Mtok): Opus 5.5 4/20, cache read 0.20; Fable 5.1 and Mythos 5.1 10/50, cache read 0.25; Fable 5 10/50, cache read 1; Opus 5 5/25; Sonnet 5 2/10; Sonnet 4.6 and 4.5 3/15; Haiku 4.5 1/5. Re-read 2026-10-09: Sonnet 5.5 2/10, cache read 0.10 (0.05x since 2026-10-07); Haiku 5.5 0.10/0.50, cache read 0.01 (prompts up to 100,000 tokens), now the Haiku family price; Haiku 4.5 keeps 1/5 through its override.",
   "_token_semantics": "As in tests/methodology-vectors.json: input_tokens is the UNCACHED input, cache_creation_tokens the cache write, cache_creation_1h_tokens its 1-hour subset (optional, default 0).",
   "_rounding": "Token counts are multiples of 10,000, so every expected value is exact at <= 3 decimals for co2_grams and <= 4 decimals for cost_usd. Runners compare with a relative tolerance of 1e-6.",
   "vectors": [
@@ -112,7 +112,7 @@
     },
     {
       "id": "sonnet-5-family",
-      "description": "Sonnet 5 at the family price 2/10, same tokens as Sonnet 4.6",
+      "description": "Sonnet 5 at the family price 2/10 with cache reads at 0.1x, same tokens as Sonnet 4.6",
       "model": "claude-sonnet-5",
       "input_tokens": 10000,
       "cache_creation_tokens": 100000,
@@ -134,8 +134,32 @@
       "expected_cost_usd": 0.48
     },
     {
-      "id": "haiku-4-5-family",
-      "description": "Haiku 4.5 has no override: family price 1/5",
+      "id": "sonnet-5-5-override",
+      "description": "Sonnet 5.5 at 2/10 with cache reads at 0.05x, same tokens as Sonnet 5",
+      "model": "claude-sonnet-5-5",
+      "input_tokens": 10000,
+      "cache_creation_tokens": 100000,
+      "cache_creation_1h_tokens": 100000,
+      "cache_read_tokens": 1000000,
+      "output_tokens": 10000,
+      "expected_co2_grams": 15.67,
+      "expected_cost_usd": 0.62
+    },
+    {
+      "id": "sonnet-5-5-context-marker",
+      "description": "A trailing [1m] context marker does not hide the Sonnet 5.5 override",
+      "model": "claude-sonnet-5-5[1m]",
+      "input_tokens": 10000,
+      "cache_creation_tokens": 100000,
+      "cache_creation_1h_tokens": 100000,
+      "cache_read_tokens": 1000000,
+      "output_tokens": 10000,
+      "expected_co2_grams": 15.67,
+      "expected_cost_usd": 0.62
+    },
+    {
+      "id": "haiku-4-5-override",
+      "description": "Haiku 4.5 keeps 1/5 through its override, the Haiku family being Haiku 5.5",
       "model": "claude-haiku-4-5",
       "input_tokens": 10000,
       "cache_creation_tokens": 10000,
@@ -144,6 +168,30 @@
       "output_tokens": 10000,
       "expected_co2_grams": 4.69,
       "expected_cost_usd": 0.09
+    },
+    {
+      "id": "haiku-4-5-dated-snapshot",
+      "description": "Dated Haiku 4.5 id picks up its 1/5 override",
+      "model": "claude-haiku-4-5-20251001",
+      "input_tokens": 10000,
+      "cache_creation_tokens": 10000,
+      "cache_creation_1h_tokens": 10000,
+      "cache_read_tokens": 100000,
+      "output_tokens": 10000,
+      "expected_co2_grams": 4.69,
+      "expected_cost_usd": 0.09
+    },
+    {
+      "id": "haiku-5-5-family",
+      "description": "Haiku 5.5 has no override: family price 0.1/0.5, cache reads at 0.01, same tokens as Haiku 4.5",
+      "model": "claude-haiku-5-5",
+      "input_tokens": 10000,
+      "cache_creation_tokens": 10000,
+      "cache_creation_1h_tokens": 10000,
+      "cache_read_tokens": 100000,
+      "output_tokens": 10000,
+      "expected_co2_grams": 4.69,
+      "expected_cost_usd": 0.009
     }
   ]
 }
