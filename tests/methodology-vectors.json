@@ -35,8 +35,8 @@
         "output": 50
       },
       "opus": {
-        "input": 5,
-        "output": 25
+        "input": 4,
+        "output": 20
       },
       "sonnet": {
         "input": 2,
@@ -71,7 +71,7 @@
       "cache_read_tokens": 0,
       "output_tokens": 100000,
       "expected_co2_grams": 243.2,
-      "expected_cost_usd": 7.5
+      "expected_cost_usd": 6.0
     },
     {
       "id": "sonnet-cache-read-dominant",
@@ -104,7 +104,7 @@
       "cache_read_tokens": 0,
       "output_tokens": 0,
       "expected_co2_grams": 7.8,
-      "expected_cost_usd": 0.625
+      "expected_cost_usd": 0.5
     },
     {
       "id": "sonnet-cache-read-only",
@@ -160,7 +160,7 @@
       "cache_read_tokens": 8000000,
       "output_tokens": 60000,
       "expected_co2_grams": 182.58,
-      "expected_cost_usd": 8.15
+      "expected_cost_usd": 6.52
     },
     {
       "id": "haiku-tiny-session",
@@ -183,7 +183,7 @@
       "cache_read_tokens": 0,
       "output_tokens": 0,
       "expected_co2_grams": 7.8,
-      "expected_cost_usd": 1.0
+      "expected_cost_usd": 0.8
     },
     {
       "id": "opus-cache-write-split-ttl",
@@ -195,7 +195,7 @@
       "cache_read_tokens": 0,
       "output_tokens": 0,
       "expected_co2_grams": 15.6,
-      "expected_cost_usd": 1.8125
+      "expected_cost_usd": 1.45
     },
     {
       "id": "opus-claude-code-session-1h",
@@ -207,7 +207,7 @@
       "cache_read_tokens": 8000000,
       "output_tokens": 60000,
       "expected_co2_grams": 181.8,
-      "expected_cost_usd": 9.6
+      "expected_cost_usd": 7.68
     },
     {
       "id": "sonnet-cache-write-1h-over-total",
@@ -234,5 +234,6 @@
     }
   ],
   "_reprice_2026_09_07": "Sonnet family repriced 3/15 -> 2/10 (Claude Sonnet 5 list price, permanent since 2026-06-30). Only expected_cost_usd moves on the Sonnet vectors; every expected_co2_grams is unchanged.",
-  "_reprice_2026_10_09": "Haiku family repriced 1/5 -> 0.1/0.5 (Claude Haiku 5.5, launched 2026-10-07, the model Claude Code's haiku alias resolves to; prompts up to 100,000 tokens). Only expected_cost_usd moves, on the three Haiku vectors (each divided by 10): haiku-mixed 0.2025 -> 0.02025, haiku-tiny-session 0.06 -> 0.006, haiku-cache-read-only 1.0 -> 0.1. Every expected_co2_grams is unchanged. haiku-mixed now needs 5 decimals, an exception to _rounding: a runner that rounds cost to 4 decimals reads 0.0203."
+  "_reprice_2026_10_09": "Haiku family repriced 1/5 -> 0.1/0.5 (Claude Haiku 5.5, launched 2026-10-07, the model Claude Code's haiku alias resolves to; prompts up to 100,000 tokens). Only expected_cost_usd moves, on the three Haiku vectors (each divided by 10): haiku-mixed 0.2025 -> 0.02025, haiku-tiny-session 0.06 -> 0.006, haiku-cache-read-only 1.0 -> 0.1. Every expected_co2_grams is unchanged. haiku-mixed now needs 5 decimals, an exception to _rounding: a runner that rounds cost to 4 decimals reads 0.0203.",
+  "_reprice_2026_10_09_opus": "Opus family repriced 5/25 -> 4/20 (Claude Opus 5.5, launched 2026-09-22, the model Claude Code's opus alias resolves to; its 0.05x cache read is carried by the claude-opus-5-5 override, not by this family contract, which keeps the global 0.1x). Replayed without overrides, the six Opus vectors scale by exactly 0.8: opus-no-cache 7.5 -> 6.0, opus-cache-write-only 0.625 -> 0.5, opus-heavy-session 8.15 -> 6.52, opus-cache-write-1h-only 1.0 -> 0.8, opus-cache-write-split-ttl 1.8125 -> 1.45, opus-claude-code-session-1h 9.6 -> 7.68. Every expected_co2_grams is unchanged."
 }

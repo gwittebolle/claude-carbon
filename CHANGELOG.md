@@ -2,6 +2,22 @@
 
 ## 2026-10-09
 
+### fix: Opus family priced as Opus 5.5
+
+Claude Code's `opus` alias resolves to Claude Opus 5.5 on the Anthropic API
+(code.claude.com/docs/en/model-config), launched 2026-09-22 at $4 / $20 with
+cache reads at $0.20 (0.05x input), unchanged since. The Opus family price in
+`data/prices.json` moves to 4 / 20. Opus 5, 4.8, 4.7, 4.6 and 4.5 are still
+sold at 5 / 25 and keep it through new overrides. The family uses the global
+0.1x cache-read multiplier, so the existing `claude-opus-5-5` override keeps
+the 0.05x read; an Opus id without an override (Opus 4.1, 4 and 3, all
+retired) is billed 4 / 20 with reads at $0.40.
+
+Golden vectors: the six Opus vectors of `tests/methodology-vectors.json`
+scale by 0.8 (CO2 unchanged, see `_reprice_2026_10_09_opus`);
+`tests/methodology-vectors-per-model.json` gains Opus 5 and Opus 4.8 override
+cases, and the `claude-opus-5-50` negative case moves to the new family price.
+
 ### fix: Haiku family priced as Haiku 5.5, Sonnet 5.5 cache reads at 0.05x
 
 Anthropic launched Claude Haiku 5.5 on 2026-10-07 at $0.10 / $0.50 per million
