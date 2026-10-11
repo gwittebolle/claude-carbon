@@ -50,7 +50,7 @@ claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 
 
 Segments, left to right: project + git branch, model + context window %, session cost + CO2, 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
 
-> **Where the CO2 shows up.** The status line is a feature of the Claude Code terminal UI. It is displayed only when you run `claude` in a terminal, including the integrated terminal of VS Code or JetBrains. The IDE extensions' chat panel has no status line at all, so nothing is displayed there even though the hooks still run and your sessions are recorded: `/carbon-report` covers them. If you use the VS Code panel and want the live CO2, open a terminal in VS Code (`` Ctrl+` ``) and run `claude` from there. The web app (claude.ai/code) and the desktop app run neither the status line nor the hooks, so nothing is displayed or recorded there.
+> **Where the CO2 shows up.** The status line is a feature of the Claude Code terminal UI. It is displayed only when you run `claude` in a terminal, including the integrated terminal of VS Code or JetBrains. The IDE extensions' chat panel has no status line at all, so nothing is displayed there even though the hooks still run and your sessions are recorded: `/carbon-report` covers them. If you use the VS Code panel and want the live CO2, open a terminal in VS Code (`` Ctrl+` ``) and run `claude` from there. The web app (claude.ai/code) runs neither the status line nor the hooks, so nothing is displayed or recorded there. The desktop app does not display the status line either; the plugin's [mod](#the-co2-of-each-answer-mod) draws the CO2 in its Code tab.
 
 **5h quota source.** The percentage comes directly from Anthropic's `/api/oauth/usage` endpoint (the same data Claude Code displays in `/usage`). No heuristic, no token-limit file to seed. Two sources in order:
 
@@ -288,6 +288,27 @@ The badge is a static image built from your local database, so the number is mea
 It is one developer's total, so it belongs in your profile README or a personal project. In a team or organisation repository, reviewers will ask what produced the number and why it links out of the organisation, and they will be right to.
 
 Numbers follow the locale the report uses (`fr` prints `12,4 kg`, `us` and the world default print `12.4 kg`); `CLAUDE_CARBON_LOCALE` forces a set.
+
+## The CO2 of each answer (mod)
+
+The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that shows the CO2 of each answer when it ends, computed locally with the same formula and factors as the status line.
+
+- **Terminal**, including the integrated terminal of an editor and the JetBrains plugin: at the right end of the line that closes each answer, `✻ Worked for 4s · done 10:32 PM          1.1 g CO₂`.
+- **Desktop app, Code tab**: a line under the answer, only for an answer that costs more than three times your median.
+- **An unusual answer** (over 3× the median of your last 200 answers, and at least 10 g) shows the ratio, and the subagents' share when they weighed on it: `38 g CO₂ · 4× your median`.
+- **The session total** is pinned under the prompt, unless the claude-carbon status line already shows it (in a terminal). Requests of background subagents count in the session total, not in the answer that started them.
+
+Claude Code draws mods in the terminal and in the desktop app's Code tab only: nothing appears in the VS Code extension's chat panel, in cloud sessions or with `claude -p`. Mods need Claude Code 2.1.287 or later (2.1.286 in the desktop app).
+
+The mod comes with the plugin. Installed from the marketplace, run `/plugin marketplace update claude-carbon` and `/plugin update claude-carbon@claude-carbon`, then restart Claude Code. A new install, in a Claude Code session:
+
+```
+/plugin install claude-carbon --marketplace gwittebolle/claude-carbon
+```
+
+Installed with the curl, PowerShell or npm installer, you have the status line and the hooks but not the plugin, so not the mod. Installing the plugin on top would run the hooks twice: this case is not handled yet.
+
+`/carbon-stats` shows the median of your last answers and the model requests per prompt. Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, makes no network call and never changes what Claude does. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, or when none is set, and in English otherwise.
 
 ## Using with ccstatusline
 

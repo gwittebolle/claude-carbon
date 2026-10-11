@@ -21,6 +21,22 @@ jobs:
       - name: Replay golden vectors against data/factors.json + data/prices.json
         run: bash tests/run-vectors.sh
 
+  mod:
+    name: claude-carbon mod (parity and display rules)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The mod's pure modules against the golden vectors and the display rules.
+      # The mod's own *.test.tsx run under `claude plugin test`.
+      - name: Replay golden vectors and display rules against hooks/mod
+        run: node --experimental-strip-types tests/run-mod-tests.mjs
+
   install-wiring:
     name: install and update wiring
     runs-on: ubuntu-latest

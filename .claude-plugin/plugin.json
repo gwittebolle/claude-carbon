@@ -19,5 +19,14 @@
   "statusLine": {
     "type": "command",
     "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh\""
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "showPerTurn": {
+      "type": "boolean",
+      "title": "CO2 of each answer",
+      "description": "Show the CO2 of each answer at the end of the turn duration line. Off: only the session total stays.",
+      "default": true
+    }
   }
 }

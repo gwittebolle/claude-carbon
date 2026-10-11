@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-10-10
+
+### feat: a Claude Code mod in the plugin shows the CO2 of each answer
+
+The plugin now holds a Claude Code mod (`hooks/mod/`, declared in
+`hooks/hooks.json` beside the bash hooks; Claude Code 2.1.287 or later, 2.1.286
+in the desktop app). It follows every model request through `turn.step`, main
+loop and subagents, and computes its CO2 with the formula, factors
+(`data/factors.json`) and model resolution of the plugin;
+`tests/run-mod-tests.mjs` replays both golden-vector files in CI.
+
+In the terminal the CO2 of each answer sits at the right end of the turn
+duration line. In the desktop app's Code tab, where that line is not drawn,
+it becomes a line under the answer, for answers over three times the user's
+median only. The session total is pinned under the prompt unless the
+claude-carbon status line is configured. `/carbon-stats` reports the median and
+the model requests per prompt. The mod draws nothing in the VS Code
+extension's chat panel, in cloud sessions or under `claude -p`. It writes no
+database: the Stop hook keeps recording sessions. Installs made with the curl,
+PowerShell or npm installer do not get it yet.
+
 ## 2026-10-09
 
 ### fix: Opus family priced as Opus 5.5

@@ -33,5 +33,8 @@
         ]
       }
     ]
-  }
+  },
+  "modules": [
+    "./mod/register.tsx"
+  ]
 }

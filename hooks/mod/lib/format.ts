@@ -1,0 +1,140 @@
+// What an answer's CO2 line says and when it raises its voice. Pure: no Claude Code API, so
+// Node runs it directly (tests/run-mod-tests.mjs).
+
+export type Lang = "fr" | "en";
+
+export type AnswerCo2View = {
+  // "4,2 g CO₂", or "38 g CO₂ · 4× votre médiane" for an unusual answer
+  main: string;
+  // "dont 3 sous-agents : 22 g", only on an unusual answer the subagents weighed on
+  sub: string | null;
+  isUnusual: boolean;
+};
+
+export type TurnTotals = {
+  grams: number;
+  subagentGrams: number;
+  subagents: number;
+};
+
+export const HISTORY_SIZE = 200;
+export const MIN_HISTORY = 20;
+export const UNUSUAL_RATIO = 3;
+export const UNUSUAL_FLOOR_GRAMS = 10;
+export const SUBAGENT_SHARE = 0.1;
+
+const NBSP = " ";
+
+// Same order and sentinels as detect_equiv_set (scripts/equiv-lib.sh). With no
+// variable set, the system locale decides; with neither, French, as in the bash.
+export function detectLang(
+  envValues: Array<string | undefined>,
+  systemLocale?: string,
+): Lang {
+  for (const value of envValues) {
+    if (value === undefined || value === "") continue;
+    if (
+      value === "C" ||
+      value.startsWith("C.") ||
+      value === "POSIX" ||
+      value.startsWith("POSIX.")
+    )
+      continue;
+    return value.toLowerCase().startsWith("fr") ? "fr" : "en";
+  }
+  if (systemLocale !== undefined && systemLocale !== "") {
+    return systemLocale.toLowerCase().startsWith("fr") ? "fr" : "en";
+  }
+  return "fr";
+}
+
+function decimal(value: number, digits: number, lang: Lang): string {
+  const text = value.toFixed(digits);
+  return lang === "fr" ? text.replace(".", ",") : text;
+}
+
+// < 0.1 g, one decimal under 10 g, whole grams under 1 kg, then kg with one decimal.
+// The displayed precision never exceeds the estimate's.
+export function formatGrams(
+  grams: number,
+  lang: Lang,
+  withUnit = true,
+): string {
+  const unit = withUnit ? `${NBSP}CO₂` : "";
+  if (grams < 0.1) return `<${NBSP}${decimal(0.1, 1, lang)}${NBSP}g${unit}`;
+  const tenths = Math.round(grams * 10) / 10;
+  if (tenths < 10) return `${decimal(tenths, 1, lang)}${NBSP}g${unit}`;
+  const whole = Math.round(grams);
+  if (whole < 1000) return `${whole}${NBSP}g${unit}`;
+  const kilos = Math.round(grams / 100) / 10;
+  return `${decimal(kilos, 1, lang)}${NBSP}kg${unit}`;
+}
+
+export function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const upper = sorted[mid] ?? 0;
+  return sorted.length % 2 === 1 ? upper : ((sorted[mid - 1] ?? 0) + upper) / 2;
+}
+
+// The current answer is compared before it joins the history.
+export function isUnusual(grams: number, history: number[]): boolean {
+  if (history.length < MIN_HISTORY || grams < UNUSUAL_FLOOR_GRAMS) return false;
+  const m = median(history);
+  return m > 0 && grams > UNUSUAL_RATIO * m;
+}
+
+export function buildAnswerCo2(
+  turn: TurnTotals,
+  history: number[],
+  lang: Lang,
+): AnswerCo2View {
+  const amount = formatGrams(turn.grams, lang);
+  if (!isUnusual(turn.grams, history))
+    return { main: amount, sub: null, isUnusual: false };
+  const ratio = Math.round(turn.grams / median(history));
+  const main = `${amount} · ${ratio}× ${lang === "fr" ? "votre médiane" : "your median"}`;
+  const share = turn.grams > 0 ? turn.subagentGrams / turn.grams : 0;
+  if (turn.subagents === 0 || share < SUBAGENT_SHARE)
+    return { main, sub: null, isUnusual: true };
+  const n = turn.subagents;
+  const grams = formatGrams(turn.subagentGrams, lang, false);
+  const sub =
+    lang === "fr"
+      ? `dont ${n} sous-agent${n > 1 ? "s" : ""}${NBSP}: ${grams}`
+      : `incl. ${n} subagent${n > 1 ? "s" : ""}: ${grams}`;
+  return { main, sub, isUnusual: true };
+}
+
+// The single line drawn under the answer where the turn duration line is not
+// (the Desktop app): only ever for an unusual answer.
+export function answerLine(view: AnswerCo2View): string {
+  return view.sub === null
+    ? view.main
+    : `${view.main} · ${view.sub}`;
+}
+
+export function sessionLine(grams: number, lang: Lang): string {
+  return `claude-carbon · ${formatGrams(grams, lang, false)} ${lang === "fr" ? "cette session" : "this session"}`;
+}
+
+export function welcomeText(lang: Lang): string {
+  return lang === "fr"
+    ? "Le CO₂ de chaque réponse s'affiche à sa fin. Les réponses inhabituelles ressortent."
+    : "Each answer's CO₂ now shows when it ends. Unusual answers stand out.";
+}
+
+export function pushHistory(history: number[], grams: number): number[] {
+  if (!(grams > 0)) return history;
+  return [...history, grams].slice(-HISTORY_SIZE);
+}
+
+// The claude-carbon status line already shows the session total: no second one.
+export function isCarbonStatusLine(command: unknown): boolean {
+  return (
+    typeof command === "string" &&
+    command.includes("claude-carbon") &&
+    command.includes("statusline.sh")
+  );
+}
