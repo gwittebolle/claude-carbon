@@ -2,6 +2,13 @@
 
 ## 2026-10-12
 
+### docs: a pixel CO2 molecule as the README mascot
+
+The README opens on a row of eight pixel CO2 molecules (O=C=O, the carbon in
+the middle with two eyes), coloured from dark blue to dark red like warming
+stripes. The image is `docs/mascot-stripes.svg`: plain pixel paths, no script,
+with a grey outline so the darkest colours stay visible on GitHub's dark theme.
+
 ### feat: the mod's pinned entry gives the session's CO2 and API-price cost (1.10.0)
 
 The entry the mod pins under the prompt now reads `Cette session : 3,6 gCO₂ ·
