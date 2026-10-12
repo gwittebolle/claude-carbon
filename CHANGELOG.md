@@ -15,11 +15,12 @@ In the terminal the CO2 of each answer sits at the right end of the turn
 duration line. In the desktop app's Code tab, where that line is not drawn,
 it becomes a line under the answer, for answers over three times the user's
 median only. The session total is pinned under the prompt unless the
-claude-carbon status line is configured. `/carbon-stats` reports the median and
-the model requests per prompt. The mod draws nothing in the VS Code
-extension's chat panel, in cloud sessions or under `claude -p`. It writes no
-database: the Stop hook keeps recording sessions. Installs made with the curl,
-PowerShell or npm installer do not get it yet.
+claude-carbon status line is configured. In the desktop app that entry also
+gives the last answer's CO2. The mod writes every quantity as gCO₂ or kgCO₂.
+`/carbon-stats` reports the median and the model requests per prompt. The mod
+draws nothing in the VS Code extension's chat panel, in cloud sessions or under
+`claude -p`. It writes no database: the Stop hook keeps recording sessions.
+Installs made with the curl, PowerShell or npm installer do not get it yet.
 
 ## 2026-10-09
 

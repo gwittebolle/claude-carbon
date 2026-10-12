@@ -1,9 +1,10 @@
 // The claude-carbon mod: the CO2 of each Claude Code answer, at the moment the answer ends.
 //
 // Terminal: at the right end of the turn duration line ("✻ Worked for 4s · done 10:32 PM
-// ... 1,1 g CO₂"). Desktop app, where that line is not drawn: a line under the answer, for
+// ... 1,1 gCO₂"). Desktop app, where that line is not drawn: a line under the answer, for
 // unusual answers only. The session total is pinned under the prompt, unless the
-// claude-carbon status line already shows it on this surface.
+// claude-carbon status line already shows it on this surface. Where no terminal is
+// attached, the pinned session entry also carries the last answer's figure.
 //
 // One request at a time through turn.step, the formula and factors of the bash plugin
 // (lib/co2.ts). Writes no database, calls no network, never changes what Claude does.
@@ -304,21 +305,23 @@ export const register: Register = (on, options) => {
         key: "session",
       });
       const surfaces = await $.session.surfaces();
-      const isTerminal = surfaces.includes("terminal");
+      // No terminal draws this session: the duration line never shows here.
+      const isRemoteOnly =
+        surfaces.length > 0 && !surfaces.includes("terminal");
       // The claude-carbon status line only shows in a terminal.
       if (
-        (!hasCarbonStatusLine || (surfaces.length > 0 && !isTerminal)) &&
+        (!hasCarbonStatusLine || isRemoteOnly) &&
         total !== undefined &&
         total.grams > 0
       ) {
-        $.ui.status(sessionLine(total.grams, lang));
+        // The last answer's figure, in place of the duration line; dropped when the
+        // answer counted nothing, so a stale figure never stays on screen.
+        const last = showPerTurn && isRemoteOnly && isCounted ? done.grams : null;
+        $.ui.status(sessionLine(total.grams, lang, last));
       }
-      if (co2 !== null && co2.isUnusual && showPerTurn) {
-        // Where no terminal draws the session, the duration line never shows: the
-        // figure becomes a line under the answer, for unusual answers only.
-        if (surfaces.length > 0 && !isTerminal) {
-          return { ...result, text: answerLine(co2) };
-        }
+      // The figure becomes a line under the answer, for unusual answers only.
+      if (co2 !== null && co2.isUnusual && showPerTurn && isRemoteOnly) {
+        return { ...result, text: answerLine(co2) };
       }
     } catch {
       // A failure here leaves the answer as it was.

@@ -4,9 +4,9 @@
 export type Lang = "fr" | "en";
 
 export type AnswerCo2View = {
-  // "4,2 g CO₂", or "38 g CO₂ · 4× votre médiane" for an unusual answer
+  // "4,2 gCO₂", or "38 gCO₂ · 4× votre médiane" for an unusual answer
   main: string;
-  // "dont 3 sous-agents : 22 g", only on an unusual answer the subagents weighed on
+  // "dont 3 sous-agents : 22 gCO₂", only on an unusual answer the subagents weighed on
   sub: string | null;
   isUnusual: boolean;
 };
@@ -24,6 +24,7 @@ export const UNUSUAL_FLOOR_GRAMS = 10;
 export const SUBAGENT_SHARE = 0.1;
 
 const NBSP = " ";
+const UNIT = "CO₂";
 
 // Same order and sentinels as detect_equiv_set (scripts/equiv-lib.sh). With no
 // variable set, the system locale decides; with neither, French, as in the bash.
@@ -55,19 +56,14 @@ function decimal(value: number, digits: number, lang: Lang): string {
 
 // < 0.1 g, one decimal under 10 g, whole grams under 1 kg, then kg with one decimal.
 // The displayed precision never exceeds the estimate's.
-export function formatGrams(
-  grams: number,
-  lang: Lang,
-  withUnit = true,
-): string {
-  const unit = withUnit ? `${NBSP}CO₂` : "";
-  if (grams < 0.1) return `<${NBSP}${decimal(0.1, 1, lang)}${NBSP}g${unit}`;
+export function formatGrams(grams: number, lang: Lang): string {
+  if (grams < 0.1) return `<${NBSP}${decimal(0.1, 1, lang)}${NBSP}g${UNIT}`;
   const tenths = Math.round(grams * 10) / 10;
-  if (tenths < 10) return `${decimal(tenths, 1, lang)}${NBSP}g${unit}`;
+  if (tenths < 10) return `${decimal(tenths, 1, lang)}${NBSP}g${UNIT}`;
   const whole = Math.round(grams);
-  if (whole < 1000) return `${whole}${NBSP}g${unit}`;
+  if (whole < 1000) return `${whole}${NBSP}g${UNIT}`;
   const kilos = Math.round(grams / 100) / 10;
-  return `${decimal(kilos, 1, lang)}${NBSP}kg${unit}`;
+  return `${decimal(kilos, 1, lang)}${NBSP}kg${UNIT}`;
 }
 
 export function median(values: number[]): number {
@@ -99,7 +95,7 @@ export function buildAnswerCo2(
   if (turn.subagents === 0 || share < SUBAGENT_SHARE)
     return { main, sub: null, isUnusual: true };
   const n = turn.subagents;
-  const grams = formatGrams(turn.subagentGrams, lang, false);
+  const grams = formatGrams(turn.subagentGrams, lang);
   const sub =
     lang === "fr"
       ? `dont ${n} sous-agent${n > 1 ? "s" : ""}${NBSP}: ${grams}`
@@ -115,8 +111,17 @@ export function answerLine(view: AnswerCo2View): string {
     : `${view.main} · ${view.sub}`;
 }
 
-export function sessionLine(grams: number, lang: Lang): string {
-  return `claude-carbon · ${formatGrams(grams, lang, false)} ${lang === "fr" ? "cette session" : "this session"}`;
+// The entry pinned under the prompt. The surface already heads it with the plugin's name.
+// lastAnswerGrams is given only where the turn duration line is not drawn.
+export function sessionLine(
+  sessionGrams: number,
+  lang: Lang,
+  lastAnswerGrams: number | null = null,
+): string {
+  const fr = lang === "fr";
+  const total = `${formatGrams(sessionGrams, lang)} ${fr ? "cette session" : "this session"}`;
+  if (lastAnswerGrams === null || !(lastAnswerGrams > 0)) return total;
+  return `${total} · ${fr ? "dernière réponse" : "last answer"} ${formatGrams(lastAnswerGrams, lang)}`;
 }
 
 export function welcomeText(lang: Lang): string {

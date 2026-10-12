@@ -189,9 +189,9 @@ describe("terminal", () => {
     await runTurn($, [ORDINARY], 38000);
     const drawn = await durationLine($, 38000);
     expect(drawn).toContain("✻ Baked for 38s");
-    expect(drawn).toContain("4,0 g CO₂");
+    expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("warning");
-    expect(plain(statuses.at(-1))).toBe("claude-carbon · 4,0 g cette session");
+    expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
   });
 
   test("an unusual answer shows its ratio to the median and its subagents", async ($: any, on: any) => {
@@ -213,9 +213,9 @@ describe("terminal", () => {
     );
     const drawn = await durationLine($, 372000);
     // 10.068 + 1.652 + 1.652 = 13.372 g, 13× a 1 g median
-    expect(drawn).toContain("13 g CO₂ · 13× votre médiane");
+    expect(drawn).toContain("13 gCO₂ · 13× votre médiane");
     expect(drawn).toContain("warning");
-    expect(drawn).toContain("dont 2 sous-agents : 3,3 g");
+    expect(drawn).toContain("dont 2 sous-agents : 3,3 gCO₂");
   });
 
   test("engine work under an unknown agent counts but is not named a subagent", async ($: any, on: any) => {
@@ -231,7 +231,7 @@ describe("terminal", () => {
       90000,
     );
     const drawn = await durationLine($, 90000);
-    expect(drawn).toContain("12 g CO₂ · 12× votre médiane");
+    expect(drawn).toContain("12 gCO₂ · 12× votre médiane");
     expect(drawn).not.toContain("sous-agent");
   });
 
@@ -246,10 +246,10 @@ describe("terminal", () => {
       async () => spawn($, "bg-1", true),
     );
     const drawn = await durationLine($, 38000);
-    expect(drawn).toContain("4,0 g CO₂");
+    expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("médiane");
     // 4.006 + 9.912 = 13.918 g in the session
-    expect(plain(statuses.at(-1))).toBe("claude-carbon · 14 g cette session");
+    expect(plain(statuses.at(-1))).toBe("14 gCO₂ cette session");
   });
 
   test("requests after an answer ended never land on the next answer", async ($: any, on: any) => {
@@ -265,10 +265,10 @@ describe("terminal", () => {
     );
     await runTurn($, [ORDINARY], 21000);
     const drawn = await durationLine($, 21000);
-    expect(drawn).toContain("4,0 g CO₂");
+    expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("sous-agent");
     // 4.006 + 9.912 + 4.006 = 17.924 g in the session
-    expect(plain(statuses.at(-1))).toBe("claude-carbon · 18 g cette session");
+    expect(plain(statuses.at(-1))).toBe("18 gCO₂ cette session");
   });
 
   test("a line only shows its own turn's CO2", async ($: any, on: any) => {
@@ -290,7 +290,7 @@ describe("terminal", () => {
       4700,
     );
     expect(await durationLine($, 4700)).not.toContain("CO₂");
-    expect(await durationLine($, 4200)).toContain("4,0 g CO₂");
+    expect(await durationLine($, 4200)).toContain("4,0 gCO₂");
   });
 
   test(
@@ -302,7 +302,7 @@ describe("terminal", () => {
       await startSession($);
       for (let i = 0; i < 100; i += 1) await runTurn($, [ORDINARY], 10000 + i);
       await runTurn($, [HEAVY], 4200);
-      expect(await durationLine($, 4200)).toContain("10 g CO₂");
+      expect(await durationLine($, 4200)).toContain("10 gCO₂");
       expect(await durationLine($, 10000)).not.toContain("CO₂");
     },
   );
@@ -345,7 +345,7 @@ describe("terminal", () => {
       expect(await durationLine($, 38000)).not.toContain("CO₂");
     }
     await runTurn($, [ORDINARY], 20000);
-    expect(plain(statuses.at(-1))).toBe("claude-carbon · 4,0 g cette session");
+    expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
   });
 });
 
@@ -363,7 +363,7 @@ describe("desktop", () => {
     engineSteps(on);
     await startSession($);
     const result = await runTurn($, [HEAVY], 90000);
-    expect(plain(result.text)).toBe("10 g CO₂ · 10× votre médiane");
+    expect(plain(result.text)).toBe("10 gCO₂ · 10× votre médiane");
   });
 
   test("a terminal session never gets the line under the answer", async ($: any, on: any) => {
@@ -382,8 +382,122 @@ describe("desktop", () => {
     engineSteps(on);
     await startSession($);
     await runTurn($, [ORDINARY], 38000);
-    expect(plain(statuses.at(-1))).toBe("claude-carbon · 4,0 g cette session");
+    expect(plain(statuses.at(-1))).toBe(
+      "4,0 gCO₂ cette session · dernière réponse 4,0 gCO₂",
+    );
   });
+
+  // The surface already heads the entry with the plugin's name.
+  const expectNoPluginName = (statuses: Array<string | undefined>) => {
+    for (const text of statuses) expect(text).not.toContain("claude-carbon");
+  };
+
+  test("an ordinary answer puts its figure in the pinned entry", async ($: any, on: any) => {
+    const { statuses } = world(on, {
+      surfaces: ["desktop"],
+      history: TWENTY_GRAMS,
+    });
+    engineSteps(on);
+    await startSession($);
+    const result = await runTurn($, [ORDINARY], 38000);
+    expectNoPluginName(statuses);
+    expect(result.text).toBe("done");
+    expect(plain(statuses.at(-1))).toBe(
+      "4,0 gCO₂ cette session · dernière réponse 4,0 gCO₂",
+    );
+  });
+
+  test("the entry follows the last answer", async ($: any, on: any) => {
+    const { statuses } = world(on, {
+      surfaces: ["desktop"],
+      history: TWENTY_GRAMS,
+    });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    await runTurn($, [ORDINARY], 21000);
+    expectNoPluginName(statuses);
+    expect(plain(statuses.at(-1))).toBe(
+      "8,0 gCO₂ cette session · dernière réponse 4,0 gCO₂",
+    );
+  });
+
+  test("an unusual answer: ratio under the answer, plain figure in the entry", async ($: any, on: any) => {
+    const { statuses } = world(on, {
+      surfaces: ["desktop"],
+      history: TWENTY_GRAMS,
+    });
+    engineSteps(on);
+    await startSession($);
+    const result = await runTurn($, [HEAVY], 90000);
+    expectNoPluginName(statuses);
+    expect(plain(result.text)).toBe("10 gCO₂ · 10× votre médiane");
+    expect(plain(statuses.at(-1))).toBe(
+      "10 gCO₂ cette session · dernière réponse 10 gCO₂",
+    );
+  });
+
+  test("an excluded last answer drops the tail", async ($: any, on: any) => {
+    const { statuses } = world(on, {
+      surfaces: ["desktop"],
+      history: TWENTY_GRAMS,
+    });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    await runTurn(
+      $,
+      [{ model: "glm-4.7-flash", input: 5000, output: 5000 }],
+      12000,
+    );
+    expectNoPluginName(statuses);
+    expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
+  });
+
+  test("a background subagent counts in the total, not in the last answer", async ($: any, on: any) => {
+    const { statuses } = world(on, {
+      surfaces: ["desktop"],
+      history: TWENTY_GRAMS,
+    });
+    engineSteps(on);
+    await startSession($);
+    await runTurn(
+      $,
+      [ORDINARY, { model: "claude-opus-5-5", output: 6000, agentId: "bg-1" }],
+      38000,
+      async () => spawn($, "bg-1", true),
+    );
+    expectNoPluginName(statuses);
+    // 4.006 + 9.912 = 13.918 g in the session, 4.006 g in the answer
+    expect(plain(statuses.at(-1))).toBe(
+      "14 gCO₂ cette session · dernière réponse 4,0 gCO₂",
+    );
+  });
+
+  test("a terminal attached keeps the short entry", async ($: any, on: any) => {
+    const { statuses } = world(on, {
+      surfaces: ["terminal", "desktop"],
+      history: TWENTY_GRAMS,
+    });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expectNoPluginName(statuses);
+    expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
+  });
+
+  test(
+    "showPerTurn off: no tail on Desktop",
+    { options: { showPerTurn: false } },
+    async ($: any, on: any) => {
+      const { statuses } = world(on, { surfaces: ["desktop"] });
+      engineSteps(on);
+      await startSession($);
+      await runTurn($, [ORDINARY], 38000);
+      expectNoPluginName(statuses);
+      expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
+    },
+  );
 });
 
 describe("first run", () => {
@@ -415,7 +529,7 @@ test("/carbon-stats reports the median and requests per prompt", async ($: any, 
   await startSession($);
   const answer = await $.command.run({ command: "carbon-stats", args: "" });
   expect(plain(answer.text)).toContain(
-    "Médiane de vos 20 dernières réponses : 1,0 g CO₂",
+    "Médiane de vos 20 dernières réponses : 1,0 gCO₂",
   );
   expect(plain(answer.text)).toContain(
     "Requêtes au modèle par prompt : 1,0 en moyenne sur 20 prompts",

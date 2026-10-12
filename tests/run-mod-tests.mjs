@@ -27,6 +27,7 @@ import {
   pushHistory,
   sessionLine,
   answerLine,
+  welcomeText,
   HISTORY_SIZE,
 } from "../hooks/mod/lib/format.ts";
 
@@ -108,23 +109,26 @@ check(
 );
 
 // ── 2. Display rules ─────────────────────────────────────────────────────────
-const g = (n, lang = "fr", unit = true) =>
-  formatGrams(n, lang, unit).replaceAll(NBSP, " ");
+const g = (n, lang = "fr") => formatGrams(n, lang).replaceAll(NBSP, " ");
 
-check("0 g", g(0), "< 0,1 g CO₂");
-check("0.04 g", g(0.04), "< 0,1 g CO₂");
-check("0.1 g", g(0.1), "0,1 g CO₂");
-check("4.24 g", g(4.24), "4,2 g CO₂");
-check("9.94 g", g(9.94), "9,9 g CO₂");
-check("9.96 g rounds into whole grams", g(9.96), "10 g CO₂");
-check("37.6 g", g(37.6), "38 g CO₂");
-check("999.4 g", g(999.4), "999 g CO₂");
-check("999.6 g rounds into kg", g(999.6), "1,0 kg CO₂");
-check("1234 g", g(1234), "1,2 kg CO₂");
-check("english decimal point", g(4.24, "en"), "4.2 g CO₂");
-check("english < 0.1", g(0.02, "en"), "< 0.1 g CO₂");
-check("without unit", g(212.3, "fr", false), "212 g");
-check("nbsp before unit", formatGrams(38, "fr").includes(`38${NBSP}g`), true);
+check("0 g", g(0), "< 0,1 gCO₂");
+check("0.04 g", g(0.04), "< 0,1 gCO₂");
+check("0.1 g", g(0.1), "0,1 gCO₂");
+check("4.24 g", g(4.24), "4,2 gCO₂");
+check("9.94 g", g(9.94), "9,9 gCO₂");
+check("9.96 g rounds into whole grams", g(9.96), "10 gCO₂");
+check("37.6 g", g(37.6), "38 gCO₂");
+check("999.4 g", g(999.4), "999 gCO₂");
+check("999.6 g rounds into kg", g(999.6), "1,0 kgCO₂");
+check("1234 g", g(1234), "1,2 kgCO₂");
+check("english decimal point", g(4.24, "en"), "4.2 gCO₂");
+check("english < 0.1", g(0.02, "en"), "< 0.1 gCO₂");
+check("nbsp before unit", formatGrams(38, "fr") === `38${NBSP}gCO₂`, true);
+check(
+  "nbsp after <",
+  formatGrams(0.02, "fr") === `<${NBSP}0,1${NBSP}gCO₂`,
+  true,
+);
 
 check("median odd", median([5, 1, 3]), 3);
 check("median even", median([4, 1, 3, 2]), 2.5);
@@ -149,7 +153,7 @@ const ordinary = buildAnswerCo2(
   twenty,
   "fr",
 );
-check("ordinary answer", ordinary.main.replaceAll(NBSP, " "), "4,2 g CO₂");
+check("ordinary answer", ordinary.main.replaceAll(NBSP, " "), "4,2 gCO₂");
 check("ordinary answer not unusual", ordinary.isUnusual, false);
 
 const unusual = buildAnswerCo2(
@@ -160,17 +164,17 @@ const unusual = buildAnswerCo2(
 check(
   "unusual main",
   unusual.main.replaceAll(NBSP, " "),
-  "38 g CO₂ · 4× votre médiane",
+  "38 gCO₂ · 4× votre médiane",
 );
 check(
   "unusual sub",
   unusual.sub?.replaceAll(NBSP, " "),
-  "dont 3 sous-agents : 22 g",
+  "dont 3 sous-agents : 22 gCO₂",
 );
 check(
   "answer line",
   answerLine(unusual).replaceAll(NBSP, " "),
-  "38 g CO₂ · 4× votre médiane · dont 3 sous-agents : 22 g",
+  "38 gCO₂ · 4× votre médiane · dont 3 sous-agents : 22 gCO₂",
 );
 
 const oneAgent = buildAnswerCo2(
@@ -181,7 +185,7 @@ const oneAgent = buildAnswerCo2(
 check(
   "singular subagent",
   oneAgent.sub?.replaceAll(NBSP, " "),
-  "dont 1 sous-agent : 10 g",
+  "dont 1 sous-agent : 10 gCO₂",
 );
 
 const smallShare = buildAnswerCo2(
@@ -199,24 +203,64 @@ const english = buildAnswerCo2(
 check(
   "english unusual",
   english.main.replaceAll(NBSP, " "),
-  "38 g CO₂ · 4× your median",
+  "38 gCO₂ · 4× your median",
 );
 check(
   "english sub",
   english.sub?.replaceAll(NBSP, " "),
-  "incl. 3 subagents: 22 g",
+  "incl. 3 subagents: 22 gCO₂",
 );
 
-check(
-  "session line",
-  sessionLine(212.3, "fr").replaceAll(NBSP, " "),
-  "claude-carbon · 212 g cette session",
-);
-check(
-  "session line en",
-  sessionLine(212.3, "en").replaceAll(NBSP, " "),
-  "claude-carbon · 212 g this session",
-);
+const sessionCases = [
+  ["session line", [212.3, "fr"], "212 gCO₂ cette session"],
+  ["session line en", [212.3, "en"], "212 gCO₂ this session"],
+  [
+    "session line, last answer",
+    [14, "fr", 1.04],
+    "14 gCO₂ cette session · dernière réponse 1,0 gCO₂",
+  ],
+  [
+    "session line, last answer en",
+    [14, "en", 1.04],
+    "14 gCO₂ this session · last answer 1.0 gCO₂",
+  ],
+  [
+    "session line, tiny last answer",
+    [3.2, "fr", 0.03],
+    "3,2 gCO₂ cette session · dernière réponse < 0,1 gCO₂",
+  ],
+  [
+    "session line over 1 kg",
+    [1234, "fr", 6.4],
+    "1,2 kgCO₂ cette session · dernière réponse 6,4 gCO₂",
+  ],
+  ["session line, uncounted last answer", [14, "fr", 0], "14 gCO₂ cette session"],
+  ["session line, no last answer", [14, "fr", null], "14 gCO₂ cette session"],
+];
+const shown = [];
+for (const [name, args, expected] of sessionCases) {
+  const line = sessionLine(...args);
+  shown.push(line);
+  check(name, line.replaceAll(NBSP, " "), expected);
+}
+
+// Every string the mod puts on screen: never the plugin's name (the surface adds
+// it), never an em dash, never the word the mod is not.
+for (const lang of ["fr", "en"]) {
+  const view = buildAnswerCo2(
+    { grams: 38, subagentGrams: 22, subagents: 3 },
+    twenty,
+    lang,
+  );
+  shown.push(view.main, view.sub, answerLine(view), welcomeText(lang));
+  shown.push(sessionLine(52, lang, 38), sessionLine(52, lang));
+  for (const n of [0.02, 4.24, 37.6, 1234]) shown.push(formatGrams(n, lang));
+}
+for (const text of shown) {
+  check(`no plugin name: ${text}`, text.includes("claude-carbon"), false);
+  check(`no em dash: ${text}`, text.includes("\u2014"), false);
+  check(`no receipt: ${text}`, text.toLowerCase().includes("receipt"), false);
+}
 
 check("lang fr_FR", detectLang(["fr_FR.UTF-8"]), "fr");
 check("lang en_US", detectLang(["en_US.UTF-8"]), "en");
