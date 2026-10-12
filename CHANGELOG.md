@@ -17,6 +17,9 @@ it becomes a line under the answer, for answers over three times the user's
 median only. The session total is pinned under the prompt unless the
 claude-carbon status line is configured. In the desktop app that entry also
 gives the last answer's CO2. The mod writes every quantity as gCO₂ or kgCO₂.
+Background subagents, Claude Code's default, count in the session total only,
+never in an answer or in the median; a foreground subagent counts in the answer
+that started it, and stops counting there once sent to the background.
 `/carbon-stats` reports the median and the model requests per prompt. The mod
 draws nothing in the VS Code extension's chat panel, in cloud sessions or under
 `claude -p`. It writes no database: the Stop hook keeps recording sessions.

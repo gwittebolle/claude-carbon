@@ -27,23 +27,30 @@ type World = {
   surfaces?: string[];
   statusLine?: string;
   history?: number[];
+  // Values under the v1 key, which counted background subagents in the answer
+  legacyHistory?: number[];
   welcomed?: boolean;
 };
+
+const storedHistory = (values: number[], welcomed: boolean) => ({
+  values,
+  turns: values.length,
+  steps: values.length,
+  subagentSteps: 0,
+  welcomed,
+});
 
 // The engine beneath the plugin: each noun the mod calls, answered as a session would.
 // A mods API call answers { value } (or { deny }).
 function world(on: any, options: World = {}) {
   const statuses: Array<string | undefined> = [];
   const toasts: string[] = [];
-  const values = options.history ?? [];
+  const welcomed = options.welcomed ?? true;
   mock.store(on, {
-    history: {
-      values,
-      turns: values.length,
-      steps: values.length,
-      subagentSteps: 0,
-      welcomed: options.welcomed ?? true,
-    },
+    "history.v2": storedHistory(options.history ?? [], welcomed),
+    ...(options.legacyHistory === undefined
+      ? {}
+      : { history: storedHistory(options.legacyHistory, true) }),
   });
   mock.env(on, { LANG: "fr_FR.UTF-8" });
   on("fs.read", () => ({ value: FACTORS }));
@@ -70,6 +77,15 @@ function world(on: any, options: World = {}) {
   on("agent.spawn", ($: any, e: any) => ({
     model: "claude-haiku-5-5",
     agentId: e.description,
+  }));
+  // An Agent call that returns while its agent runs on: started in the background,
+  // or sent there with ctrl+b.
+  on("tool.call", { tool: "Agent" }, ($: any, e: any) => ({
+    result: {
+      isAsync: true,
+      status: "async_launched",
+      agentId: e.description,
+    },
   }));
   on("session.start", ($: any, e: any) => ({ cwd: e.cwd }));
   on("session.end", ($: any, e: any) => ({ sessionId: e.sessionId }));
@@ -111,7 +127,12 @@ async function startSession($: any) {
   });
 }
 
-async function spawn($: any, id: string, background = false) {
+async function spawn(
+  $: any,
+  id: string,
+  background = false,
+  parentAgentId?: string,
+) {
   await $.agent.spawn({
     prompt: "explore",
     description: id,
@@ -119,7 +140,18 @@ async function spawn($: any, id: string, background = false) {
     provider: { kind: "engine" },
     parentModel: "claude-opus-5-5",
     background,
+    ...(parentAgentId === undefined ? {} : { parentAgentId }),
   });
+}
+
+// The Agent call of a running agent returns `async_launched`.
+async function asyncLaunched($: any, id: string) {
+  await $.tool.call({ tool: "Agent", description: id, prompt: "explore" });
+}
+
+async function stats($: any) {
+  const answer = await $.command.run({ command: "carbon-stats", args: "" });
+  return plain(answer.text) ?? "";
 }
 
 async function step($: any, s: Step, turnId: string, index: number) {
@@ -269,6 +301,142 @@ describe("terminal", () => {
     expect(drawn).not.toContain("sous-agent");
     // 4.006 + 9.912 + 4.006 = 17.924 g in the session
     expect(plain(statuses.at(-1))).toBe("18 gCO₂ cette session");
+  });
+
+  test("a foreground subagent sent to the background leaves the answers after it", async ($: any, on: any) => {
+    const { statuses } = world(on);
+    engineSteps(on);
+    await startSession($);
+    const opusAgent = { model: "claude-opus-5-5", output: 6000, agentId: "fg-1" };
+    await $.turn.start({ text: "go", turnId: "t1" });
+    await spawn($, "fg-1");
+    await step($, ORDINARY, "t1", 0);
+    await step($, { model: "claude-haiku-5-5", output: 4000, agentId: "fg-1" }, "a1", 0);
+    // ctrl+b: the Agent call returns, the agent runs on
+    await asyncLaunched($, "fg-1");
+    await step($, opusAgent, "a1", 1);
+    await $.turn.complete({
+      answer: "done",
+      durationMs: 38000,
+      isAborted: false,
+      turnId: "t1",
+      reason: "answer",
+    });
+    await runTurn($, [ORDINARY, opusAgent], 21000);
+    // 4.006 + 1.652 g before ctrl+b, 4.006 g alone in the next answer
+    expect(await durationLine($, 38000)).toContain("5,7 gCO₂");
+    const drawn = await durationLine($, 21000);
+    expect(drawn).toContain("4,0 gCO₂");
+    expect(drawn).not.toContain("sous-agent");
+    // 5.658 + 9.912 + 4.006 + 9.912 = 29.488 g in the session
+    expect(plain(statuses.at(-1))).toBe("29 gCO₂ cette session");
+    // The median of 5.658 and 4.006, with no background request in it
+    expect(await stats($)).toContain("Médiane de vos 2 dernières réponses : 4,8 gCO₂");
+  });
+
+  test("a subagent started in the background stays out of the next answer", async ($: any, on: any) => {
+    const { statuses } = world(on);
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000, async () => {
+      await spawn($, "bg-2", true);
+      await asyncLaunched($, "bg-2");
+    });
+    await runTurn(
+      $,
+      [ORDINARY, { model: "claude-opus-5-5", output: 6000, agentId: "bg-2" }],
+      21000,
+    );
+    expect(await durationLine($, 21000)).toContain("4,0 gCO₂");
+    // 4.006 + 4.006 + 9.912 = 17.924 g in the session
+    expect(plain(statuses.at(-1))).toBe("18 gCO₂ cette session");
+    expect(await stats($)).toContain("Médiane de vos 2 dernières réponses : 4,0 gCO₂");
+  });
+
+  test("a subagent of a background subagent is in the background too", async ($: any, on: any) => {
+    const { statuses } = world(on);
+    engineSteps(on);
+    await startSession($);
+    await runTurn(
+      $,
+      [ORDINARY, { model: "claude-opus-5-5", output: 6000, agentId: "child-1" }],
+      38000,
+      async () => {
+        await spawn($, "bg-3", true);
+        await spawn($, "child-1", false, "bg-3");
+      },
+    );
+    const drawn = await durationLine($, 38000);
+    expect(drawn).toContain("4,0 gCO₂");
+    expect(drawn).not.toContain("sous-agent");
+    expect(plain(statuses.at(-1))).toBe("14 gCO₂ cette session");
+  });
+
+  test("a foreground subagent still running in the next answer stays out of it", async ($: any, on: any) => {
+    const { statuses } = world(on);
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000, async () => spawn($, "slow-1"));
+    // It starts a subagent of its own while the next answer is written
+    await runTurn(
+      $,
+      [
+        ORDINARY,
+        { model: "claude-opus-5-5", output: 6000, agentId: "slow-1" },
+        { model: "claude-haiku-5-5", output: 4000, agentId: "slow-child" },
+      ],
+      21000,
+      async () => spawn($, "slow-child", false, "slow-1"),
+    );
+    const drawn = await durationLine($, 21000);
+    expect(drawn).toContain("4,0 gCO₂");
+    expect(drawn).not.toContain("sous-agent");
+    // 4.006 + 4.006 + 9.912 + 1.652 = 19.576 g in the session
+    expect(plain(statuses.at(-1))).toBe("20 gCO₂ cette session");
+  });
+
+  test("a subagent of a foreground subagent counts in its parent's answer", async ($: any, on: any) => {
+    world(on, { history: TWENTY_GRAMS });
+    engineSteps(on);
+    await startSession($);
+    await runTurn(
+      $,
+      [HEAVY, { model: "claude-haiku-5-5", output: 4000, agentId: "child-2" }],
+      90000,
+      async () => {
+        await spawn($, "fg-2");
+        await spawn($, "child-2", false, "fg-2");
+      },
+    );
+    // 10.068 + 1.652 = 11.72 g, named as one subagent
+    const drawn = await durationLine($, 90000);
+    expect(drawn).toContain("12 gCO₂ · 12× votre médiane");
+    expect(drawn).toContain("dont 1 sous-agent : 1,7 gCO₂");
+  });
+
+  test("an answer only closes on its own turn", async ($: any, on: any) => {
+    world(on);
+    engineSteps(on);
+    await startSession($);
+    await $.turn.start({ text: "go", turnId: "t1" });
+    await step($, ORDINARY, "t1", 0);
+    await $.turn.complete({
+      answer: "",
+      durationMs: 1000,
+      isAborted: false,
+      turnId: "t0",
+      reason: "answer",
+    });
+    await step($, ORDINARY, "t1", 1);
+    await $.turn.complete({
+      answer: "done",
+      durationMs: 38000,
+      isAborted: false,
+      turnId: "t1",
+      reason: "answer",
+    });
+    expect(await durationLine($, 1000)).not.toContain("CO₂");
+    expect(await durationLine($, 38000)).toContain("8,0 gCO₂");
   });
 
   test("a line only shows its own turn's CO2", async ($: any, on: any) => {
@@ -522,6 +690,15 @@ test(
     expect(await durationLine($, 38000)).not.toContain("CO₂");
   },
 );
+
+test("the v1 history is not read", async ($: any, on: any) => {
+  world(on, { legacyHistory: TWENTY_GRAMS });
+  engineSteps(on);
+  await startSession($);
+  await runTurn($, [HEAVY], 90000);
+  expect(await durationLine($, 90000)).not.toContain("médiane");
+  expect(await stats($)).toContain("Votre dernière réponse : 10 gCO₂");
+});
 
 test("/carbon-stats reports the median and requests per prompt", async ($: any, on: any) => {
   world(on, { history: TWENTY_GRAMS });

@@ -44,7 +44,9 @@ const session = atom(
   { grams: 0, turns: 0 } as SessionTotal,
 );
 
-const HISTORY_KEY = "history";
+// v2: the values of v1 counted background subagents in the answer that started them.
+// The v1 key is left as it is and never read again.
+const HISTORY_KEY = "history.v2";
 const KEEP_ANSWERS = 100;
 
 type History = {
@@ -57,6 +59,7 @@ type History = {
 
 // The answer being written: from the main loop's turn.start to its turn.complete.
 type OpenTurn = {
+  turnId: string;
   grams: number;
   subagentGrams: number;
   // Subagents started in the foreground during this turn, and those that made a request
@@ -66,8 +69,9 @@ type OpenTurn = {
   subagentSteps: number;
 };
 
-function openTurn(): OpenTurn {
+function openTurn(turnId: string): OpenTurn {
   return {
+    turnId,
     grams: 0,
     subagentGrams: 0,
     spawned: new Set(),
@@ -114,10 +118,12 @@ export const register: Register = (on, options) => {
   let hasCarbonStatusLine = false;
   let current: OpenTurn | null = null;
   // Background subagents: their requests count in the session total only, since they
-  // can go on after the answer that started them has ended.
+  // can go on after the answer that started them has ended. Kept across /clear: an
+  // agent started before it may still be running.
   const background = new Set<string>();
-
-
+  // The turn each foreground subagent was started in. Its requests count in that
+  // answer only, even when it outlives it.
+  const owner = new Map<string, string>();
 
   on("session.start", async ($, e, next) => {
     try {
@@ -213,15 +219,44 @@ export const register: Register = (on, options) => {
     const started = await next(e);
     const id = started.agentId;
     if (id !== undefined) {
-      if (e.background) background.add(id);
-      else if (current !== null) current.spawned.add(id);
+      const parent = e.parentAgentId;
+      // A subagent of a background subagent is in the background too, and one of a
+      // foreground subagent belongs to its parent's answer.
+      if (e.background || (parent !== undefined && background.has(parent))) {
+        background.add(id);
+      } else {
+        const turnId =
+          (parent !== undefined ? owner.get(parent) : undefined) ??
+          current?.turnId;
+        if (turnId !== undefined) owner.set(id, turnId);
+        if (current !== null && turnId === current.turnId) {
+          current.spawned.add(id);
+        }
+      }
     }
     return started;
   }).catch(($, e, next) => next(e));
 
+  // A foreground subagent sent to the background (ctrl+b) ends its Agent call with
+  // this status: from then on it counts like one started there.
+  // @ts-ignore TS2589 under TypeScript 5.6, which gives up on this matcher's types
+  on("tool.call", { tool: "Agent" }, async ($, e, next) => {
+    const called = await next(e);
+    const record = called.result as
+      { status?: unknown; agentId?: unknown } | undefined;
+    if (
+      record?.status === "async_launched" &&
+      typeof record.agentId === "string"
+    ) {
+      background.add(record.agentId);
+      current?.spawned.delete(record.agentId);
+    }
+    return called;
+  }).catch(($, e, next) => next(e));
+
   on("turn.start", ($, e, next) => {
     // The main loop alone raises turn.start; a subagent's run does not.
-    current = openTurn();
+    current = openTurn(e.turnId);
     return next(e);
   });
 
@@ -238,10 +273,14 @@ export const register: Register = (on, options) => {
             grams: total.grams + grams,
           }));
           const agent = e.agentId;
-          // Outside an open answer, or from a background subagent: session total only.
+          // Outside an open answer, from a background subagent or from a subagent of
+          // an earlier answer: session total only. An agent no spawn named (the
+          // engine's own work, a compaction) counts in the open answer.
           if (
             current !== null &&
-            (agent === undefined || !background.has(agent))
+            (agent === undefined ||
+              (!background.has(agent) &&
+                (owner.get(agent) ?? current.turnId) === current.turnId))
           ) {
             current.grams += grams;
             if (agent === undefined) {
@@ -268,9 +307,10 @@ export const register: Register = (on, options) => {
     const result = await next(e);
     if (e.agentId !== undefined) return result;
     try {
+      // Only the turn that opened the answer closes it.
       const done = current;
+      if (done === null || e.turnId !== done.turnId) return result;
       current = null;
-      if (done === null) return result;
       const history = await loadHistory($);
       const isCounted = done.grams > 0;
       const co2 = isCounted
@@ -333,7 +373,6 @@ export const register: Register = (on, options) => {
     // /clear and /resume (and /branch, reported as resume) go on in another conversation.
     if (e.reason === "clear" || e.reason === "resume") {
       current = null;
-      background.clear();
       await resetSessionState($);
     }
     return next(e);
