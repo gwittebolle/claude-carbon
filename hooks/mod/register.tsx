@@ -647,7 +647,8 @@ export const register: Register = (on, options) => {
       const now = await $.clock.now();
       const past = pastSessions(pane.rows ?? [], pane.sessionId);
       const sm = sessionMedian(past);
-      const cls = sm === null ? null : classOf(total.grams, sm);
+      // Grey until there is a median, and until this session has counted something
+      const cls = sm === null || !(total.grams > 0) ? null : classOf(total.grams, sm);
       const color = colorOf(cls);
       // The running session joins the stripes with its live total, as the newest, at
       // the start its own row in the file gives.
@@ -719,67 +720,71 @@ export const register: Register = (on, options) => {
         pane.rows === null
           ? noHistoryText(lang)
           : hasStripes
-            ? historyLine(view.range, view.step, list.length, shown.length, bm, lang)
+            ? historyLine(view.range, view.step, list.length, shown.length, bm, lang) +
+              (bm === null ? ` · ${uncolouredText(lang)}` : "")
             : emptyRangeText(lang);
+      const span =
+        first === undefined || last === undefined
+          ? ""
+          : first.start === last.start
+            ? dateLabel(first.start, view.step, lang)
+            : `${dateLabel(first.start, view.step, lang)} → ${dateLabel(last.start, view.step, lang)}`;
+      // In a terminal each stripe widens to fill the line: three months read as three
+      // wide bands, not three cells.
+      const stripeWidth = Math.max(1, Math.min(8, Math.floor(room / Math.max(1, shown.length))));
+      const buttons = (
+        <Box flexDirection="row" columnGap={2} flexWrap="wrap">
+          {RANGES.map((range, i) => (
+            <Button
+              key={`range-${range}`}
+              label={rangeLabel(range, lang)}
+              hotkey={String(i + 1)}
+              {...choice(view.range === range)}
+              onPress={() => setView({ ...view, range })}
+            />
+          ))}
+          <Text dimColor>·</Text>
+          {STEPS.map((step) => (
+            <Button
+              key={`step-${step}`}
+              label={stepLabel(step, lang)}
+              {...choice(view.step === step)}
+              onPress={() => setView({ ...view, step })}
+            />
+          ))}
+        </Box>
+      );
       return (
         <Box flexDirection="column">
-          <Box flexDirection="row" alignItems="center">
+          <Box flexDirection="row">
             {mascot}
             <Box flexDirection="column" marginLeft={2} flexShrink={1}>
               <Text bold>{currentLine(total.grams, sm, lang)}</Text>
-              {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
-              <Text dimColor={!hasStripes}>{summary}</Text>
+              <Text dimColor={!hasStripes}>
+                {sm === null ? colorNote(past.length, lang) : summary}
+              </Text>
+              {buttons}
             </Box>
           </Box>
-          {hasStripes && (
-            <Box flexDirection="column" marginTop={1}>
-              {isTerminal ? (
-                <ui.Raster
-                  key="stripes"
-                  columns={stripes.length}
-                  rows={1}
-                  cells={stripeCells(stripes, 1)}
-                />
-              ) : (
-                <ui.Svg
-                  source={stripesSvg(stripes, stripesAlt(lang))}
-                  alt={stripesAlt(lang)}
-                  width={Math.min(640, Math.max(160, e.props.bodyColumns * 8))}
-                  height={40}
-                  isInteractive
-                />
-              )}
-              <Box
-                flexDirection="row"
-                justifyContent="space-between"
-                {...(isTerminal ? { width: stripes.length } : {})}
-              >
-                <Text dimColor>{dateLabel(first.start, view.step, lang)}</Text>
-                <Text dimColor>{dateLabel(last.start, view.step, lang)}</Text>
-              </Box>
-              {bm === null && <Text dimColor>{uncolouredText(lang)}</Text>}
-            </Box>
-          )}
-          <Box flexDirection="row" marginTop={1} columnGap={2} flexWrap="wrap">
-            {RANGES.map((range, i) => (
-              <Button
-                key={`range-${range}`}
-                label={rangeLabel(range, lang)}
-                hotkey={String(i + 1)}
-                {...choice(view.range === range)}
-                onPress={() => setView({ ...view, range })}
+          {sm === null && <Text dimColor={!hasStripes}>{summary}</Text>}
+          {hasStripes &&
+            (isTerminal ? (
+              <ui.Raster
+                key="stripes"
+                columns={stripes.length * stripeWidth}
+                rows={2}
+                cells={stripeCells(stripes, 2, stripeWidth)}
+              />
+            ) : (
+              <ui.Svg
+                source={stripesSvg(stripes, stripesAlt(lang))}
+                alt={stripesAlt(lang)}
+                width={Math.min(640, Math.max(160, e.props.bodyColumns * 8))}
+                height={40}
+                isInteractive
               />
             ))}
-            <Text dimColor>·</Text>
-            {STEPS.map((step) => (
-              <Button
-                key={`step-${step}`}
-                label={stepLabel(step, lang)}
-                {...choice(view.step === step)}
-                onPress={() => setView({ ...view, step })}
-              />
-            ))}
-          </Box>
+          {hasStripes && <Text dimColor>{span}</Text>}
         </Box>
       );
     } catch {

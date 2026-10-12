@@ -23,7 +23,7 @@ The mod registers `/carbon-panel`, which opens a pane, or closes it when it is o
 the top, a pixel CO2 molecule (`hooks/mod/lib/mascot.ts`) coloured by this
 session's CO2 against the median of past sessions, in eight classes by powers of
 two from dark blue to dark red, grey until 10 past sessions are recorded. It hops
-one terminal row up and down while a main-loop turn runs, one step every 460 ms for
+one pixel up and down while a main-loop turn runs, one step every 460 ms for
 the bluest down to 124 ms for the reddest: a small 13 x 4 cell molecule blitted
 into a `Raster` in the terminal, a CSS animation inside an `Svg` in the desktop
 app, still under reduced motion. Below it, warming

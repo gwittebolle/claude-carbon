@@ -619,9 +619,9 @@ const decoded = Buffer.from(mascotCells(MINI_FRAMES[1], PALETTE[2]), "base64");
 check("cells decode to the right size", decoded.length, CELL_COLUMNS * CELL_ROWS * 12);
 check("cells little-endian", decoded.readUInt32LE(0), mascotWords(MINI_FRAMES[1], PALETTE[2])[0]);
 check("mini frames same size", MINI_FRAMES.every((f) => f.length === CELL_ROWS * 2 && f.every((r) => r.length === CELL_COLUMNS)), true);
-// The hop is one terminal row: frame B is frame A two pixels up, legs aside
-check("mini hop one row", MINI_FRAMES[0][2], MINI_FRAMES[1][0]);
-check("big hop", FRAMES[0][3], FRAMES[1][1]);
+// The hop is one pixel: frame B is frame A one pixel up, legs aside
+check("mini hop one pixel", MINI_FRAMES[0][2], MINI_FRAMES[1][1]);
+check("big hop one pixel", FRAMES[0][2], FRAMES[1][1]);
 check("stripe cells", stripeWords([{ color: "#ff0000", title: "" }, { color: null, title: "" }], 2).length, 12);
 
 const svg = mascotSvg({ color: PALETTE[6], walking: true, step: 172, title: "t" });

@@ -4,9 +4,9 @@
 // the README banner, is drawn from the same frames and palette (scripts/render-mascot.mjs).
 // Pure: no Claude Code API, so Node runs it directly (tests/run-mod-tests.mjs).
 
-// 18 x 14 pixels: # body, k eyes. Frame B is the hop: the whole molecule two pixels up,
-// one terminal row, its legs apart; the two alternate into a bouncing walk. Both frames
-// are the same size, as a blit wants.
+// 18 x 14 pixels: # body, k eyes. Frame B is the hop: the whole molecule one pixel up,
+// its legs apart; the two alternate into a bouncing walk. Both frames are the same
+// size, as a blit wants.
 const BODY: readonly string[] = [
   ".......####.......",
   "......######......",
@@ -22,10 +22,10 @@ const EMPTY_ROW = "..................";
 export const FRAME_A: readonly string[] = [
   EMPTY_ROW,
   EMPTY_ROW,
-  EMPTY_ROW,
   ...BODY,
   ".......#..#.......",
   ".......#..#.......",
+  EMPTY_ROW,
 ];
 export const FRAME_B: readonly string[] = [
   EMPTY_ROW,
@@ -39,7 +39,7 @@ export const FRAMES = [FRAME_A, FRAME_B] as const;
 
 // The terminal's molecule, small enough for an editor's terminal: 13 x 8 pixels, four
 // rows of half blocks, about the size of the engine's own welcome mascot. No outline.
-// Frame B hops one terminal row, legs apart.
+// Frame B hops one pixel, half a terminal row, legs apart.
 const MINI_BODY: readonly string[] = [
   "....#####....",
   ".##.#k#k#.##.",
@@ -50,7 +50,7 @@ const MINI_BODY: readonly string[] = [
 const MINI_EMPTY = ".............";
 export const MINI_FRAMES = [
   [MINI_EMPTY, MINI_EMPTY, ...MINI_BODY, ".....#.#....."],
-  [...MINI_BODY, "....#...#....", MINI_EMPTY, MINI_EMPTY],
+  [MINI_EMPTY, ...MINI_BODY, "....#...#....", MINI_EMPTY],
 ] as const;
 
 // Dark blue to dark red, one colour per power of two around the median: the bluest under
@@ -266,18 +266,24 @@ export function mascotCells(frame: readonly string[], color: string): string {
   return encodeCells(mascotWords(frame, color));
 }
 
-// One column per stripe, `rows` tall, full blocks in the stripe's colour.
+// `width` columns per stripe, `rows` tall, full blocks in the stripe's colour.
 export function stripeWords(
   stripes: readonly Stripe[],
   rows: number,
+  width = 1,
 ): number[] {
   const words: number[] = [];
   for (let r = 0; r < rows; r++)
     for (const s of stripes)
-      words.push(FULL_BLOCK, rgb(s.color ?? EMPTY), DEFAULT_COLOR);
+      for (let w = 0; w < width; w++)
+        words.push(FULL_BLOCK, rgb(s.color ?? EMPTY), DEFAULT_COLOR);
   return words;
 }
 
-export function stripeCells(stripes: readonly Stripe[], rows: number): string {
-  return encodeCells(stripeWords(stripes, rows));
+export function stripeCells(
+  stripes: readonly Stripe[],
+  rows: number,
+  width = 1,
+): string {
+  return encodeCells(stripeWords(stripes, rows, width));
 }

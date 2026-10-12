@@ -254,8 +254,8 @@ export function emptyRangeText(lang: Lang): string {
 
 export function uncolouredText(lang: Lang): string {
   return lang === "fr"
-    ? "Trop peu de périodes pour colorer les bandes."
-    : "Too few periods to colour the stripes.";
+    ? "trop peu de périodes pour colorer"
+    : "too few periods to colour";
 }
 
 const RANGE_LABELS: Record<string, [string, string]> = {

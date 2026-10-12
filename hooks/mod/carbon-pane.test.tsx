@@ -214,8 +214,10 @@ describe("the /carbon-panel pane", () => {
     expect(mascot.props.rows).toBe(4);
     const stripes = await ui.find({ key: "stripes" });
     expect(stripes.type).toBe("Raster");
-    // 20 past sessions in 30 days; the running one has no total yet
-    expect(stripes.props.columns).toBe(20);
+    // 20 past sessions in 30 days, two columns each in 58; the running one has no
+    // total yet
+    expect(stripes.props.columns).toBe(40);
+    expect(stripes.props.rows).toBe(2);
     const text = await drawn(ui);
     expect(text).toContain("Cette session : < 0,1 gCO₂");
     expect(text).toContain(
@@ -223,6 +225,8 @@ describe("the /carbon-panel pane", () => {
     );
     // The running session's own row in the file is not a past session
     expect(text).not.toContain("21 sessions");
+    // The range's first and last stripe on one line
+    expect(text).toContain("22 sept. → 11 oct.");
     await ui.unmount();
   });
 
