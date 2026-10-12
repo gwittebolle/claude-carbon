@@ -26,7 +26,13 @@ type Step = {
 type World = {
   // Read at each call: a test can attach a surface after the session started
   surfaces?: string[];
-  lang?: string;
+  // LANG; null leaves every locale variable unset, as the desktop app does
+  lang?: string | null;
+  // The `language` setting, free text
+  language?: string;
+  // What the system's locale command prints; unset, the command cannot run
+  systemLocale?: string;
+  os?: string;
   statusLine?: string;
   history?: number[];
   // Values under the v1 key, which counted background subagents in the answer
@@ -47,6 +53,7 @@ const storedHistory = (values: number[], welcomed: boolean) => ({
 function world(on: any, options: World = {}) {
   const statuses: Array<string | undefined> = [];
   const toasts: string[] = [];
+  const commands: string[][] = [];
   const welcomed = options.welcomed ?? true;
   mock.store(on, {
     "history.v2": storedHistory(options.history ?? [], welcomed),
@@ -54,12 +61,24 @@ function world(on: any, options: World = {}) {
       ? {}
       : { history: storedHistory(options.legacyHistory, true) }),
   });
-  mock.env(on, { LANG: options.lang ?? "fr_FR.UTF-8" });
+  mock.env(on, {
+    ...(options.lang === null ? {} : { LANG: options.lang ?? "fr_FR.UTF-8" }),
+    ...(options.os === undefined ? {} : { OS: options.os }),
+  });
+  on("process.run", ($: any, e: any) => {
+    commands.push([...e.argv]);
+    return options.systemLocale === undefined
+      ? { deny: "cannot start" }
+      : { value: { exitCode: 0, stdout: options.systemLocale, stderr: "" } };
+  });
   on("fs.read", () => ({ value: FACTORS }));
   on("settings.read", () => ({
-    value: options.statusLine
-      ? { statusLine: { type: "command", command: options.statusLine } }
-      : {},
+    value: {
+      ...(options.statusLine
+        ? { statusLine: { type: "command", command: options.statusLine } }
+        : {}),
+      ...(options.language === undefined ? {} : { language: options.language }),
+    },
   }));
   on("session.surfaces", () => ({ value: options.surfaces ?? ["terminal"] }));
   on("command.register", ($: any, e: any) => ({ value: { command: e.name } }));
@@ -93,7 +112,7 @@ function world(on: any, options: World = {}) {
   on("session.end", ($: any, e: any) => ({ sessionId: e.sessionId }));
   on("turn.start", ($: any, e: any) => ({ turnId: e.turnId }));
   on("turn.complete", ($: any, e: any) => ({ text: e.answer }));
-  return { statuses, toasts };
+  return { statuses, toasts, commands };
 }
 
 let queue: Step[] = [];
@@ -731,6 +750,90 @@ describe("first run", () => {
     await startSession($);
     expect(toasts.length).toBe(1);
     expect(toasts[0]).toContain("Le CO₂ de chaque réponse");
+  });
+});
+
+describe("language without LANG", () => {
+  const FR_TOAST =
+    "Le CO₂ de chaque réponse s'affiche en fin de réponse. Les plus lourdes ressortent après 50 réponses.";
+  const EN_TOAST =
+    "Each answer's CO₂ shows when it ends. The heaviest stand out after 50 answers.";
+  const APPLE_LOCALE = ["defaults", "read", "-g", "AppleLocale"];
+
+  test("an en_US system gives English", async ($: any, on: any) => {
+    const { toasts, commands } = world(on, {
+      welcomed: false,
+      lang: null,
+      systemLocale: "en_US\n",
+    });
+    await startSession($);
+    expect(commands).toEqual([APPLE_LOCALE]);
+    expect(toasts).toEqual([EN_TOAST]);
+  });
+
+  test("a fr_FR system gives French", async ($: any, on: any) => {
+    const { toasts } = world(on, {
+      welcomed: false,
+      lang: null,
+      systemLocale: "fr_FR\n",
+    });
+    await startSession($);
+    expect(toasts).toEqual([FR_TOAST]);
+  });
+
+  test("a command that cannot run gives French", async ($: any, on: any) => {
+    const { toasts, commands } = world(on, {
+      welcomed: false,
+      lang: null,
+    });
+    await startSession($);
+    expect(commands.length).toBe(1);
+    expect(toasts).toEqual([FR_TOAST]);
+  });
+
+  test("the language setting wins over the system", async ($: any, on: any) => {
+    const { toasts, commands } = world(on, {
+      welcomed: false,
+      lang: null,
+      language: "English",
+      systemLocale: "fr_FR\n",
+    });
+    await startSession($);
+    expect(commands).toEqual([]);
+    expect(toasts).toEqual([EN_TOAST]);
+  });
+
+  test("Windows reads the locale from the registry", async ($: any, on: any) => {
+    const { toasts, commands } = world(on, {
+      welcomed: false,
+      lang: null,
+      os: "Windows_NT",
+      systemLocale:
+        "\r\nHKEY_CURRENT_USER\\Control Panel\\International\r\n    LocaleName    REG_SZ    en-US\r\n\r\n",
+    });
+    await startSession($);
+    expect(commands).toEqual([
+      [
+        "reg",
+        "query",
+        "HKCU\\Control Panel\\International",
+        "/v",
+        "LocaleName",
+      ],
+    ]);
+    expect(toasts).toEqual([EN_TOAST]);
+  });
+
+  test("LANG decides alone: nothing else is asked", async ($: any, on: any) => {
+    const { toasts, commands } = world(on, {
+      welcomed: false,
+      lang: "en_US.UTF-8",
+      language: "Français",
+      systemLocale: "fr_FR\n",
+    });
+    await startSession($);
+    expect(commands).toEqual([]);
+    expect(toasts).toEqual([EN_TOAST]);
   });
 });
 

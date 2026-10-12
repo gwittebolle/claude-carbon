@@ -23,7 +23,10 @@ The mod writes every quantity as gCO₂ or kgCO₂. Background subagents, Claude
 Code's default, count in the session total only,
 never in an answer or in the median; a foreground subagent counts in the answer
 that started it, and stops counting there once sent to the background.
-`/carbon-stats` reports the median and the model requests per prompt. The mod
+`/carbon-stats` reports the median and the model requests per prompt. With no
+locale variable set, as in the desktop app, the mod's language follows the
+`language` setting, then the system's (`defaults read -g AppleLocale` on macOS,
+the registry's `LocaleName` on Windows), then French. The mod
 draws nothing in the VS Code extension's chat panel, in cloud sessions or under
 `claude -p`. It writes no database: the Stop hook keeps recording sessions.
 Installs made with the curl, PowerShell or npm installer do not get it yet.

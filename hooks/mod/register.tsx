@@ -25,8 +25,11 @@ import {
   buildAnswerCo2,
   detectLang,
   formatGrams,
+  hasLangVariable,
   isCarbonStatusLine,
+  languageSetting,
   median,
+  parseSystemLocale,
   pushHistory,
   sessionLine,
   welcomeText,
@@ -106,6 +109,27 @@ function isRemoteOnly(surfaces: readonly string[]): boolean {
   return surfaces.length > 0 && !surfaces.includes("terminal");
 }
 
+// The locale the user picked in the system settings, which Desktop and Windows do not
+// pass in LANG. Measured under 50 ms on macOS; anything wrong means undefined.
+async function systemLocale($: EngineInterface): Promise<string | undefined> {
+  const argv =
+    (await $.env.get("OS")) === "Windows_NT"
+      ? [
+          "reg",
+          "query",
+          "HKCU\\Control Panel\\International",
+          "/v",
+          "LocaleName",
+        ]
+      : ["defaults", "read", "-g", "AppleLocale"];
+  try {
+    const { exitCode, stdout } = await $.process.run(argv, { timeoutMs: 2000 });
+    return exitCode === 0 ? parseSystemLocale(stdout) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // /clear and /resume go on in another conversation: its total and per-answer figures start over.
 async function resetSessionState($: EngineInterface) {
   await $.state.set(
@@ -141,22 +165,30 @@ export const register: Register = (on, options) => {
       factors = DEFAULT_FACTORS;
     }
 
-    // Same variables, order and sentinels as the reports; nothing set means French.
-    lang = detectLang([
+    let settings: Record<string, unknown> = {};
+    try {
+      settings = await $.settings.read();
+    } catch {
+      settings = {};
+    }
+    const statusLine = settings.statusLine as { command?: unknown } | undefined;
+    hasCarbonStatusLine = isCarbonStatusLine(statusLine?.command);
+
+    // Same variables, order and sentinels as the reports. The desktop app and a
+    // Windows session usually set none: then the language setting, then the
+    // system's locale, then French.
+    const envValues = [
       await $.env.get("CLAUDE_CARBON_LOCALE"),
       await $.env.get("LC_ALL"),
       await $.env.get("LC_MESSAGES"),
       await $.env.get("LANG"),
-    ]);
-
-    try {
-      const settings = await $.settings.read();
-      const statusLine = settings.statusLine as
-        { command?: unknown } | undefined;
-      hasCarbonStatusLine = isCarbonStatusLine(statusLine?.command);
-    } catch {
-      hasCarbonStatusLine = false;
-    }
+    ];
+    lang = detectLang(
+      envValues,
+      hasLangVariable(envValues)
+        ? undefined
+        : (languageSetting(settings.language) ?? (await systemLocale($))),
+    );
 
     try {
       await $.command.register({

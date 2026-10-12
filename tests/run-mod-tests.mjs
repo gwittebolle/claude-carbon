@@ -21,9 +21,12 @@ import {
   buildAnswerCo2,
   detectLang,
   formatGrams,
+  hasLangVariable,
   isCarbonStatusLine,
   isUnusual,
+  languageSetting,
   median,
+  parseSystemLocale,
   percentile,
   pushHistory,
   sessionLine,
@@ -333,6 +336,44 @@ check(
 );
 check("lang empty: system locale", detectLang([undefined, ""], "en-US"), "en");
 check("lang nothing: French", detectLang([undefined]), "fr");
+check("lang variable set", hasLangVariable([undefined, "en_US.UTF-8"]), true);
+check("lang only C and empty", hasLangVariable(["", "C.UTF-8", undefined]), false);
+// The language setting, free text, read as a locale
+for (const [setting, expected] of [
+  ["Français", "fr"],
+  ["french", "fr"],
+  ["fr", "fr"],
+  ["English", "en"],
+  ["anglais", "en"],
+  ["Deutsch", "en"],
+]) {
+  check(
+    `lang setting ${setting}`,
+    detectLang([undefined], languageSetting(setting)),
+    expected,
+  );
+}
+check("lang setting blank", languageSetting("  "), undefined);
+check("lang setting not text", languageSetting(3), undefined);
+check("system locale macOS", parseSystemLocale("fr_FR\n"), "fr_FR");
+check(
+  "system locale macOS region",
+  parseSystemLocale("en_FR@rg=frzzzz\n"),
+  "en_FR@rg=frzzzz",
+);
+check(
+  "system locale Windows",
+  parseSystemLocale(
+    "\r\nHKEY_CURRENT_USER\\Control Panel\\International\r\n    LocaleName    REG_SZ    fr-FR\r\n\r\n",
+  ),
+  "fr-FR",
+);
+check("system locale empty", parseSystemLocale(""), undefined);
+check(
+  "system locale error text",
+  parseSystemLocale("The domain/default pair does not exist"),
+  undefined,
+);
 
 const full = Array.from({ length: HISTORY_SIZE }, (_, i) => i + 1);
 check("history capped", pushHistory(full, 7).length, HISTORY_SIZE);

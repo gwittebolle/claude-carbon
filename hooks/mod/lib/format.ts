@@ -30,27 +30,55 @@ export const SUBAGENT_SHARE = 0.1;
 const NBSP = " ";
 const UNIT = "CO₂";
 
+// Unset, empty, C and POSIX say nothing about the language.
+function isLocaleValue(value: string | undefined): value is string {
+  return (
+    value !== undefined &&
+    value !== "" &&
+    value !== "C" &&
+    !value.startsWith("C.") &&
+    value !== "POSIX" &&
+    !value.startsWith("POSIX.")
+  );
+}
+
 // Same order and sentinels as detect_equiv_set (scripts/equiv-lib.sh). With no
-// variable set, the system locale decides; with neither, French, as in the bash.
+// variable set, the language setting or else the system locale decides (the
+// caller picks it); with neither, French, as in the bash.
 export function detectLang(
   envValues: Array<string | undefined>,
   systemLocale?: string,
 ): Lang {
-  for (const value of envValues) {
-    if (value === undefined || value === "") continue;
-    if (
-      value === "C" ||
-      value.startsWith("C.") ||
-      value === "POSIX" ||
-      value.startsWith("POSIX.")
-    )
-      continue;
+  const value = envValues.find(isLocaleValue);
+  if (value !== undefined) {
     return value.toLowerCase().startsWith("fr") ? "fr" : "en";
   }
   if (systemLocale !== undefined && systemLocale !== "") {
     return systemLocale.toLowerCase().startsWith("fr") ? "fr" : "en";
   }
   return "fr";
+}
+
+// Whether one of the variables decides alone, so nothing else needs to be asked.
+export function hasLangVariable(envValues: Array<string | undefined>): boolean {
+  return envValues.some(isLocaleValue);
+}
+
+// The `language` setting is free text ("Français", "English", "japanese"). It goes
+// to detectLang as a locale would: French when it starts with "fr", English otherwise.
+export function languageSetting(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  return text === "" ? undefined : text;
+}
+
+// What `defaults read -g AppleLocale` ("fr_FR\n") or `reg query ... /v LocaleName`
+// ("    LocaleName    REG_SZ    en-US") prints, down to the locale.
+export function parseSystemLocale(stdout: string): string | undefined {
+  const reg = /LocaleName\s+REG_SZ\s+(\S+)/.exec(stdout);
+  if (reg) return reg[1];
+  const line = stdout.trim().split(/\r?\n/)[0]?.trim() ?? "";
+  return /^\S+$/.test(line) ? line : undefined;
 }
 
 function decimal(value: number, digits: number, lang: Lang): string {

@@ -308,7 +308,9 @@ The mod comes with the plugin. Installed from the marketplace, run `/plugin mark
 
 Installed with the curl, PowerShell or npm installer, you have the status line and the hooks but not the plugin, so not the mod. Installing the plugin on top would run the hooks twice: this case is not handled yet.
 
-`/carbon-stats` shows the median of your last answers and the model requests per prompt. Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, makes no network call and never changes what Claude does. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, or when none is set, and in English otherwise.
+`/carbon-stats` shows the median of your last answers and the model requests per prompt. Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, makes no network call and never changes what Claude does. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then the system's language, then French.
+
+To read the system's language, the mod runs one local command at session start, and only when none of these is set: `defaults read -g AppleLocale` on macOS, `reg query "HKCU\Control Panel\International" /v LocaleName` on Windows.
 
 ## Using with ccstatusline
 
