@@ -21,8 +21,11 @@ with and without a truncated last line.
 
 The README opens on a row of eight pixel CO2 molecules (O=C=O, the carbon in
 the middle with two eyes), coloured from dark blue to dark red like warming
-stripes. The image is `docs/mascot-stripes.svg`: plain pixel paths, no script,
-with a grey outline so the darkest colours stay visible on GitHub's dark theme.
+stripes. They walk, two frames each, from one step every 460 ms for the bluest
+to one every 124 ms for the reddest; with reduced motion they stand still. The
+image is `docs/mascot-stripes.svg`: plain pixel paths and a CSS animation, no
+script, with a grey outline so the darkest colours stay visible on GitHub's
+dark theme. A line under it credits Ed Hawkins' warming stripes.
 
 ### feat: the mod's pinned entry gives the session's CO2 and API-price cost (1.10.0)
 

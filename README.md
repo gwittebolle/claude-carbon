@@ -1,6 +1,7 @@
 # claude-carbon
 
-<p align="center"><img src="docs/mascot-stripes.svg" width="696" alt="Eight pixel CO2 molecules, the claude-carbon mascot, from dark blue to dark red"></p>
+<p align="center"><img src="docs/mascot-stripes.svg" width="696" alt="Eight pixel CO2 molecules, the claude-carbon mascot, walking from dark blue to dark red, the redder the faster"></p>
+<p align="center"><sub>Inspired by Ed Hawkins' <a href="https://showyourstripes.info">warming stripes</a></sub></p>
 
 [![GitHub stars](https://img.shields.io/github/stars/gwittebolle/claude-carbon)](https://github.com/gwittebolle/claude-carbon/stargazers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
