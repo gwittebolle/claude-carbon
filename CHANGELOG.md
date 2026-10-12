@@ -16,7 +16,8 @@ resolution of the bash plugin's `cost_usd` (`hooks/mod/lib/cost.ts`). `turn.step
 does not split cache writes by tier, so they are priced at the 1-hour tier,
 the one Claude Code writes at. It shows with two decimals, `< 0,01 $` /
 `< $0.01` under a cent, and is left out when `data/prices.json` cannot be
-read. `tests/run-mod-tests.mjs` replays the `expected_cost_usd` of both
+read, then until the total starts over: a part of the cost never shows as the
+whole. `tests/run-mod-tests.mjs` replays the `expected_cost_usd` of both
 golden-vector files through it, and the installers' copy of the mod now
 carries `data/prices.json` beside `data/factors.json`.
 

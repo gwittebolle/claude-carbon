@@ -910,6 +910,41 @@ describe("desktop", () => {
     expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂");
   });
 
+  test("a price list read only after a reload: the CO2 alone, never a part of the cost", async ($: any, on: any) => {
+    const options: World = { surfaces: ["desktop"], prices: null };
+    const { statuses } = world(on, options);
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [HEAVY], 90000);
+    // A reload raises session.start again and keeps $.state.
+    options.prices = undefined;
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 14 gCO₂");
+  });
+
+  test("a total kept from code that counted no cost: the CO2 alone", async ($: any, on: any) => {
+    const { statuses } = world(on, { surfaces: ["desktop"] });
+    engineSteps(on);
+    // The session value as the earlier code wrote it, before a reload: no usd.
+    const held = { value: { grams: 10.068, turns: 1 } as unknown, version: 1 };
+    on("state.get", ($inner: any, e: any, next: any) =>
+      e.key === "session" ? { value: { ...held } } : next(e),
+    );
+    on("state.set", ($inner: any, e: any, next: any) => {
+      if (e.key !== "session") return next(e);
+      if (e.ifVersion !== undefined && e.ifVersion !== held.version) {
+        return { value: { isSet: false, version: held.version } };
+      }
+      held.value = JSON.parse(JSON.stringify(e.value));
+      held.version += 1;
+      return { value: { isSet: true, version: held.version } };
+    });
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 14 gCO₂");
+  });
+
   test("/clear starts the cost over with the CO2", async ($: any, on: any) => {
     const { statuses } = world(on, { surfaces: ["desktop"] });
     engineSteps(on);

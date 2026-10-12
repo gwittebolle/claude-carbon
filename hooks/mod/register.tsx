@@ -242,12 +242,13 @@ export const register: Register = (on, options) => {
         const model = usage.model !== "" ? usage.model : e.model;
         if (!isExcluded(model, factors.excludeModels)) {
           const grams = co2Grams(usage, model, factors);
-          const usd = prices !== null ? costUsd(usage, model, prices) : 0;
-          await update($, session, (total) => ({
+          const usd = prices !== null ? costUsd(usage, model, prices) : null;
+          await update($, session, ({ usd: spent, ...total }) => ({
             ...total,
             grams: total.grams + grams,
-            // A total kept from before the cost was counted has none.
-            usd: (total.usd ?? 0) + usd,
+            // A request with no price, or a total kept from code that counted no cost,
+            // leaves the cost out until the total starts over.
+            ...(usd !== null && spent !== undefined ? { usd: spent + usd } : {}),
           }));
           const agent = e.agentId;
           // Outside an open answer, from a background subagent or from a subagent of
@@ -342,8 +343,7 @@ export const register: Register = (on, options) => {
         total !== undefined &&
         total.grams > 0
       ) {
-        const usd = prices !== null && (total.usd ?? 0) > 0 ? total.usd : null;
-        $.ui.status(sessionLine(total.grams, lang, usd));
+        $.ui.status(sessionLine(total.grams, lang, total.usd ?? null));
       }
       // The figure becomes a line under the answer, for unusual answers only.
       if (co2 !== null && co2.isUnusual && showPerTurn && remoteOnly) {
