@@ -6,7 +6,7 @@
 [![npm](https://img.shields.io/npm/v/claude-carbon)](https://www.npmjs.com/package/claude-carbon)
 [![CI](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml/badge.svg)](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml)
 
-claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate in the status line, computed locally from your token usage, next to the session cost.
+claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate computed locally from your token usage, in the terminal status line next to the session cost, and in the Code tab of the Claude desktop app.
 
 ![Live CO2 in the Claude Code status line](docs/demo.gif)
 
@@ -17,6 +17,30 @@ claude-carbon is an open source Claude Code plugin that tracks the carbon footpr
 - Backfills historical data from existing `~/.claude` transcripts
 - Slash commands: `/carbon-report` (text), `/carbon-card` (PNG), `/carbon-pr` (footprint of a pull request)
 - A README badge with your all-time total, and a public methodology with every factor sourced
+
+### In the Claude desktop app, no terminal needed
+
+Open the **Code** tab of the Claude desktop app, start a session, and paste this message. Claude runs the installer for you:
+
+```text
+Install claude-carbon for me by running this command:
+curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
+```
+
+On Windows, use this message instead:
+
+```text
+Install claude-carbon for me by running this command in PowerShell:
+irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
+```
+
+1. Claude asks before running the command: accept. If a tool is missing (`git`, `jq` or `sqlite3`), the installer says which one, and you can ask Claude to install it. On a Mac that never had Apple's developer tools, macOS first opens a window to install them.
+2. Quit the desktop app completely and open it again, then start a new session in the Code tab.
+3. Under the prompt you now see `x gCO₂ this session · last answer x gCO₂`. `/carbon-report` and `/carbon-card` work from the same session.
+
+The message works in any language. The chat and Cowork tabs are not covered yet.
+
+### In a terminal
 
 **1. Install (or update):**
 
