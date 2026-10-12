@@ -397,7 +397,7 @@ npx playwright install chromium
 ```
 
 The script looks for `playwright-core` in node's own resolution, the global npm root, `~/node_modules`
-and Homebrew's node modules. `CLAUDE_CARBON_PLAYWRIGHT_CORE` points it at another directory.
+and Homebrew's node modules.
 
 ## Windows
 

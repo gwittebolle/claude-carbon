@@ -470,17 +470,9 @@ open_in_browser() {
 }
 
 # ── Find Playwright ─────────────────────────────────────────
-# CLAUDE_CARBON_PLAYWRIGHT_CORE names a playwright-core directory outright, for an
-# install the search below does not cover. When set, it is the only place looked at.
-PW_PATH=""
-if [ -n "${CLAUDE_CARBON_PLAYWRIGHT_CORE:-}" ]; then
-  PW_PATH="$(cc_path "$CLAUDE_CARBON_PLAYWRIGHT_CORE")"
-  [ -d "$PW_PATH" ] || PW_PATH=""
-else
-  PW_PATH="$(node -e "try { console.log(require.resolve('playwright-core').replace(/\/index\.js$/, '')); } catch(e) { process.exit(1); }" 2>/dev/null)" || true
-fi
+PW_PATH="$(node -e "try { console.log(require.resolve('playwright-core').replace(/\/index\.js$/, '')); } catch(e) { process.exit(1); }" 2>/dev/null)" || true
 
-if [ -z "$PW_PATH" ] && [ -z "${CLAUDE_CARBON_PLAYWRIGHT_CORE:-}" ]; then
+if [ -z "$PW_PATH" ]; then
   _npm_global_root="$(npm root -g 2>/dev/null || true)"
   # Check both flattened (playwright-core installed directly) and nested (installed as a
   # dependency of the full "playwright" package) locations.

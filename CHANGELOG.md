@@ -59,16 +59,16 @@ path instead), prints one line saying there is no PNG and a screenshot is enough
 with the install command, stamps `last-card-month` and exits 0. The PNG path now
 stamps it only when at least one PNG was written.
 The `Totals since ...` line now comes before the Playwright lookup, so both paths
-print it. `CLAUDE_CARBON_PLAYWRIGHT_CORE` names a `playwright-core` directory
-outright. The PNG path is unchanged.
+print it. The PNG export is otherwise unchanged.
 
 The footer of the four card templates reads `Mesurez la vôtre : npx claude-carbon`
 (non-breaking space before the colon) and `Measure yours: npx claude-carbon`, the
 command in orange monospace, with `github.com/gwittebolle/claude-carbon` below
 in smaller grey text. The TokenClimate team-view mention is unchanged.
 `skills/carbon-card/SKILL.md` describes the browser path.
-`tests/run-portability-tests.sh` runs the script with no `playwright-core` and with
-one whose Chromium fails to launch (exit 0, the FR summary handed to a faked
+`tests/run-portability-tests.sh` runs the script with no `playwright-core`, with
+one that fails to load and with one whose Chromium fails to launch, found through
+`NODE_PATH` as node finds any module (exit 0, the FR summary handed to a faked
 opener, month stamped, Totals line first, no PNG, the page in the export folder
 with its logo inline and its fit script, no temp page left; under
 `CLAUDE_CARBON_NO_OPEN` nothing spawned and the path printed), with one whose
