@@ -46,6 +46,30 @@ while the claude-carbon plugin is enabled. The copy is built aside and swapped
 in by rename: one that cannot be replaced, such as a copy Windows holds open,
 stays whole until a restart.
 
+### feat: /carbon-card without Chromium opens the card in the browser, and the card carries `npx claude-carbon` (1.9.0)
+
+Without `playwright-core`, or with a Chromium that does not start (checked by
+launching it), `scripts/generate-report.sh` no longer exits 1. It opens the
+summary card, already laid out at 1080x1080, in the default browser (`open` on
+macOS, `explorer.exe` on Windows, `xdg-open` on Linux; skipped under
+`CLAUDE_CARBON_NO_OPEN`, CI or without a display, where the line gives the page's
+path instead), prints one line saying there is no PNG and a screenshot is enough,
+with the install command, stamps `last-card-month` like the PNG path and exits 0.
+The `Totals since ...` line now comes before the Playwright lookup, so both paths
+print it. `CLAUDE_CARBON_PLAYWRIGHT_CORE` names a `playwright-core` directory
+outright. The PNG path is unchanged.
+
+The footer of the four card templates reads `Mesurez la vôtre : npx claude-carbon`
+(non-breaking space before the colon) and `Measure yours: npx claude-carbon`, the
+command in orange monospace, with `github.com/gwittebolle/claude-carbon` below
+in smaller grey text. The TokenClimate team-view mention is unchanged.
+`skills/carbon-card/SKILL.md` describes the browser path.
+`tests/run-portability-tests.sh` runs the script with no `playwright-core` and with
+one whose Chromium fails to launch (exit 0, the FR summary handed to a faked
+opener, month stamped, Totals line first, no PNG; under `CLAUDE_CARBON_NO_OPEN`
+nothing spawned and the path printed), and pins the footer strings of both
+templates in both languages.
+
 ## 2026-10-09
 
 ### fix: Opus family priced as Opus 5.5

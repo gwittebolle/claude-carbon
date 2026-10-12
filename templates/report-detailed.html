@@ -197,8 +197,9 @@
 
       .cta {
         display: flex;
-        align-items: baseline;
-        gap: 10px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
       }
 
       .cta-label {
@@ -207,11 +208,16 @@
         line-height: 1;
       }
 
-      .cta-link {
-        font-family: "Clash Display", sans-serif;
+      .cta-cmd {
+        font-family: "SF Mono", Menlo, Consolas, monospace;
         font-weight: 600;
         font-size: 15px;
         color: #f55c0f;
+      }
+
+      .cta-link {
+        font-size: 12px;
+        color: #7a6e63;
         line-height: 1;
       }
 
@@ -313,7 +319,7 @@
       <div class="footer">
         <img class="footer-logo" src="logo.png" alt="" />
         <div class="cta">
-          <span class="cta-label">Mesurez la vôtre</span>
+          <span class="cta-label">Mesurez la vôtre&nbsp;: <span class="cta-cmd">npx claude-carbon</span></span>
           <span class="cta-link">github.com/gwittebolle/claude-carbon</span>
         </div>
         <div class="footer-right">

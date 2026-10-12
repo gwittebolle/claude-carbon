@@ -62,7 +62,7 @@ Accurate on every plan, including Max 20x.
 **3. Use the slash commands:**
 
 - `/carbon-report` - text report with totals, equivalences, top sessions
-- `/carbon-card` - generate shareable PNG report cards (requires `playwright-core`, see [Dependencies](#dependencies))
+- `/carbon-card` - generate shareable PNG report cards (PNG export needs `playwright-core`, see [Dependencies](#dependencies); without it the card opens in your browser)
 - `/carbon-update` - update to the latest version and re-price history (see [Updating](#updating))
 
 ## Example report
@@ -76,6 +76,10 @@ Generate yours with `/carbon-card` in Claude Code. The summary and detailed PNGs
 OneDrive-redirected one is honoured) and the folder opens in your file manager, with the
 card selected on macOS. `CLAUDE_CARBON_EXPORT_DIR` picks another folder;
 `CLAUDE_CARBON_NO_OPEN=1` skips the opening.
+
+Without Playwright or Chromium there is no PNG and the command still finishes: the summary
+card opens in your browser at its 1080x1080 size, and a screenshot of it does the job.
+The card's footer carries `npx claude-carbon`, so whoever sees it has a command to type.
 
 From the 1st to the 10th of each month the status line ends with `📊 August wrapped · /carbon-card`:
 the month just closed has its bar on the card, under the running total. Generating a card
@@ -389,6 +393,9 @@ To use `/carbon-card`, install Playwright and its Chromium browser:
 npm install -g playwright-core
 npx playwright install chromium
 ```
+
+The script looks for `playwright-core` in node's own resolution, the global npm root, `~/node_modules`
+and Homebrew's node modules. `CLAUDE_CARBON_PLAYWRIGHT_CORE` points it at another directory.
 
 ## Windows
 

@@ -8,7 +8,8 @@
 # absence of dependencies Git for Windows does not ship, and the two places where
 # the same logic is written twice and could silently drift apart.
 #
-# Runs on every platform. Dependencies: bash, awk.
+# Runs on every platform. Dependencies: bash, awk (the /carbon-card run in 7b also
+# needs sqlite3, node and jq, and skips without them).
 set -uo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -324,7 +325,9 @@ done
 reveal() ( # reveal <os> <file>; REVEAL_NO_OPEN / REVEAL_CI set by the caller stand in for the real variables
   # shellcheck source=scripts/portable-lib.sh
   . "${REPO_DIR}/scripts/portable-lib.sh"
-  CC_OS="$1"; CC_CYGPATH=""
+  # Both read by cc_reveal, which shellcheck does not follow into the library.
+  # shellcheck disable=SC2034
+  CC_OS="$1" CC_CYGPATH=""
   PATH="${FAKE_BIN}:/usr/bin:/bin"
   # Empty is unset to cc_reveal, and it shields the run from a real CI variable.
   export DISPLAY=:0 CLAUDE_CARBON_NO_OPEN="${REVEAL_NO_OPEN:-}" CI="${REVEAL_CI:-}"
@@ -353,6 +356,81 @@ REVEAL_CI=true reveal darwin "$CARD" >/dev/null
 is "CI: nothing spawned"                    "" "$(cat "$MARK")"
 is "missing file: exits 0, nothing spawned" "rc=0" "$(reveal darwin "${FAKE_HOME}/absent.png")"
 is "missing file: log still empty"          "" "$(cat "$MARK")"
+
+# ── 7b. /carbon-card without Chromium ────────────────────────────────────────
+# No playwright-core, or one whose Chromium cannot start: the script must not end
+# in an error. The summary page opens in the browser (the same fakes as above
+# stand in for open, explorer.exe and xdg-open), the month is stamped for the
+# status line, and the Totals line is printed first. CLAUDE_CARBON_PLAYWRIGHT_CORE
+# pins the lookup so a Playwright installed on this machine cannot interfere.
+echo ""
+echo "/carbon-card without Chromium (opener faked on PATH)"
+
+if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+  CARD_DB="${FAKE_HOME}/carbon.db"
+  sqlite3 "$CARD_DB" "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, methodology_version INTEGER DEFAULT 2, excluded INTEGER DEFAULT 0, git_branch TEXT DEFAULT '');"
+  sqlite3 "$CARD_DB" "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, started_at) VALUES ('c1', 'p', 'claude-opus-5', 1000, 100, 1.5, 2500.0, '$(date +%Y-%m)-01T10:00:00Z');"
+  # A Playwright that loads but whose Chromium will not start.
+  NO_CHROMIUM="${FAKE_HOME}/playwright-core"
+  mkdir -p "$NO_CHROMIUM" "${FAKE_HOME}/tmp" "${FAKE_HOME}/cfg"
+  echo 'exports.chromium = { launch: () => Promise.reject(new Error("Executable does not exist")) };' > "${NO_CHROMIUM}/index.js"
+
+  card() ( # card <playwright-core dir>; CARD_NO_OPEN set by the caller stands in for CLAUDE_CARBON_NO_OPEN
+    PATH="${FAKE_BIN}:${PATH}"
+    export HOME="$FAKE_HOME" TMPDIR="${FAKE_HOME}/tmp" DISPLAY=:0 CI="" \
+      CLAUDE_CONFIG_DIR="${FAKE_HOME}/cfg" CLAUDE_CARBON_DB="$CARD_DB" \
+      CLAUDE_CARBON_EXPORT_DIR="${FAKE_HOME}/out" CLAUDE_CARBON_LOCALE=fr_FR \
+      CLAUDE_CARBON_PLAYWRIGHT_CORE="$1" CLAUDE_CARBON_NO_OPEN="${CARD_NO_OPEN:-}"
+    bash "${REPO_DIR}/scripts/generate-report.sh" 2>&1
+    echo "rc=$?"
+  )
+  opened() { # what the opener was handed, once a backgrounded xdg-open has had up to 2s to land
+    for _ in $(seq 1 20); do [ -s "$MARK" ] && break; sleep 0.1; done
+    case "$(cat "$MARK")" in *claude-carbon-summary-fr-*.html) echo "summary fr" ;; "") echo "nothing" ;; *) cat "$MARK" ;; esac
+  }
+
+  for pw in "${FAKE_HOME}/absent" "$NO_CHROMIUM"; do
+    case "$pw" in *absent) what="no playwright-core" ;; *) what="Chromium does not start" ;; esac
+    : > "$MARK"
+    rm -f "${FAKE_HOME}/cfg/claude-carbon/last-card-month"
+    OUT="$(card "$pw")"
+    is "${what}: exits 0"                         "rc=0" "$(printf '%s\n' "$OUT" | tail -1)"
+    is "${what}: the browser gets the FR summary" "summary fr" "$(opened)"
+    is "${what}: month stamped"                   "$(date +%Y-%m)" "$(cat "${FAKE_HOME}/cfg/claude-carbon/last-card-month" 2>/dev/null)"
+    is "${what}: Totals line, then the browser line" "Totals|No" \
+      "$(printf '%s\n' "$OUT" | grep -E '^(Totals since|No Chromium)' | cut -d' ' -f1 | paste -sd'|' -)"
+    is "${what}: no PNG written"                  "0" "$(find "${FAKE_HOME}/out" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+  done
+
+  : > "$MARK"
+  OUT="$(CARD_NO_OPEN=1 card "${FAKE_HOME}/absent")"
+  is "CLAUDE_CARBON_NO_OPEN: nothing spawned" "nothing" "$(opened)"
+  case "$OUT" in
+    *"No Chromium, so no PNG: open "*claude-carbon-summary-fr-*.html" in a browser"*) ok "CLAUDE_CARBON_NO_OPEN: the line names the page instead" ;;
+    *) bad "CLAUDE_CARBON_NO_OPEN: the line names the page instead" "$OUT" ;;
+  esac
+else
+  echo "  skip (sqlite3, node and jq are needed)"
+fi
+
+# ── 7c. The card's footer: a command to type, the repo under it ──────────────
+echo ""
+echo "card footer"
+
+NBSP="$(printf '\302\240')"
+# footer_text <template> <class>: the text of that footer element, tags stripped,
+# &nbsp; turned into the real character.
+footer_text() {
+  grep -m1 "class=\"$2\"" "$1" | sed -e 's/<[^>]*>//g' -e "s/&nbsp;/${NBSP}/g" -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+for t in report-summary report-detailed; do
+  is "${t} FR: command"         "Mesurez la vôtre${NBSP}: npx claude-carbon" "$(footer_text "${REPO_DIR}/templates/${t}.html" cta-label)"
+  is "${t} EN: command"         "Measure yours: npx claude-carbon"           "$(footer_text "${REPO_DIR}/templates/${t}-en.html" cta-label)"
+  is "${t} FR: repo kept"       "github.com/gwittebolle/claude-carbon"      "$(footer_text "${REPO_DIR}/templates/${t}.html" cta-link)"
+  is "${t} EN: repo kept"       "github.com/gwittebolle/claude-carbon"      "$(footer_text "${REPO_DIR}/templates/${t}-en.html" cta-link)"
+  is "${t} FR: team view kept"  "vue équipe · tokenclimate.com"             "$(footer_text "${REPO_DIR}/templates/${t}.html" team-link)"
+  is "${t} EN: team view kept"  "team view · tokenclimate.com"              "$(footer_text "${REPO_DIR}/templates/${t}-en.html" team-link)"
+done
 
 rm -rf "$FAKE_HOME"
 
