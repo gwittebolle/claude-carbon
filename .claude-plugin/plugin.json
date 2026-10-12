@@ -31,7 +31,7 @@
     "showSessionTotal": {
       "type": "boolean",
       "title": "CO2 session total in the terminal",
-      "description": "Pin the session's CO2 total under the prompt in a terminal. Turn it off when your status line already shows it, such as ccstatusline with the claude-carbon segment. The desktop app keeps it.",
+      "description": "Pin the session's CO2 total and its API-price cost under the prompt in a terminal. Turn it off when your status line already shows it, such as ccstatusline with the claude-carbon segment. The desktop app keeps it.",
       "default": true
     }
   }

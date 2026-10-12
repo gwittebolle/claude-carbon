@@ -483,6 +483,7 @@ check "mod: no skill, script or command in the copy" "no no no" "$(has "${M}/ski
 check "mod: module identical to the clone's" "yes" "$(diff -r -x '*.test.tsx' "${REPO_DIR}/hooks/mod" "${M}/hooks/mod" >/dev/null 2>&1 && echo yes || echo no)"
 check "mod: tests left out" "no" "$(has "${M}/hooks/mod/answer-co2.test.tsx")"
 check "mod: factors travel with it" "yes" "$(same "${REPO_DIR}/data/factors.json" "${M}/data/factors.json")"
+check "mod: prices travel with it" "yes" "$(same "${REPO_DIR}/data/prices.json" "${M}/data/prices.json")"
 check "mod: types travel with it" "yes" "$(same "${REPO_DIR}/types/index.d.ts" "${M}/types/index.d.ts")"
 check "mod: no work directory left" "" "$(leftovers "$CFG")"
 
@@ -496,6 +497,7 @@ OUT="$(mod_run "$CFG")"
 said "mod: a stale copy is updated" "mod: updated" "$OUT"
 said "mod: an update asks for a restart" "Restart Claude Code to load it" "$OUT"
 check "mod: the update brings the current factors" "yes" "$(same "${REPO_DIR}/data/factors.json" "${M}/data/factors.json")"
+check "mod: the update brings the current prices" "yes" "$(same "${REPO_DIR}/data/prices.json" "${M}/data/prices.json")"
 check "mod: the update keeps the marker" "yes" "$(has "${M}/${MANAGED}")"
 check "mod: the update leaves nothing behind" "" "$(leftovers "$CFG")"
 

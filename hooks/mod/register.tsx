@@ -2,14 +2,13 @@
 //
 // Terminal: at the right end of the turn duration line ("✻ Worked for 4s · done 10:32 PM
 // ... 1,1 gCO₂"). Desktop app, where that line is not drawn: a line under the answer, for
-// unusual answers only. The session total is pinned under the prompt, unless a status
-// line already shows it on this surface (the claude-carbon one, or showSessionTotal
-// off). Where no terminal is attached, the pinned session entry also carries the last
-// answer's figure.
+// unusual answers only. The session total, CO2 and API-price cost, is pinned under the
+// prompt, unless a status line already shows it on this surface (the claude-carbon
+// one, or showSessionTotal off).
 //
-// One request at a time through turn.step, the formula and factors of the bash plugin
-// (lib/co2.ts). Writes no database, starts no process, calls no network, never changes
-// what Claude does.
+// One request at a time through turn.step, the formulas, factors and prices of the bash
+// plugin (lib/co2.ts, lib/cost.ts). Writes no database, starts no process, calls no
+// network, never changes what Claude does.
 
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register } from "claude-code";
@@ -22,6 +21,8 @@ import {
   parseFactors,
 } from "./lib/co2.ts";
 import type { Factors } from "./lib/co2.ts";
+import { costUsd, parsePrices } from "./lib/cost.ts";
+import type { Prices } from "./lib/cost.ts";
 import {
   answerLine,
   buildAnswerCo2,
@@ -44,7 +45,7 @@ const answers = atom(
 );
 const session = atom(
   { plugin: "claude-carbon", key: "session" } as const,
-  { grams: 0, turns: 0 } as SessionTotal,
+  { grams: 0, usd: 0, turns: 0 } as SessionTotal,
 );
 
 // v2: the values of v1 counted background subagents in the answer that started them.
@@ -96,7 +97,7 @@ function isRemoteOnly(surfaces: readonly string[]): boolean {
 async function resetSessionState($: EngineInterface) {
   await $.state.set(
     { plugin: "claude-carbon", key: "session" },
-    { grams: 0, turns: 0 },
+    { grams: 0, usd: 0, turns: 0 },
   );
   await $.state.set({ plugin: "claude-carbon", key: "answers" }, []);
   $.ui.status(undefined);
@@ -109,6 +110,8 @@ export const register: Register = (on, options) => {
   // desktop app, which draws no status line, keeps it.
   const showSessionTotal = options.showSessionTotal !== false;
   let factors: Factors = DEFAULT_FACTORS;
+  // Null when data/prices.json cannot be read: the entry then shows the CO2 alone.
+  let prices: Prices | null = null;
   let lang: Lang = "fr";
   let hasCarbonStatusLine = false;
   let current: OpenTurn | null = null;
@@ -138,6 +141,12 @@ export const register: Register = (on, options) => {
           : DEFAULT_FACTORS;
     } catch {
       factors = DEFAULT_FACTORS;
+    }
+    try {
+      const text = await $.fs.read(`${$.plugin.root}/data/prices.json`);
+      prices = typeof text === "string" ? parsePrices(JSON.parse(text)) : null;
+    } catch {
+      prices = null;
     }
 
     let settings: Record<string, unknown> = {};
@@ -233,9 +242,13 @@ export const register: Register = (on, options) => {
         const model = usage.model !== "" ? usage.model : e.model;
         if (!isExcluded(model, factors.excludeModels)) {
           const grams = co2Grams(usage, model, factors);
-          await update($, session, (total) => ({
+          const usd = prices !== null ? costUsd(usage, model, prices) : null;
+          await update($, session, ({ usd: spent, ...total }) => ({
             ...total,
             grams: total.grams + grams,
+            // A request with no price, or a total kept from code that counted no cost,
+            // leaves the cost out until the total starts over.
+            ...(usd !== null && spent !== undefined ? { usd: spent + usd } : {}),
           }));
           const agent = e.agentId;
           // Outside an open answer, from a background subagent or from a subagent of
@@ -330,10 +343,7 @@ export const register: Register = (on, options) => {
         total !== undefined &&
         total.grams > 0
       ) {
-        // The last answer's figure, in place of the duration line; dropped when the
-        // answer counted nothing, so a stale figure never stays on screen.
-        const last = showPerTurn && remoteOnly && isCounted ? done.grams : null;
-        $.ui.status(sessionLine(total.grams, lang, last));
+        $.ui.status(sessionLine(total.grams, lang, total.usd ?? null));
       }
       // The figure becomes a line under the answer, for unusual answers only.
       if (co2 !== null && co2.isUnusual && showPerTurn && remoteOnly) {
