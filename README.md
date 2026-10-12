@@ -12,13 +12,17 @@ claude-carbon is an open source Claude Code plugin that tracks the carbon footpr
 
 ## What claude-carbon does
 
-- Adds a live CO2 estimate to the Claude Code status line, next to the session cost
+- Adds a live CO2 estimate to the Claude Code status line, next to the session cost, and the session's CO2 and cost under the prompt in the Claude desktop app
 - Persists each session to a local SQLite database, so history survives the 30-day transcript purge
 - Backfills historical data from existing `~/.claude` transcripts
 - Slash commands: `/carbon-report` (text), `/carbon-card` (PNG), `/carbon-pr` (footprint of a pull request)
 - A README badge with your all-time total, and a public methodology with every factor sourced
 
+## Install
+
 ### In the Claude desktop app, no terminal needed
+
+![Illustration of claude-carbon in the Code tab of the Claude desktop app: "This session: 4.9 gCO₂ · $0.47" under the prompt](docs/desktop-app.png)
 
 1. Open the **Code** tab of the Claude desktop app and start a session, in any folder.
 2. Paste the message for your system. It works in any language. Claude runs the installer for you and asks before running the command: accept.
