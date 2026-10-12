@@ -88,22 +88,63 @@ ALL_CO2="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(co2_grams), 0) FROM sessions 
 ALL_SESSIONS="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE ${NOT_EXCLUDED};")"
 ALL_COST="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(cost_usd), 0) FROM sessions WHERE ${NOT_EXCLUDED};" | awk '{printf "%.2f", $1}')"
 
-# --- Equivalences (all-time total) ---
-# Factors: data/factors.json "equivalences" (single source, shared with the cards);
-# derivations and sources: METHODOLOGY.md "Equivalences used in reports". France and
-# undetected locales get the ADEME/SNCF set, a US locale the EPA one, everyone else
-# the world average: a car, a kWh and a kilo of beef each differ by 2x+ between
-# countries, so a single set would be wrong for most readers.
-EQUIV_ROWS="$(jq -r --arg set "$EQUIV_SET" \
-  '.equivalences[$set][] | "\(.divisor)|\(.decimals)|\(.label)|\(.source)"' "$FACTORS_FILE" \
-  | while IFS='|' read -r divisor decimals label source; do
-      count="$(echo "$ALL_CO2" | awk -v d="$divisor" -v p="$decimals" '{ fmt = "%." p "f"; printf fmt, $1 / d }')"
-      printf '%s|%s|%s\n' "$count" "$label" "$source"
-    done)"
+# --- Car equivalent (all-time total) ---
+# Factor: data/factors.json "equivalences", the car row of the detected set, the
+# same factor, label and source the cards use; derivations in METHODOLOGY.md
+# "Equivalences used in reports". France and undetected locales get ADEME, a US
+# locale EPA in miles, everyone else the world average. The other rows of each
+# set (Gemini prompt, TGV, steak, phone charge) stay in factors.json, unused here.
+IFS='|' read -r CAR_DIVISOR CAR_DECIMALS CAR_LABEL CAR_SOURCE <<< \
+  "$(jq -r --arg set "$EQUIV_SET" \
+    '.equivalences[$set][] | select(.id == "car") | "\(.divisor)|\(.decimals)|\(.label)|\(.source)"' "$FACTORS_FILE" 2>/dev/null)"
 # A malformed or hand-edited factors.json must fail loudly, not print an empty section
-if [ -z "$EQUIV_ROWS" ]; then
-  echo "Error: could not read the '$EQUIV_SET' equivalence set from $FACTORS_FILE" >&2
+if [ -z "${CAR_DIVISOR:-}" ] || [ -z "${CAR_LABEL:-}" ]; then
+  echo "Error: could not read the car row of the '$EQUIV_SET' equivalence set from $FACTORS_FILE" >&2
   exit 1
+fi
+CAR_COUNT="$(echo "$ALL_CO2" | awk -v d="$CAR_DIVISOR" -v p="${CAR_DECIMALS:-0}" '{ fmt = "%." p "f"; printf fmt, $1 / d }')"
+
+# --- Share of a 2 t per-person annual budget (current calendar year) ---
+# 2 tCO2e per person per year is the 2050 target for a person's whole footprint
+# (Carbone 4 "Faire sa part ?", 2019; ADEME Nos Gestes Climat), used as a scale,
+# not as an allowance for AI. It is compared with this calendar year's total only:
+# an all-time total against an annual budget would mix two time spans.
+# Sources: METHODOLOGY.md "Equivalences used in reports". Kept here rather than in
+# data/factors.json: it is not an emission factor and no other script reads it.
+BUDGET_GRAMS=2000000
+# French layout on the French set (the one whose labels are in French), English otherwise.
+BUDGET_LANG="en"; [ "$EQUIV_SET" = "fr" ] && BUDGET_LANG="fr"
+BUDGET_FIGURES="$(echo "$YEAR_CO2" | awk -v b="$BUDGET_GRAMS" -v lang="$BUDGET_LANG" '
+  # Thousands grouped (space in French, comma in English), decimal comma in French.
+  function group(n,   ip, dec, out) {
+    ip = n; dec = ""
+    if (index(n, ".")) { ip = substr(n, 1, index(n, ".") - 1); dec = substr(n, index(n, ".") + 1) }
+    out = ""
+    while (length(ip) > 3) { out = (lang == "fr" ? " " : ",") substr(ip, length(ip) - 2) out; ip = substr(ip, 1, length(ip) - 3) }
+    out = ip out
+    if (dec != "") out = out (lang == "fr" ? "," : ".") dec
+    return out
+  }
+  {
+    # Grams under a kilo, then kg: one decimal under 10 kg, whole kg above.
+    if ($1 < 999.5) qty = sprintf("%.0f", $1) " g"
+    else if ($1 < 10000) qty = group(sprintf("%.1f", $1 / 1000)) " kg"
+    else qty = group(sprintf("%.0f", $1 / 1000)) " kg"
+    pct = $1 / b * 100
+    if (pct == 0) pcts = "0"
+    else if (pct < 0.1) pcts = (lang == "fr") ? "< 0,1" : "< 0.1"
+    else if (pct < 10) pcts = group(sprintf("%.1f", pct))
+    else pcts = group(sprintf("%.0f", pct))
+    printf "%s|%s", qty, pcts
+  }')"
+BUDGET_QTY="${BUDGET_FIGURES%%|*}"
+BUDGET_PCT="${BUDGET_FIGURES#*|}"
+if [ "$BUDGET_LANG" = "fr" ]; then
+  BUDGET_LINE="Depuis le 1er janvier : ${BUDGET_QTY}, soit ${BUDGET_PCT} % du budget annuel de 2 t par personne"
+  BUDGET_NOTE="(cible 2050 pour l'empreinte totale d'une personne, Carbone 4 2019)"
+else
+  BUDGET_LINE="Since January 1: ${BUDGET_QTY}, ${BUDGET_PCT}% of a 2 t per-person annual budget"
+  BUDGET_NOTE="(2050 target for a person's whole footprint, Carbone 4 2019)"
 fi
 
 # --- Top 5 sessions by CO2 ---
@@ -139,11 +180,12 @@ echo "  CO2       : ${ALL_CO2}g"
 echo "  Sessions  : ${ALL_SESSIONS}"
 echo "  Cost      : \$${ALL_COST}"
 echo ""
-echo "--- Equivalences (all-time) ---"
-while IFS='|' read -r count label source; do
-  [ -z "$count" ] && continue
-  printf "  %10s %-20s (%s)\n" "$count" "$label" "$source"
-done <<< "$EQUIV_ROWS"
+echo "--- Car equivalent (all-time) ---"
+printf "  %10s %-20s (%s)\n" "$CAR_COUNT" "$CAR_LABEL" "$CAR_SOURCE"
+echo ""
+echo "--- Annual budget (${CURRENT_YEAR}) ---"
+echo "  ${BUDGET_LINE}"
+echo "  ${BUDGET_NOTE}"
 echo ""
 echo "--- Top 5 sessions by CO2 ---"
 echo "Date        | Project                 | CO2 (g) | Model                          | Cost"

@@ -2,6 +2,23 @@
 
 ## 2026-10-12
 
+### feat: /carbon-report gives a car equivalent and this year's share of a 2 t budget
+
+The equivalence block of `/carbon-report` printed four lines for the all-time
+total (car, Gemini prompts, TGV or phone charges, beef steaks). It now prints
+the car line of the detected locale set only, the same factor, label and source
+as the cards, and a second line with the current calendar year's total as a
+share of 2 tCO2e per person and per year: `Depuis le 1er janvier : 1 214 kg,
+soit 61 % du budget annuel de 2 t par personne` on the French set, `Since
+January 1: 1,214 kg, 61% of a 2 t per-person annual budget` on the US and world
+sets, followed by the source. The share runs on this year's sessions only,
+never on the all-time total. METHODOLOGY.md ("Annual budget line") quotes the
+2 t figure from Carbone 4, _Faire sa part ?_ (June 2019), and ADEME's Nos Gestes
+Climat (2025), and states that it is a 2050 target for a person's whole
+footprint, used as a scale. `data/factors.json` is unchanged: the Gemini, TGV,
+steak and charge rows stay there, unused by the report. `tests/run-report-tests.sh`
+runs the skill against fixture databases, in CI on Linux and Windows.
+
 ### feat: a Claude Code mod in the plugin shows the CO2 of each answer (1.9.0)
 
 The plugin now holds a Claude Code mod (`hooks/mod/`, declared in

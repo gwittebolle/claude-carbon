@@ -196,6 +196,8 @@ A review of what was published between April and September 2026 (measurement pap
 
 ## Equivalences used in reports
 
+`/carbon-report` prints two lines: the car row of the detected set, applied to the all-time total, and the share of a 2 t per-person annual budget, applied to the current calendar year (see [Annual budget line](#annual-budget-line)). The cards print the same car row. The other rows of each set below (Gemini prompt, TGV, steak, smartphone charge) stay in `data/factors.json` with their derivations, but no report prints them any more: a number of prompts or of steaks gave no usable sense of scale.
+
 Equivalences are locale-dependent. A car, a kWh and a kilo of beef each differ by a factor of 2 or more between countries, so a single set is wrong for most readers: ADEME and SNCF factors describe a French fleet and a nuclear-heavy grid (and a TGV means nothing outside France), while EPA factors describe the heaviest car fleet in the OECD. Three sets ship.
 
 ### Default (world average)
@@ -235,11 +237,26 @@ Both EPA factors come from the [Greenhouse Gas Equivalencies Calculator referenc
 
 The steak factor is the Impact CO2 beef average (28.0 kgCO2e/kg, Agribalyse 3.2, page updated 15/01/2025) times a 150 g portion.
 
+### Annual budget line
+
+The second line compares this calendar year's total with 2 tCO2e, for example `Depuis le 1er janvier : 1 214 kg, soit 61 % du budget annuel de 2 t par personne` (French set) or `Since January 1: 1,214 kg, 61% of a 2 t per-person annual budget` (US and world sets).
+
+The 2 t figure is the order of magnitude commonly given for a person's whole carbon footprint in 2050 on a path compatible with the Paris Agreement. Carbone 4, [*Faire sa part ? Pouvoir et responsabilité des individus, des entreprises et de l'État face à l'urgence climatique*](https://www.carbone4.com/files/73_publication_faire_sa_part.pdf) (C. Dugast, A. Soyeux, June 2019): "un Français moyen baisse son empreinte des quasi 11 tCO2e/an actuelles… à environ 2 tCO2e par personne et par an, d'ici 2050", from 10.8 t in 2017. ADEME's footprint calculator Nos Gestes Climat uses the same target, [Objectif 2 tonnes](https://nosgestesclimat.fr/blog/environnement/reduire-empreinte-carbone-objectif-deux-tonnes) (published 2025-09-12, updated 2026-03-05): "en 2050, nos émissions devront tourner autour de 2 tonnes de CO₂e par personne et par an", a world average drawn from the IPCC 1.5 °C scenarios.
+
+What the line means and does not mean:
+
+- It is a target for everything a person emits in a year (housing, transport, food, goods, the public services they use), not a quota for AI or for work tools. The same Nos Gestes Climat article puts the public-services share alone at about 1.5 t per French person today, so the room left for anything else in a 2 t footprint is small.
+- It is used as a scale: it turns a kilogram figure into a share a reader can place. The target is for 2050, the comparison runs on this year's emissions.
+- The comparison runs on the current calendar year only (sessions whose `started_at` falls in it, excluded sessions left out), never on the all-time total: an annual budget against a multi-year total would mix two time spans. On January 1 the share starts again from zero.
+- The figure is this tool's usage-only compute estimate (see the scope sections above), which leaves out embodied hardware and training, so the share leaves them out as well.
+
+The value lives in the skill (`skills/carbon-report/SKILL.md`), not in `data/factors.json`: it is not an emission factor and no other script reads it.
+
 ### Locale detection
 
 Read in order: `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES`, `LANG`, then macOS `AppleLocale` (hooks and GUI-launched shells often carry no `LANG`). `C` and `POSIX` values are skipped: they are sentinels scripts export to stabilize parsing, not user locales. `fr` and any `fr_FR`/`fr-FR` variant (`fr.UTF-8`, `fr_FR.UTF-8`, ...) select the French set, and so does an undetected locale: the French set is this tool's original default, and a detection failure must reproduce the previous behavior, not silently switch factor sets. Anything containing `_US` or `-US` selects the US set; everything else, including non-France francophone locales (`fr_BE`, `fr_CA`, `fr_CH`), gets the world average. `CLAUDE_CARBON_LOCALE` forces a set (a set name or a locale string). The factors live in `data/factors.json` under `equivalences`; the selection logic is `scripts/equiv-lib.sh`, shared by `/carbon-report` and the card generator.
 
-The PNG cards: the FR card always carries the ADEME factor in km, the EN card follows the detected locale down to the unit (miles on a US locale). The EN card and `/carbon-report` therefore always use the same factor set, but their totals can still differ: `/carbon-report` equivalences run on the all-time total while a card covers its report window. Each card names its car factor under the figure, and the `Totals since` line prints it after the distance: the PNG travels alone, so the same "car equivalent" would otherwise mean three different things depending on the set.
+The PNG cards: the FR card always carries the ADEME factor in km, the EN card follows the detected locale down to the unit (miles on a US locale). The EN card and `/carbon-report` therefore always use the same factor set, but their totals can still differ: the `/carbon-report` car row runs on the all-time total while a card covers its report window. Each card names its car factor under the figure, and the `Totals since` line prints it after the distance: the PNG travels alone, so the same "car equivalent" would otherwise mean three different things depending on the set.
 
 Scope varies across the sets and across rows. The EPA car factor is tailpipe combustion (CO2, CH4, N2O), the world one tailpipe CO2, the ADEME one lifecycle including vehicle manufacture. The three steak factors come from three different LCA traditions and span 4200 to 14900 gCO2e, driven by land-use change and by where the system boundary stops. So the numbers in one row are not comparable across sets, and none is scope-matched against this tool's usage-only compute figure. The equivalences are illustrative.
 
