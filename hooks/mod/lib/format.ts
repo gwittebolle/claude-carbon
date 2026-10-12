@@ -149,17 +149,27 @@ export function answerLine(view: AnswerCo2View): string {
     : `${view.main} · ${view.sub}`;
 }
 
+// Two decimals, as the status line rounds it; "< 0,01 $" under a cent. French puts the
+// sign after the number, English before it.
+export function formatUsd(usd: number, lang: Lang): string {
+  const isTiny = usd < 0.01;
+  const amount = decimal(isTiny ? 0.01 : usd, 2, lang);
+  const money = lang === "fr" ? `${amount}${NBSP}$` : `$${amount}`;
+  return isTiny ? `<${NBSP}${money}` : money;
+}
+
 // The entry pinned under the prompt. The surface already heads it with the plugin's name.
-// lastAnswerGrams is given only where the turn duration line is not drawn.
+// The cost is left out when there is none to show (no price list read), never shown as 0.
 export function sessionLine(
   sessionGrams: number,
   lang: Lang,
-  lastAnswerGrams: number | null = null,
+  sessionUsd: number | null = null,
 ): string {
   const fr = lang === "fr";
-  const total = `${formatGrams(sessionGrams, lang)} ${fr ? "cette session" : "this session"}`;
-  if (lastAnswerGrams === null || !(lastAnswerGrams > 0)) return total;
-  return `${total} · ${fr ? "dernière réponse" : "last answer"} ${formatGrams(lastAnswerGrams, lang)}`;
+  const head = fr ? `Cette session${NBSP}:` : "This session:";
+  const total = `${head} ${formatGrams(sessionGrams, lang)}`;
+  if (sessionUsd === null || !(sessionUsd > 0)) return total;
+  return `${total} · ${formatUsd(sessionUsd, lang)}`;
 }
 
 // Shown once per machine, the same on every surface.

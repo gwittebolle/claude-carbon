@@ -16,8 +16,10 @@ export type AnswerCo2Entry = {
   co2: AnswerCo2 | null;
 };
 
+// usd: the API-price cost (data/prices.json) of the same requests as grams.
 export type SessionTotal = {
   grams: number;
+  usd: number;
   turns: number;
 };
 

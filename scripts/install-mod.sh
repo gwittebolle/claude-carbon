@@ -121,8 +121,10 @@ build() {
   cp -R "${INSTALL_DIR}/hooks/mod" "${TMP}/hooks/mod" &&
   rm -f "${TMP}"/hooks/mod/*.test.tsx "${TMP}"/hooks/mod/*/*.test.tsx &&
   cp "${INSTALL_DIR}/types/index.d.ts" "${TMP}/types/index.d.ts" &&
-  # The mod reads its factors from $.plugin.root, so they travel with it and follow updates.
+  # The mod reads its factors and prices from $.plugin.root, so they travel with it and
+  # follow updates.
   cp "${INSTALL_DIR}/data/factors.json" "${TMP}/data/factors.json" &&
+  cp "${INSTALL_DIR}/data/prices.json" "${TMP}/data/prices.json" &&
   printf 'Made by the claude-carbon installer from %s.\nRemoved by running it again with CLAUDE_CARBON_NO_MOD=1.\n' \
     "$INSTALL_DIR" > "${TMP}/${MARKER}"
 }

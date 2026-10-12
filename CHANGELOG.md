@@ -2,6 +2,24 @@
 
 ## 2026-10-12
 
+### feat: the mod's pinned entry gives the session's CO2 and API-price cost
+
+The entry the mod pins under the prompt now reads `Cette session : 3,6 gCO₂ ·
+0,12 $` in French and `This session: 3.6 gCO₂ · $0.12` in English, with
+no-break spaces before the French colon and around the units. It no longer
+carries the last answer's figure in the desktop app; the line under an unusual
+answer stays as it was, and the entry is pinned in the same cases as before.
+
+The cost is computed by the mod from each request's tokens in `turn.step`, the
+same requests as the CO2, with `data/prices.json` and the formula and model
+resolution of the bash plugin's `cost_usd` (`hooks/mod/lib/cost.ts`). `turn.step`
+does not split cache writes by tier, so they are priced at the 1-hour tier,
+the one Claude Code writes at. It shows with two decimals, `< 0,01 $` /
+`< $0.01` under a cent, and is left out when `data/prices.json` cannot be
+read. `tests/run-mod-tests.mjs` replays the `expected_cost_usd` of both
+golden-vector files through it, and the installers' copy of the mod now
+carries `data/prices.json` beside `data/factors.json`.
+
 ### feat: a Claude Code mod in the plugin shows the CO2 of each answer (1.9.0)
 
 The plugin now holds a Claude Code mod (`hooks/mod/`, declared in

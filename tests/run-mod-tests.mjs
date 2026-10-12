@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // run-mod-tests.mjs: checks the pure modules of the claude-carbon mod against the
 // plugin's own contract, with no Claude Code API involved.
-//   1. CO2 parity: every golden vector (tests/methodology-vectors*.json) replayed
-//      through hooks/mod/lib/co2.ts, same 1e-6 relative tolerance as
-//      tests/run-vectors.sh, with the CURRENT data/factors.json (the file the mod reads).
+//   1. CO2 and cost parity: every golden vector (tests/methodology-vectors*.json)
+//      replayed through hooks/mod/lib/co2.ts and hooks/mod/lib/cost.ts, same 1e-6
+//      relative tolerance as tests/run-vectors.sh, with the CURRENT data/factors.json
+//      and data/prices.json (the files the mod reads).
 //   2. Display rules (hooks/mod/lib/format.ts), French and English.
 //   3. Which turn a duration line belongs to (hooks/mod/lib/lines.ts).
 // Runs on Node 22.6+ with --experimental-strip-types (default from Node 23.6).
@@ -19,9 +20,16 @@ import {
   family,
 } from "../hooks/mod/lib/co2.ts";
 import {
+  costUsd,
+  modelPrices,
+  parsePrices,
+  priceOverride,
+} from "../hooks/mod/lib/cost.ts";
+import {
   buildAnswerCo2,
   detectLang,
   formatGrams,
+  formatUsd,
   hasLangVariable,
   isCarbonStatusLine,
   isUnusual,
@@ -66,13 +74,20 @@ function close(name, actual, expected) {
   }
 }
 
-// ── 1. CO2 parity ────────────────────────────────────────────────────────────
+// ── 1. CO2 and cost parity ───────────────────────────────────────────────────
 const factorsRaw = readFileSync(join(REPO, "data/factors.json"), "utf8");
 const factors = parseFactors(JSON.parse(factorsRaw));
+const pricesRaw = JSON.parse(
+  readFileSync(join(REPO, "data/prices.json"), "utf8"),
+);
+const prices = parsePrices(pricesRaw);
+// The family vectors pin the family prices: replayed without model_overrides, as
+// tests/run-vectors.sh does.
+const familyPrices = parsePrices({ ...pricesRaw, model_overrides: undefined });
 
-for (const file of [
-  "tests/methodology-vectors.json",
-  "tests/methodology-vectors-per-model.json",
+for (const [file, vectorPrices] of [
+  ["tests/methodology-vectors.json", familyPrices],
+  ["tests/methodology-vectors-per-model.json", prices],
 ]) {
   const { vectors } = JSON.parse(readFileSync(join(REPO, file), "utf8"));
   for (const v of vectors) {
@@ -94,8 +109,93 @@ for (const file of [
       co2Grams(usage, v.model, factors),
       v.expected_co2_grams,
     );
+    // The vector's own split of the cache writes, 5-minute tier when it gives none,
+    // as tests/run-vectors.sh replays it.
+    close(
+      `${file} ${v.id} cost`,
+      costUsd(usage, v.model, vectorPrices, v.cache_creation_1h_tokens ?? 0),
+      v.expected_cost_usd,
+    );
   }
 }
+
+// The mod sees no split: every cache write at the 1-hour tier, Claude Code's.
+const writes = {
+  input_tokens: 1000,
+  cache_creation_input_tokens: 20000,
+  cache_read_input_tokens: 100000,
+  output_tokens: 500,
+};
+check(
+  "cost: writes at the 1-hour tier by default",
+  costUsd(writes, "claude-opus-5-5", prices),
+  costUsd(writes, "claude-opus-5-5", prices, 20000),
+);
+// Opus 5.5 at 4/20, writes at 2x, reads at 0.05x: 4 000 + 160 000 + 20 000 + 10 000
+close(
+  "cost: Opus 5.5 request",
+  costUsd(writes, "claude-opus-5-5", prices),
+  0.194,
+);
+// The 1-hour part never goes above the total write
+close(
+  "cost: 1-hour part clamped",
+  costUsd(writes, "claude-opus-5-5", prices, 99999),
+  0.194,
+);
+// Same writes at the 5-minute tier, 1.25x: 4 000 + 100 000 + 20 000 + 10 000
+close(
+  "cost: 5-minute tier",
+  costUsd(writes, "claude-opus-5-5", prices, 0),
+  0.134,
+);
+
+// Model resolution, the same as cc_override / cc_params in scripts/portable-lib.sh
+// (each value below is what cc_model_params prints for the id).
+const resolved = (model) => {
+  const p = modelPrices(model, prices);
+  return [p.input, p.output, p.cacheWriteMultiplier, p.cacheWriteMultiplier1h, p.cacheReadMultiplier].join(" ");
+};
+for (const [model, expected] of [
+  ["claude-opus-5-5", "4 20 1.25 2 0.05"],
+  ["claude-opus-5-5-20260922", "4 20 1.25 2 0.05"],
+  ["claude-opus-5-5[1m]", "4 20 1.25 2 0.05"],
+  ["CLAUDE-OPUS-5-5", "4 20 1.25 2 0.05"],
+  ["claude-opus-5-50", "4 20 1.25 2 0.1"],
+  ["claude-opus-5-5-preview", "4 20 1.25 2 0.1"],
+  ["claude-opus-5", "5 25 1.25 2 0.1"],
+  ["claude-opus-4-1", "4 20 1.25 2 0.1"],
+  ["claude-sonnet-4-6", "3 15 1.25 2 0.1"],
+  ["claude-sonnet-5", "2 10 1.25 2 0.1"],
+  ["claude-sonnet-5-5", "2 10 1.25 2 0.05"],
+  ["claude-haiku-5-5", "0.1 0.5 1.25 2 0.1"],
+  ["claude-haiku-4-5-20251001", "1 5 1.25 2 0.1"],
+  ["claude-fable-5-1", "10 50 1.25 2 0.025"],
+  ["claude-mythos-5", "10 50 1.25 2 0.1"],
+]) {
+  check(`prices ${model}`, resolved(model), expected);
+}
+check(
+  "prices: longest key wins",
+  priceOverride("claude-x-1-20260101", [
+    ["claude-x", { input: 1 }],
+    ["claude-x-1", { input: 2 }],
+  ]).input,
+  2,
+);
+check("prices: not an object", parsePrices([]), null);
+check("prices: fallback family", parsePrices({}).models.opus.output, 20);
+check("prices: fallback multiplier", parsePrices({}).cacheWriteMultiplier1h, 2);
+check(
+  "prices: an override leaves the rest to the family",
+  modelPrices("claude-a-1", parsePrices({ model_overrides: { "claude-a-1": { output: 7 } } })).input,
+  2,
+);
+check(
+  "prices: keys starting with _ are notes",
+  parsePrices({ model_overrides: { _note: {} } }).overrides.length,
+  0,
+);
 
 check("family haiku", family("claude-3-5-haiku-20241022"), "haiku");
 check("family opus", family("claude-opus-5-5"), "opus");
@@ -250,32 +350,32 @@ check(
   "incl. 3 subagents: 22 gCO₂",
 );
 
+const u = (n, lang = "fr") => formatUsd(n, lang).replaceAll(NBSP, " ");
+check("$0.12", u(0.1234), "0,12 $");
+check("$0.12 en", u(0.1234, "en"), "$0.12");
+check("$0.125 rounds up", u(0.126), "0,13 $");
+check("$12.5", u(12.5), "12,50 $");
+check("$0.01", u(0.01), "0,01 $");
+check("under a cent", u(0.004), "< 0,01 $");
+check("under a cent en", u(0.004, "en"), "< $0.01");
+check("nbsp before $", formatUsd(0.12, "fr") === `0,12${NBSP}$`, true);
+check("nbsp after < en", formatUsd(0.001, "en") === `<${NBSP}$0.01`, true);
+
 const sessionCases = [
-  ["session line", [212.3, "fr"], "212 gCO₂ cette session"],
-  ["session line en", [212.3, "en"], "212 gCO₂ this session"],
-  [
-    "session line, last answer",
-    [14, "fr", 1.04],
-    "14 gCO₂ cette session · dernière réponse 1,0 gCO₂",
-  ],
-  [
-    "session line, last answer en",
-    [14, "en", 1.04],
-    "14 gCO₂ this session · last answer 1.0 gCO₂",
-  ],
-  [
-    "session line, tiny last answer",
-    [3.2, "fr", 0.03],
-    "3,2 gCO₂ cette session · dernière réponse < 0,1 gCO₂",
-  ],
-  [
-    "session line over 1 kg",
-    [1234, "fr", 6.4],
-    "1,2 kgCO₂ cette session · dernière réponse 6,4 gCO₂",
-  ],
-  ["session line, uncounted last answer", [14, "fr", 0], "14 gCO₂ cette session"],
-  ["session line, no last answer", [14, "fr", null], "14 gCO₂ cette session"],
+  ["session line", [3.6, "fr", 0.1234], "Cette session : 3,6 gCO₂ · 0,12 $"],
+  ["session line en", [3.6, "en", 0.1234], "This session: 3.6 gCO₂ · $0.12"],
+  ["session line, under a cent", [0.4, "fr", 0.003], "Cette session : 0,4 gCO₂ · < 0,01 $"],
+  ["session line, under a cent en", [0.4, "en", 0.003], "This session: 0.4 gCO₂ · < $0.01"],
+  ["session line over 1 kg", [1234, "fr", 52.4], "Cette session : 1,2 kgCO₂ · 52,40 $"],
+  ["session line, no cost", [212.3, "fr", null], "Cette session : 212 gCO₂"],
+  ["session line, no cost en", [212.3, "en"], "This session: 212 gCO₂"],
+  ["session line, zero cost dropped", [14, "fr", 0], "Cette session : 14 gCO₂"],
 ];
+check(
+  "nbsp before the French colon",
+  sessionLine(14, "fr").startsWith(`Cette session${NBSP}:`),
+  true,
+);
 const shown = [];
 for (const [name, args, expected] of sessionCases) {
   const line = sessionLine(...args);
@@ -293,13 +393,19 @@ for (const lang of ["fr", "en"]) {
   );
   shown.push(view.main, view.sub, answerLine(view));
   shown.push(welcomeText(lang));
-  shown.push(sessionLine(52, lang, 38), sessionLine(52, lang));
+  shown.push(sessionLine(52, lang, 0.38), sessionLine(52, lang));
+  shown.push(formatUsd(0.12, lang), formatUsd(0.001, lang));
   for (const n of [0.02, 4.24, 37.6, 1234]) shown.push(formatGrams(n, lang));
 }
 for (const text of shown) {
   check(`no plugin name: ${text}`, text.includes("claude-carbon"), false);
   check(`no em dash: ${text}`, text.includes("\u2014"), false);
   check(`no receipt: ${text}`, text.toLowerCase().includes("receipt"), false);
+  check(
+    `no last answer: ${text}`,
+    /dernière réponse|last answer/i.test(text),
+    false,
+  );
 }
 
 check(
