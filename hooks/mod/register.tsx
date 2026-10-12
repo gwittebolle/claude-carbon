@@ -112,6 +112,10 @@ const VIEW_KEY = "pane.view";
 const HINT_KEY = "pane.hinted";
 // The middle of the palette, for a walk with no colour to set its pace
 const NEUTRAL_CLASS = 3;
+// The most stripes drawn: the desktop app's Svg takes 131072 characters at most, and a
+// terminal Raster 512 columns. The most recent are kept.
+const DESKTOP_MAX_STRIPES = 600;
+const RASTER_MAX_COLUMNS = 512;
 
 // v2: the values of v1 counted background subagents in the answer that started them.
 // The v1 key is left as it is and never read again.
@@ -179,12 +183,16 @@ const pane: {
   rows: SessionRow[] | null | undefined;
   walkFrame: number;
   walkTimer: { cancel: () => void } | null;
+  // Bumped by every start and stop of the walk: a step begun under an older one stops,
+  // so two chains never run at once and a stopped walk never draws again.
+  walkRun: number;
 } = {
   historyFile: null,
   sessionId: null,
   rows: undefined,
   walkFrame: 0,
   walkTimer: null,
+  walkRun: 0,
 };
 
 async function loadPaneHistory($: EngineInterface) {
@@ -220,20 +228,29 @@ function stopWalk() {
   pane.walkTimer?.cancel();
   pane.walkTimer = null;
   pane.walkFrame = 0;
+  pane.walkRun += 1;
 }
 
 // One step of the terminal's molecule while a turn runs and the pane is open: a blit of
 // the next frame, no redraw, then the next step at the pace of the current colour. A
-// blit the surface refuses (the pane in a hidden tab, no terminal) is left be.
-async function walkStep($: EngineInterface) {
-  pane.walkTimer = null;
+// blit the surface refuses (the pane in a hidden tab) is left be. Each await may see the
+// walk stopped or restarted: the step then ends without drawing.
+async function walkStep($: EngineInterface, run: number) {
+  const isCurrent = () => run === pane.walkRun;
   try {
-    if (!(await read($, working)) || !(await isPaneOpen($))) {
-      pane.walkFrame = 0;
+    const surfaces = await $.session.surfaces();
+    const goOn =
+      surfaces.includes("terminal") &&
+      (await read($, working)) &&
+      (await isPaneOpen($));
+    if (!isCurrent()) return;
+    if (!goOn) {
+      stopWalk();
       return;
     }
-    pane.walkFrame = 1 - pane.walkFrame;
     const cls = await currentClass($);
+    if (!isCurrent()) return;
+    pane.walkFrame = 1 - pane.walkFrame;
     await $.ui
       .blit({
         requestId: PANE_ID,
@@ -243,18 +260,21 @@ async function walkStep($: EngineInterface) {
         rows: CELL_ROWS,
       })
       .catch(() => undefined);
+    if (!isCurrent()) return;
     pane.walkTimer = $.clock.after(stepMs(cls ?? NEUTRAL_CLASS), () => {
-      void walkStep($);
+      void walkStep($, run);
     });
   } catch {
-    pane.walkFrame = 0;
+    if (isCurrent()) stopWalk();
   }
 }
 
 function ensureWalk($: EngineInterface) {
   if (pane.walkTimer !== null) return;
+  pane.walkRun += 1;
+  const run = pane.walkRun;
   pane.walkTimer = $.clock.after(stepMs(NEUTRAL_CLASS), () => {
-    void walkStep($);
+    void walkStep($, run);
   });
 }
 
@@ -357,8 +377,19 @@ export const register: Register = (on, options) => {
       if (isView(kept)) {
         await $.state.set({ plugin: "claude-carbon", key: "view" }, kept);
       }
-      // Someone welcomed before the pane existed hears of it once. A welcome shown in
-      // this very session waits: one toast at a time.
+    } catch {
+      // The pane opens on what could be read.
+    }
+
+    // Last: a taken name throws, and nothing above depends on it. Someone welcomed
+    // before the pane existed then hears of /carbon once, if it is ours; a welcome
+    // shown in this very session waits for the next one: one toast at a time.
+    try {
+      await $.command.register({
+        name: PANE_ID,
+        description: commandDescription(lang),
+        immediate: true,
+      });
       if (history.welcomed && e.isInteractive) {
         const hinted = (await $.store.get(HINT_KEY)) === true;
         const surfaces = await $.session.surfaces();
@@ -367,17 +398,6 @@ export const register: Register = (on, options) => {
           await $.store.set(HINT_KEY, true);
         }
       }
-    } catch {
-      // The pane opens on what could be read.
-    }
-
-    // Last: a taken name throws, and nothing above should depend on it.
-    try {
-      await $.command.register({
-        name: PANE_ID,
-        description: commandDescription(lang),
-        immediate: true,
-      });
     } catch {
       // /carbon is someone else's here: the rest of the mod works without it.
     }
@@ -483,6 +503,9 @@ export const register: Register = (on, options) => {
     // Before anything that may return early: a module reloaded during the turn has no
     // open answer, and the molecule must still stop.
     stopWalk();
+    // No history file yet (an update installed in this very session): the Stop hook
+    // writes one after this answer, and the pane's next drawing reads it again.
+    if (pane.rows === null) pane.rows = undefined;
     try {
       await $.state.set({ plugin: "claude-carbon", key: "working" }, false);
     } catch {
@@ -619,16 +642,26 @@ export const register: Register = (on, options) => {
       const sm = sessionMedian(past);
       const cls = sm === null ? null : classOf(total.grams, sm);
       const color = colorOf(cls);
-      // The running session joins the stripes with its live total, as the newest.
-      const rows =
-        total.grams > 0
-          ? [...past, { id: pane.sessionId ?? "current", at: now, grams: total.grams }]
-          : past;
+      // The running session joins the stripes with its live total, as the newest, at
+      // the start its own row in the file gives.
+      const own = (pane.rows ?? []).find((r) => r.id === pane.sessionId);
+      const isLive = total.grams > 0;
+      const rows = isLive
+        ? [
+            ...past,
+            { id: pane.sessionId ?? "current", at: own?.at ?? now, grams: total.grams },
+          ]
+        : past;
       const list = pane.rows === null ? [] : bars(rows, view, now);
-      const bm = barMedian(list);
       const isTerminal = e.surface === "terminal";
-      const room = Math.max(10, e.props.bodyColumns - 2);
-      const shown = isTerminal ? list.slice(-room) : list;
+      const room = isTerminal
+        ? Math.min(RASTER_MAX_COLUMNS, Math.max(10, e.props.bodyColumns - 2))
+        : DESKTOP_MAX_STRIPES;
+      const shown = list.slice(-room);
+      // The colours measure the stripes shown against each other, the one still
+      // filling (this week, this month, the running session) left out of the median.
+      const isFilling = view.step !== "session" || isLive;
+      const bm = barMedian(isFilling ? shown.slice(0, -1) : shown);
       const stripes: Stripe[] = shown.map((b) => ({
         color:
           b.grams > 0 ? (bm === null ? NEUTRAL : colorOf(classOf(b.grams, bm))) : null,

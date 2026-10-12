@@ -58,7 +58,11 @@ export function historyPath(env: {
   const db = nonEmpty(env.db);
   if (db !== undefined) {
     const cut = Math.max(db.lastIndexOf("/"), db.lastIndexOf("\\"));
-    const dir = cut > 0 ? db.slice(0, cut) : ".";
+    let dir = cut > 0 ? db.slice(0, cut) : cut === 0 ? "" : ".";
+    // A Git Bash spelling (/c/Users/...) as the bash side accepts it, on Windows
+    const msys = /^\/([a-zA-Z])(\/.*)?$/.exec(dir);
+    if (msys !== null && env.userProfile !== undefined)
+      dir = `${(msys[1] ?? "").toUpperCase()}:${msys[2] ?? "/"}`;
     return `${dir}/${HISTORY_FILE}`;
   }
   const config = nonEmpty(env.configDir);
@@ -115,13 +119,12 @@ export type Bar = {
   sessions: number;
 };
 
-// Monday 00:00, local time
+// Monday 00:00, local time. Built from the date's parts, never by moving an hour: where
+// midnight is skipped for summer time, the day still starts at its first instant.
 function weekStart(ms: number): number {
   const d = new Date(ms);
-  d.setHours(0, 0, 0, 0);
   const offset = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - offset);
-  return d.getTime();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset).getTime();
 }
 
 function monthStart(ms: number): number {
@@ -131,9 +134,9 @@ function monthStart(ms: number): number {
 
 function nextPeriod(start: number, step: "week" | "month"): number {
   const d = new Date(start);
-  if (step === "week") d.setDate(d.getDate() + 7);
-  else d.setMonth(d.getMonth() + 1);
-  return d.getTime();
+  return step === "week"
+    ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7).getTime()
+    : new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
 }
 
 export function rangeStart(range: Range, now: number): number {
@@ -141,19 +144,23 @@ export function rangeStart(range: Range, now: number): number {
 }
 
 // The stripes of a view: one bar per session, or one per week or month with the total
-// of its sessions. Periods are continuous from the first one with a session to the one
-// holding `now`, empty ones included (0 g), so a quiet week shows as a gap.
+// of its sessions. Weeks and months are whole: the range starts at the start of the
+// period it falls in. Periods are continuous from the first one with a session to the
+// one holding `now`, empty ones included (0 g), so a quiet week shows as a gap.
 export function bars(
   rows: readonly SessionRow[],
   view: View,
   now: number,
 ): Bar[] {
   const from = rangeStart(view.range, now);
-  const inRange = rows.filter((r) => r.at >= from && r.at <= now);
   if (view.step === "session")
-    return inRange.map((r) => ({ start: r.at, grams: r.grams, sessions: 1 }));
+    return rows
+      .filter((r) => r.at >= from && r.at <= now)
+      .map((r) => ({ start: r.at, grams: r.grams, sessions: 1 }));
   const step = view.step;
   const startOf = step === "week" ? weekStart : monthStart;
+  const whole = Number.isFinite(from) ? startOf(from) : from;
+  const inRange = rows.filter((r) => r.at >= whole && r.at <= now);
   const totals = new Map<number, Bar>();
   for (const r of inRange) {
     const start = startOf(r.at);

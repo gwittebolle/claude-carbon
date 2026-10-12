@@ -34,6 +34,8 @@ type World = {
   history?: string | null;
   welcomed?: boolean;
   hinted?: boolean;
+  // Another extension already took /carbon
+  commandTaken?: boolean;
 };
 
 const PANE = {
@@ -104,6 +106,7 @@ function world(on: any, options: World = {}) {
   on("session.surfaces", () => ({ value: ["terminal"] }));
   on("session.id", () => ({ value: SESSION_ID }));
   on("command.register", ($: any, e: any) => {
+    if (options.commandTaken) return { deny: "taken" };
     registered.push(e);
     return { value: undefined };
   });
@@ -349,6 +352,47 @@ describe("the /carbon pane", () => {
     expect(toasts.map((t) => t.replaceAll(NBSP, " "))).toEqual([
       "Tapez /carbon pour voir votre molécule et l'historique de vos sessions.",
     ]);
+  });
+
+  test("no hint for a /carbon that is someone else's", async ($: any, on: any) => {
+    const { toasts } = world(on, { hinted: false, commandTaken: true });
+    await startSession($);
+    expect(toasts).toEqual([]);
+  });
+
+  test("thousands of sessions stay within the desktop app's Svg limit", async ($: any, on: any) => {
+    world(on, { history: historyText(3000) });
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    await ui.press({ key: "range-all" });
+    const tree = await ui.drawn();
+    const sources: string[] = [];
+    const walk = (node: any) => {
+      if (node === null || typeof node !== "object") return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (node.type === "Svg") sources.push(node.props.source);
+      walk(node.children);
+    };
+    walk(tree);
+    expect(sources.length).toBe(2);
+    expect(sources.every((s) => s.length <= 131072)).toBe(true);
+    expect((await drawn(ui)).includes("600 sessions les plus récentes sur 3000")).toBe(true);
+    await ui.unmount();
+  });
+
+  test("a terminal Raster never goes past 512 columns", async ($: any, on: any) => {
+    world(on, { history: historyText(1000) });
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({
+      ...PANE,
+      surface: "terminal",
+      props: { ...PANE.props, bodyColumns: 900 },
+    });
+    await ui.press({ key: "range-all" });
+    expect((await ui.find({ key: "stripes" })).props.columns).toBe(512);
+    await ui.unmount();
   });
 
   test("a first welcome comes alone: the hint waits for the next session", async ($: any, on: any) => {

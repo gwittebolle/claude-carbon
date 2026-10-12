@@ -72,7 +72,7 @@ export function colorOf(cls: number | null): string {
   return cls === null ? NEUTRAL : (PALETTE[cls] ?? NEUTRAL);
 }
 
-function eyesFor(color: string): string {
+export function eyesFor(color: string): string {
   return color === PALETTE[0] || color === PALETTE[7] ? EYES_LIGHT : EYES_DARK;
 }
 

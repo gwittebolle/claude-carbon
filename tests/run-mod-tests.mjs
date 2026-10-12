@@ -648,6 +648,17 @@ check("path from HOME", historyPath({ home: "/h" }), "/h/.claude/claude-carbon/s
 check("path from USERPROFILE", historyPath({ userProfile: "C:\\Users\\g" }), "C:\\Users\\g/.claude/claude-carbon/sessions-history.tsv");
 check("path empty values skipped", historyPath({ db: "", configDir: "", home: "/h" }), "/h/.claude/claude-carbon/sessions-history.tsv");
 check("no path", historyPath({}), null);
+check("path at the root", historyPath({ db: "/carbon.db" }), "/sessions-history.tsv");
+check(
+  "path from a Git Bash CLAUDE_CARBON_DB on Windows",
+  historyPath({ db: "/c/Users/g/data/carbon.db", userProfile: "C:\\Users\\g" }),
+  "C:/Users/g/data/sessions-history.tsv",
+);
+check(
+  "a POSIX path that looks like a drive stays as it is",
+  historyPath({ db: "/c/data/carbon.db", home: "/home/g" }),
+  "/c/data/sessions-history.tsv",
+);
 
 const parsed = parseHistory("a\t100\t5.5\r\nbroken line\nb\tx\t3\nc\t200\t0\nd\t50\t2\n\n");
 check("history parse keeps valid rows", parsed.map((r) => r.id).join(","), "d,a");
@@ -678,6 +689,32 @@ check("month starts on the 1st", new Date(months[1].start).getDate(), 1);
 check("empty range", bars(rows, { range: "7d", step: "week" }, now - 30 * day).length, 0);
 check("bar median needs 3 full bars", barMedian(weeks), null);
 check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams: 5 }]), 3);
+// Whole periods: a 30-day range seen by month starts on the 1st of its first month
+const firstMonth = bars(rows, { range: "30d", step: "month" }, now)[0];
+check("range starts at a whole month", new Date(firstMonth.start).getDate(), 1);
+check("whole first month keeps its sessions", firstMonth.grams, 10);
+// Where midnight is skipped for summer time (Santiago, Sunday 6 Sep 2026), no session
+// is lost and the weeks still reach the current one
+{
+  const tz = process.env.TZ;
+  process.env.TZ = "America/Santiago";
+  const sun = new Date(2026, 8, 6, 12).getTime();
+  const tue = new Date(2026, 8, 8, 12).getTime();
+  const at = new Date(2026, 8, 20, 12).getTime();
+  const w = bars(
+    [
+      { id: "a", at: sun, grams: 10 },
+      { id: "b", at: tue, grams: 20 },
+    ],
+    { range: "all", step: "week" },
+    at,
+  );
+  check("DST weeks keep every session", w.reduce((s, b) => s + b.grams, 0), 30);
+  check("DST weeks reach the current week", w.at(-1).start <= at && at - w.at(-1).start < 7 * day, true);
+  check("DST week starts at the day's first instant", new Date(w.at(-1).start).getHours(), 0);
+  if (tz === undefined) delete process.env.TZ;
+  else process.env.TZ = tz;
+}
 check("view check", isView({ range: "90d", step: "month" }), true);
 check("view check refuses", isView({ range: "2d", step: "month" }), false);
 
@@ -701,6 +738,11 @@ for (const text of pane) {
   check(`pane no em dash: ${text}`, text.includes("\u2014"), false);
   check(`pane no receipt: ${text}`, text.toLowerCase().includes("receipt"), false);
   check(`pane unit: ${text}`, / g(?!CO₂)\b/.test(text.replaceAll(NBSP, " ")), false);
+}
+// French puts a no-break space before : ; ! and ?, never a plain one
+for (const lang of ["fr"]) {
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang)];
+  for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
 const plainText = (s) => s.replaceAll(NBSP, " ");
 check("current line", plainText(currentLine(52, 140, "fr")), "Cette session : 52 gCO₂ · 0,37× votre médiane");

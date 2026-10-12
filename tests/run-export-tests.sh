@@ -74,5 +74,16 @@ check "missing DB: no file next to it" "$([ -f "${TMPROOT}/missing.db" ] && echo
 check "failed query keeps the previous file" "$(cat "$OUT")" "previous${TAB}1${TAB}2"
 check "failed query: no temp file left" "$(ls "$TMPROOT" | grep -c tmp)" "0"
 
+# The SessionStart hook writes it too, detached, so the pane has a history before the
+# session's first answer
+# every row back in the current methodology
+sqlite3 "$DB" "UPDATE sessions SET methodology_version = 2;"
+rm -f "$OUT"
+printf '{}' | CLAUDE_CONFIG_DIR="${TMPROOT}/config" CLAUDE_CARBON_DB="$DB" \
+  bash "${REPO_DIR}/scripts/safety-rescan.sh"
+i=0
+while [ ! -s "$OUT" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+check "session start writes the history" "$(cut -f1 "$OUT" | tr '\n' ' ')" "v1 v2-early null-excluded v2-late "
+
 echo "${PASS} passed, ${FAIL} failed"
 [ "$FAIL" -eq 0 ]

@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  eyesFor,
   FRAMES,
   OUTLINE,
   PALETTE,
@@ -40,7 +41,7 @@ function path(grid, kind, ox) {
 
 function frame(f, ox, color, cls) {
   const grid = pixels(f);
-  const eyes = color === PALETTE[0] || color === PALETTE[7] ? "#d9dce3" : "#0b0b0b";
+  const eyes = eyesFor(color);
   return (
     `<g class="${cls}">` +
     `<path fill="${OUTLINE}" fill-opacity="0.45" d="${path(grid, "outline", ox)}"/>` +

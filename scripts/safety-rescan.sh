@@ -18,6 +18,11 @@ cat >/dev/null 2>&1 || true
 # Only if the plugin is set up
 [ -f "$DB_PATH" ] || exit 0
 
+# The history the mod's /carbon pane draws, ready before the session's first answer
+# (the Stop hook refreshes it after each one). Detached: a database another session is
+# writing could hold the read-only query for its busy timeout.
+cc_detach bash -c '. "$1/portable-lib.sh" && cc_export_sessions "$2"' _ "$SCRIPT_DIR" "$DB_PATH"
+
 # Daily "update available" check, fully detached. Its own throttle (keyed on the flag file's
 # own age) so a failed/offline run self-heals next SessionStart, and it runs even on days the
 # backfill below is throttled. The statusline only ever reads the flag this writes.

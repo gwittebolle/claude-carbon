@@ -29,12 +29,15 @@ inside an `Svg` in the desktop app, still under reduced motion. Below it, warmin
 stripes of past sessions, the running one included with its live total: one
 stripe per session, week (from Monday) or month, over 7, 30 or 90 days, 12 months
 or everything, coloured against the median of the stripes with sessions in them
-(uncoloured under three). Range and step are buttons; the choice is kept in
+(uncoloured under three), the one still filling left out of that median; at most
+600 stripes in the desktop app and 512 in the terminal, the most recent. Range and
+step are buttons; the choice is kept in
 `$.store` for the next session. The pane opens without the keyboard, so typing
 and Escape stay with the prompt.
 
 The history comes from `sessions-history.tsv`, which the Stop hook now writes next
-to `carbon.db` after each answer (`cc_export_sessions` in `scripts/portable-lib.sh`):
+to `carbon.db` after each answer, and the SessionStart hook at the start of each
+session, detached (`cc_export_sessions` in `scripts/portable-lib.sh`):
 sessions with `methodology_version >= 2`, not excluded and with CO2, oldest first,
 as id, start in epoch seconds and grams, from a `sqlite3 -readonly` query written
 to a temp file and renamed into place. The mod resolves the file as the hooks

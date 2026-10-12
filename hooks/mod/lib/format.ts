@@ -214,7 +214,7 @@ export function paneHint(lang: Lang): string {
 
 export function paneUnplaced(lang: Lang): string {
   return lang === "fr"
-    ? "Le panneau carbone ne peut pas s'ouvrir ici : élargissez la fenêtre ou mettez Claude Code à jour."
+    ? `Le panneau carbone ne peut pas s'ouvrir ici${NBSP}: élargissez la fenêtre ou mettez Claude Code à jour.`
     : "The carbon pane cannot open here: widen the window or update Claude Code.";
 }
 
