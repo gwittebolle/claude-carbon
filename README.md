@@ -1,5 +1,7 @@
 # claude-carbon
 
+<p align="center"><img src="docs/mascot-stripes.svg" width="696" alt="Eight pixel CO2 molecules, the claude-carbon mascot, from dark blue to dark red"></p>
+
 [![GitHub stars](https://img.shields.io/github/stars/gwittebolle/claude-carbon)](https://github.com/gwittebolle/claude-carbon/stargazers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/gwittebolle/claude-carbon)](https://github.com/gwittebolle/claude-carbon/releases)
