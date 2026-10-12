@@ -10,7 +10,16 @@ export type SessionRow = {
   // Start of the session, ms since the epoch
   at: number;
   grams: number;
+  // Methodology version: 1 for legacy rows, not comparable with the current one
+  version: number;
 };
+
+// The current methodology: what the running session is measured with
+export const CURRENT_VERSION = 2;
+
+export function isCurrent(row: SessionRow): boolean {
+  return row.version >= CURRENT_VERSION;
+}
 
 export type Range = "7d" | "30d" | "90d" | "1y" | "all";
 export type Step = "session" | "week" | "month";
@@ -73,12 +82,13 @@ export function historyPath(env: {
   return null;
 }
 
-// One line per session: id, start in epoch seconds, grams, tab-separated. A line that
-// does not read as that is skipped, never guessed.
+// One line per session: id, start in epoch seconds, grams, methodology version,
+// tab-separated (a file without the version, from an older hook, is the current one).
+// A line that does not read as that is skipped, never guessed.
 export function parseHistory(text: string): SessionRow[] {
   const rows: SessionRow[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const [id, start, grams] = line.split("\t");
+    const [id, start, grams, version] = line.split("\t");
     if (
       id === undefined ||
       id === "" ||
@@ -89,7 +99,13 @@ export function parseHistory(text: string): SessionRow[] {
     const seconds = Number(start);
     const g = Number(grams);
     if (!Number.isFinite(seconds) || !Number.isFinite(g) || !(g > 0)) continue;
-    rows.push({ id, at: seconds * 1000, grams: g });
+    const v = version === undefined || version === "" ? CURRENT_VERSION : Number(version);
+    rows.push({
+      id,
+      at: seconds * 1000,
+      grams: g,
+      version: Number.isFinite(v) ? v : CURRENT_VERSION,
+    });
   }
   return rows.sort((a, b) => a.at - b.at);
 }
@@ -105,10 +121,20 @@ export function pastSessions(
     : rows.filter((r) => r.id !== currentId);
 }
 
-// The median the molecule's colour is measured against, or null with too few sessions.
+// The median the molecule's colour is measured against: past sessions of the current
+// methodology, or null with too few of them.
 export function sessionMedian(past: readonly SessionRow[]): number | null {
-  if (past.length < MIN_SESSIONS) return null;
-  const m = median(past.map((r) => r.grams));
+  const comparable = past.filter(isCurrent);
+  if (comparable.length < MIN_SESSIONS) return null;
+  const m = median(comparable.map((r) => r.grams));
+  return m > 0 ? m : null;
+}
+
+// The median of legacy sessions, which colours them against each other only.
+export function legacyMedian(past: readonly SessionRow[]): number | null {
+  const legacy = past.filter((r) => !isCurrent(r));
+  if (legacy.length < MIN_STRIPES) return null;
+  const m = median(legacy.map((r) => r.grams));
   return m > 0 ? m : null;
 }
 
@@ -147,10 +173,13 @@ export function rangeStart(range: Range, now: number): number {
 // of its sessions. Weeks and months are whole: the range starts at the start of the
 // period it falls in. Periods are continuous from the first one with a session to the
 // one holding `now`, empty ones included (0 g), so a quiet week shows as a gap.
+// `until` ends the periods earlier than now: the legacy rows stop where the current
+// methodology starts.
 export function bars(
   rows: readonly SessionRow[],
   view: View,
   now: number,
+  until: number = now,
 ): Bar[] {
   const from = rangeStart(view.range, now);
   if (view.step === "session")
@@ -171,7 +200,7 @@ export function bars(
   }
   if (totals.size === 0) return [];
   const first = Math.min(...totals.keys());
-  const last = startOf(now);
+  const last = startOf(Math.min(until, now));
   const out: Bar[] = [];
   for (let s = first; s <= last; s = nextPeriod(s, step))
     out.push(totals.get(s) ?? { start: s, grams: 0, sessions: 0 });

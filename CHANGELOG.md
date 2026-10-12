@@ -40,8 +40,11 @@ and Escape stay with the prompt.
 The history comes from `sessions-history.tsv`, which the Stop hook now writes next
 to `carbon.db` after each answer, and the SessionStart hook at the start of each
 session, detached (`cc_export_sessions` in `scripts/portable-lib.sh`):
-sessions with `methodology_version >= 2`, not excluded and with CO2, oldest first,
-as id, start in epoch seconds and grams, from a `sqlite3 -readonly` query written
+sessions not excluded and with CO2, oldest first, as id, start in epoch seconds,
+grams and methodology version. Legacy (v1) sessions are drawn apart: a divider
+(`┃` in the terminal, a grey line in the desktop app) marks where the method
+changed, each side is coloured against its own median, and the molecule's median
+takes current-methodology sessions only. The rows come from a `sqlite3 -readonly` query written
 to a temp file and renamed into place. The mod resolves the file as the hooks
 resolve the database (`CLAUDE_CARBON_DB`, `CLAUDE_CONFIG_DIR`, then `HOME` or
 `USERPROFILE`) and still writes no database, starts no process and makes no

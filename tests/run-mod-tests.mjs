@@ -52,6 +52,8 @@ import {
   emptyRangeText,
   historyLine,
   mascotAlt,
+  methodSwitchNote,
+  methodSwitchText,
   noHistoryText,
   paneHint,
   paneTitle,
@@ -76,6 +78,7 @@ import {
   NEUTRAL,
   PALETTE,
   stepMs,
+  stripeColumns,
   stripesSvg,
   stripeWords,
 } from "../hooks/mod/lib/mascot.ts";
@@ -84,6 +87,7 @@ import {
   bars,
   historyPath,
   isView,
+  legacyMedian,
   parseHistory,
   pastSessions,
   RANGES,
@@ -623,6 +627,15 @@ check("mini frames same size", MINI_FRAMES.every((f) => f.length === CELL_ROWS *
 check("mini hop one pixel", MINI_FRAMES[0][2], MINI_FRAMES[1][1]);
 check("big hop one pixel", FRAMES[0][2], FRAMES[1][1]);
 check("stripe cells", stripeWords([{ color: "#ff0000", title: "" }, { color: null, title: "" }], 2).length, 12);
+const withDivider = [
+  { color: "#ff0000", title: "" },
+  { color: null, title: "x", divider: true },
+  { color: "#00ff00", title: "" },
+];
+check("divider takes one column", stripeColumns(withDivider, 3), 7);
+check("divider cells", stripeWords(withDivider, 1, 3).length, 21);
+check("divider glyph", stripeWords(withDivider, 1, 3)[9], 0x2503);
+check("divider in the svg", stripesSvg(withDivider, "t").includes('width="2"'), true);
 
 const svg = mascotSvg({ color: PALETTE[6], walking: true, step: 172, title: "t" });
 check("svg no script", /<script|on[a-z]+=/i.test(svg), false);
@@ -671,8 +684,15 @@ check("history parse ms", parsed[1].at, 100000);
 check("history empty", parseHistory("").length, 0);
 check("past sessions drop the current", pastSessions(parsed, "a").map((r) => r.id).join(","), "d");
 check("no median under 10 sessions", sessionMedian(parsed), null);
-const ten = Array.from({ length: 10 }, (_, i) => ({ id: `${i}`, at: i, grams: i + 1 }));
+const ten = Array.from({ length: 10 }, (_, i) => ({ id: `${i}`, at: i, grams: i + 1, version: 2 }));
 check("median from 10 sessions", sessionMedian(ten), 5.5);
+// Legacy rows: read with their version, kept out of the molecule's median
+const mixed = parseHistory("old1\t10\t900\t1\nold2\t20\t700\t1\nold3\t30\t800\t1\nnew\t40\t5\t2\nbare\t50\t6\n");
+check("legacy version read", mixed.filter((r) => r.version === 1).length, 3);
+check("no version: current", mixed.find((r) => r.id === "bare").version, 2);
+check("legacy out of the session median", sessionMedian([...ten, ...mixed.filter((r) => r.version === 1)]), 5.5);
+check("legacy median", legacyMedian(mixed), 800);
+check("legacy median needs 3", legacyMedian(mixed.slice(0, 2)), null);
 
 // Stripes by session, week and month, local time
 const now = new Date(2026, 9, 12, 12).getTime(); // Monday 12 Oct 2026
@@ -692,6 +712,9 @@ const months = bars(rows, { range: "90d", step: "month" }, now);
 check("months: Sep, Oct", months.map((b) => b.grams).join(","), "10,60");
 check("month starts on the 1st", new Date(months[1].start).getDate(), 1);
 check("empty range", bars(rows, { range: "7d", step: "week" }, now - 30 * day).length, 0);
+// Legacy weeks stop at their last session, not at now
+const legacyWeeks = bars(rows.slice(0, 2), { range: "all", step: "week" }, now, rows[1].at);
+check("periods end at until", legacyWeeks.length, 1);
 check("bar median needs 3 full bars", barMedian(weeks), null);
 check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams: 5 }]), 3);
 // Whole periods: a 30-day range seen by month starts on the 1st of its first month
@@ -730,6 +753,7 @@ for (const lang of ["fr", "en"]) {
   pane.push(currentLine(52, 140, lang), currentLine(800, 140, lang), currentLine(52, null, lang));
   pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang), uncolouredText(lang));
   pane.push(mascotAlt(lang), stripesAlt(lang));
+  pane.push(methodSwitchText(now, lang), methodSwitchNote(lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
   for (const s of STEPS) {
     pane.push(stepLabel(s, lang));
@@ -746,7 +770,7 @@ for (const text of pane) {
 }
 // French puts a no-break space before : ; ! and ?, never a plain one
 for (const lang of ["fr"]) {
-  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang)];
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), methodSwitchText(now, lang)];
   for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
 const plainText = (s) => s.replaceAll(NBSP, " ");

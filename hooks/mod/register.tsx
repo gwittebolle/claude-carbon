@@ -40,6 +40,8 @@ import {
   hasLangVariable,
   historyLine,
   isCarbonStatusLine,
+  methodSwitchNote,
+  methodSwitchText,
   languageSetting,
   mascotAlt,
   noHistoryText,
@@ -68,22 +70,26 @@ import {
   NEUTRAL,
   stepMs,
   stripeCells,
+  stripeColumns,
   stripesSvg,
 } from "./lib/mascot.ts";
 import type { Stripe } from "./lib/mascot.ts";
 import {
   barMedian,
   bars,
+  CURRENT_VERSION,
   DEFAULT_VIEW,
   historyPath,
+  isCurrent,
   isView,
+  legacyMedian,
   parseHistory,
   pastSessions,
   RANGES,
   sessionMedian,
   STEPS,
 } from "./lib/sessions.ts";
-import type { SessionRow } from "./lib/sessions.ts";
+import type { Bar, SessionRow } from "./lib/sessions.ts";
 
 // One entry per main-loop turn, oldest first, uncounted turns included (co2 null) so
 // a duration line never borrows another turn's figure (lib/lines.ts).
@@ -657,25 +663,57 @@ export const register: Register = (on, options) => {
       const rows = isLive
         ? [
             ...past,
-            { id: pane.sessionId ?? "current", at: own?.at ?? now, grams: total.grams },
+            {
+              id: pane.sessionId ?? "current",
+              at: own?.at ?? now,
+              grams: total.grams,
+              version: CURRENT_VERSION,
+            },
           ]
         : past;
-      const list = pane.rows === null ? [] : bars(rows, view, now);
+      // Legacy rows (an older methodology) and current ones are two series: each is
+      // coloured against its own median, and a divider marks where the method changed.
+      const legacyRows = rows.filter((r) => !isCurrent(r));
+      const currentRows = rows.filter(isCurrent);
+      const lastLegacy = legacyRows.at(-1)?.at;
+      const oldBars =
+        pane.rows === null || lastLegacy === undefined
+          ? []
+          : bars(legacyRows, view, now, lastLegacy);
+      const newBars = pane.rows === null ? [] : bars(currentRows, view, now);
+      // By session, current stripes are coloured against the molecule's own median, that
+      // of past sessions: one median on screen. By week or month, against the median of
+      // the periods, the one still filling (this week, this month) left out.
+      const bm = view.step === "session" ? sm : barMedian(newBars.slice(0, -1));
+      const oldMedian = view.step === "session" ? legacyMedian(past) : barMedian(oldBars);
+      const switchAt = currentRows[0]?.at;
+      const paint = (b: Bar, m: number | null): Stripe => ({
+        color: b.grams > 0 ? (m === null ? NEUTRAL : colorOf(classOf(b.grams, m))) : null,
+        title: stripeTitle(b.start, view.step, b.grams, b.sessions, lang),
+        start: b.start,
+      });
+      const items: Stripe[] = [
+        ...oldBars.map((b) => paint(b, oldMedian)),
+        ...(oldBars.length > 0 && newBars.length > 0 && switchAt !== undefined
+          ? [
+              {
+                color: null,
+                divider: true as const,
+                title: methodSwitchText(switchAt, lang),
+                start: switchAt,
+              },
+            ]
+          : []),
+        ...newBars.map((b) => paint(b, bm)),
+      ];
+      const barCount = oldBars.length + newBars.length;
       const isTerminal = e.surface === "terminal";
       const room = isTerminal
         ? Math.min(RASTER_MAX_COLUMNS, Math.max(10, e.props.bodyColumns - 2))
         : DESKTOP_MAX_STRIPES;
-      const shown = list.slice(-room);
-      // By session, the stripes are coloured against the molecule's own median, that of
-      // all past sessions: one median on screen. By week or month, against the median
-      // of the periods shown, the one still filling (this week, this month) left out.
-      const bm =
-        view.step === "session" ? sm : barMedian(shown.slice(0, -1));
-      const stripes: Stripe[] = shown.map((b) => ({
-        color:
-          b.grams > 0 ? (bm === null ? NEUTRAL : colorOf(classOf(b.grams, bm))) : null,
-        title: stripeTitle(b.start, view.step, b.grams, b.sessions, lang),
-      }));
+      const stripes = items.slice(-room);
+      const shown = stripes.filter((s) => s.divider !== true);
+      const hasDivider = stripes.some((s) => s.divider === true);
       const setView = (chosen: PaneView) => {
         void (async () => {
           await $.state.set({ plugin: "claude-carbon", key: "view" }, chosen);
@@ -721,8 +759,9 @@ export const register: Register = (on, options) => {
         pane.rows === null
           ? noHistoryText(lang)
           : hasStripes
-            ? historyLine(view.range, view.step, list.length, shown.length, bm, lang) +
-              (bm === null ? ` · ${uncolouredText(lang)}` : "")
+            ? historyLine(view.range, view.step, barCount, shown.length, bm, lang) +
+              (bm === null ? ` · ${uncolouredText(lang)}` : "") +
+              (hasDivider && switchAt !== undefined ? ` · ${methodSwitchNote(lang)}` : "")
             : emptyRangeText(lang);
       const span =
         first === undefined || last === undefined
@@ -732,7 +771,7 @@ export const register: Register = (on, options) => {
             : `${dateLabel(first.start, view.step, lang)} → ${dateLabel(last.start, view.step, lang)}`;
       // In a terminal each stripe widens to fill the line: three months read as three
       // wide bands, not three cells.
-      const stripeWidth = Math.max(1, Math.min(8, Math.floor(room / Math.max(1, shown.length))));
+      const stripeWidth = Math.max(1, Math.min(8, Math.floor(room / Math.max(1, stripes.length))));
       const buttons = (
         <Box flexDirection="row" columnGap={2} flexWrap="wrap">
           {RANGES.map((range, i) => (
@@ -772,7 +811,7 @@ export const register: Register = (on, options) => {
             (isTerminal ? (
               <ui.Raster
                 key="stripes"
-                columns={stripes.length * stripeWidth}
+                columns={stripeColumns(stripes, stripeWidth)}
                 rows={2}
                 cells={stripeCells(stripes, 2, stripeWidth)}
               />

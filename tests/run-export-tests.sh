@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # run-export-tests.sh: assert cc_export_sessions (scripts/portable-lib.sh), which writes
-# sessions-history.tsv next to carbon.db for the mod's /carbon-panel pane: only sessions of the
-# current methodology (v2), not excluded and with CO2, oldest first, as
-# id<TAB>epoch seconds<TAB>grams; an empty file for no rows; the DB left untouched; no
-# temp file left behind; a failed query keeping the previous file.
+# sessions-history.tsv next to carbon.db for the mod's /carbon-panel pane: sessions not
+# excluded and with CO2, legacy (v1) ones included, oldest first, as
+# id<TAB>epoch seconds<TAB>grams<TAB>methodology version; an empty file for no rows; the
+# DB left untouched; no temp file left behind; a failed query keeping the previous file.
 #
 # Runs against a throwaway DB under a temp root; the real ~/.claude is never read.
 # bash 3.2 compatible (macOS default). Dependencies: sqlite3.
@@ -54,16 +54,17 @@ BEFORE="$(cksum <"$DB")"
 cc_export_sessions "$DB"
 TAB="$(printf '\t')"
 check "file written" "$([ -f "$OUT" ] && echo yes)" "yes"
-check "rows kept, oldest first" "$(cut -f1 "$OUT" | tr '\n' ' ')" "v2-early null-excluded v2-late "
+check "rows kept, oldest first" "$(cut -f1 "$OUT" | tr '\n' ' ')" "v1 v2-early null-excluded v2-late "
+check "methodology version" "$(cut -f4 "$OUT" | tr '\n' ' ')" "1 2 2 2 "
 check "epoch seconds" "$(grep '^v2-late' "$OUT" | cut -f2)" "1791832195"
 check "milliseconds in the date" "$(grep '^v2-early' "$OUT" | cut -f2)" "1788249600"
 check "grams to the milligram" "$(grep '^v2-late' "$OUT" | cut -f3)" "12.346"
-check "tab-separated, three fields" "$(awk -F"$TAB" 'NF != 3' "$OUT" | wc -l | tr -d ' ')" "0"
+check "tab-separated, four fields" "$(awk -F"$TAB" 'NF != 4' "$OUT" | wc -l | tr -d ' ')" "0"
 check "database untouched" "$(cksum <"$DB")" "$BEFORE"
 check "no temp file left" "$(ls "$TMPROOT" | grep -c tmp)" "0"
 
 # No rows: an empty file, which the pane reads as an empty history
-sqlite3 "$DB" "UPDATE sessions SET methodology_version = 1;"
+sqlite3 "$DB" "UPDATE sessions SET excluded = 1;"
 cc_export_sessions "$DB"
 check "no rows: empty file" "$(wc -c <"$OUT" | tr -d ' ')" "0"
 
@@ -76,8 +77,8 @@ check "failed query: no temp file left" "$(ls "$TMPROOT" | grep -c tmp)" "0"
 
 # The SessionStart hook writes it too, detached, so the pane has a history before the
 # session's first answer
-# every row back in the current methodology
-sqlite3 "$DB" "UPDATE sessions SET methodology_version = 2;"
+# the rows back as they were
+sqlite3 "$DB" "UPDATE sessions SET excluded = 0 WHERE session_id <> 'excluded';"
 rm -f "$OUT"
 printf '{}' | CLAUDE_CONFIG_DIR="${TMPROOT}/config" CLAUDE_CARBON_DB="$DB" \
   bash "${REPO_DIR}/scripts/safety-rescan.sh"

@@ -363,6 +363,19 @@ export function stripeTitle(
     : `${when} · ${amount} · ${countOf(sessions, "session", lang)}`;
 }
 
+// The divider's tooltip, where the method changed
+export function methodSwitchText(at: number, lang: Lang): string {
+  const day = dateLabel(at, "session", lang);
+  return lang === "fr"
+    ? `${day}${NBSP}: changement de méthode de calcul, chaque côté est coloré contre sa propre médiane`
+    : `${day}: the calculation method changed; each side is coloured against its own median`;
+}
+
+// After the stripes' line when the divider shows
+export function methodSwitchNote(lang: Lang): string {
+  return lang === "fr" ? "┃ changement de méthode" : "┃ method change";
+}
+
 export function mascotAlt(lang: Lang): string {
   return lang === "fr"
     ? "Molécule de CO₂ en pixels, colorée selon cette session par rapport à votre médiane, du bleu (en dessous) au rouge (au-dessus)"

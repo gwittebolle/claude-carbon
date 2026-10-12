@@ -284,6 +284,28 @@ describe("the /carbon-panel pane", () => {
     await ui.unmount();
   });
 
+  test("legacy sessions show apart, after a divider, with their own median", async ($: any, on: any) => {
+    // 5 legacy sessions 60 to 56 days back, then the 20 current ones
+    const legacy = Array.from({ length: 5 }, (_, i) => {
+      const at = Math.floor((NOW - (60 - i) * DAY) / 1000);
+      return `old-${i}\t${at}\t${1000 * (i + 1)}\t1`;
+    });
+    world(on, { history: `${legacy.join("\n")}\n${historyText(20)}` });
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+    await ui.press({ key: "range-90d" });
+    const text = await drawn(ui);
+    // The molecule's median is the current sessions' alone: 300, not pulled by 1-5 kg
+    expect(text).toContain("médiane 300 gCO₂");
+    expect(text).toContain("25 sessions");
+    expect(text).toContain("┃ changement de méthode");
+    const stripes = await ui.find({ key: "stripes" });
+    // 25 stripes and a divider in 58 columns: two columns each, one for the divider
+    expect(stripes.props.columns).toBe(51);
+    await ui.unmount();
+  });
+
   test("the range and step buttons change the view and keep it for next time", async ($: any, on: any) => {
     const { store } = world(on);
     await startSession($);
