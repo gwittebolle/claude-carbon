@@ -24,7 +24,9 @@ type Step = {
 };
 
 type World = {
+  // Read at each call: a test can attach a surface after the session started
   surfaces?: string[];
+  lang?: string;
   statusLine?: string;
   history?: number[];
   // Values under the v1 key, which counted background subagents in the answer
@@ -52,7 +54,7 @@ function world(on: any, options: World = {}) {
       ? {}
       : { history: storedHistory(options.legacyHistory, true) }),
   });
-  mock.env(on, { LANG: "fr_FR.UTF-8" });
+  mock.env(on, { LANG: options.lang ?? "fr_FR.UTF-8" });
   on("fs.read", () => ({ value: FACTORS }));
   on("settings.read", () => ({
     value: options.statusLine
@@ -119,11 +121,11 @@ function engineSteps(on: any) {
   });
 }
 
-async function startSession($: any) {
+async function startSession($: any, isInteractive = true) {
   await $.session.start({
     cwd: "/tmp/project",
-    surface: "terminal",
-    isInteractive: true,
+    surface: isInteractive ? "terminal" : null,
+    isInteractive,
   });
 }
 
@@ -211,7 +213,8 @@ const ORDINARY: Step = {
 };
 // 2 000 input and 6 000 output on Opus: 0.156 + 9.912 = 10.068 g
 const HEAVY: Step = { model: "claude-opus-5-5", input: 2000, output: 6000 };
-const TWENTY_GRAMS = Array.from({ length: 20 }, () => 1);
+// 50 answers of 1 g: enough history for an answer to stand out
+const ONE_GRAM_HISTORY = Array.from({ length: 50 }, () => 1);
 
 describe("terminal", () => {
   test("an ordinary answer gets its CO2 on its duration line, in grey", async ($: any, on: any) => {
@@ -227,7 +230,7 @@ describe("terminal", () => {
   });
 
   test("an unusual answer shows its ratio to the median and its subagents", async ($: any, on: any) => {
-    world(on, { history: TWENTY_GRAMS });
+    world(on, { history: ONE_GRAM_HISTORY });
     engineSteps(on);
     await startSession($);
     await runTurn(
@@ -251,7 +254,7 @@ describe("terminal", () => {
   });
 
   test("engine work under an unknown agent counts but is not named a subagent", async ($: any, on: any) => {
-    world(on, { history: TWENTY_GRAMS });
+    world(on, { history: ONE_GRAM_HISTORY });
     engineSteps(on);
     await startSession($);
     await runTurn(
@@ -268,7 +271,7 @@ describe("terminal", () => {
   });
 
   test("a background subagent counts in the session total, not in the answer", async ($: any, on: any) => {
-    const { statuses } = world(on, { history: TWENTY_GRAMS });
+    const { statuses } = world(on, { history: ONE_GRAM_HISTORY });
     engineSteps(on);
     await startSession($);
     await runTurn(
@@ -285,7 +288,7 @@ describe("terminal", () => {
   });
 
   test("requests after an answer ended never land on the next answer", async ($: any, on: any) => {
-    const { statuses } = world(on, { history: TWENTY_GRAMS });
+    const { statuses } = world(on, { history: ONE_GRAM_HISTORY });
     engineSteps(on);
     await startSession($);
     await runTurn($, [ORDINARY], 38000, async () => spawn($, "late-1"));
@@ -396,7 +399,7 @@ describe("terminal", () => {
   });
 
   test("a subagent of a foreground subagent counts in its parent's answer", async ($: any, on: any) => {
-    world(on, { history: TWENTY_GRAMS });
+    world(on, { history: ONE_GRAM_HISTORY });
     engineSteps(on);
     await startSession($);
     await runTurn(
@@ -519,7 +522,7 @@ describe("terminal", () => {
 
 describe("desktop", () => {
   test("an ordinary answer adds no line", async ($: any, on: any) => {
-    world(on, { surfaces: ["desktop"], history: TWENTY_GRAMS });
+    world(on, { surfaces: ["desktop"], history: ONE_GRAM_HISTORY });
     engineSteps(on);
     await startSession($);
     const result = await runTurn($, [ORDINARY], 38000);
@@ -527,7 +530,7 @@ describe("desktop", () => {
   });
 
   test("an unusual answer gets one line under it", async ($: any, on: any) => {
-    world(on, { surfaces: ["desktop"], history: TWENTY_GRAMS });
+    world(on, { surfaces: ["desktop"], history: ONE_GRAM_HISTORY });
     engineSteps(on);
     await startSession($);
     const result = await runTurn($, [HEAVY], 90000);
@@ -535,7 +538,7 @@ describe("desktop", () => {
   });
 
   test("a terminal session never gets the line under the answer", async ($: any, on: any) => {
-    world(on, { surfaces: ["terminal", "desktop"], history: TWENTY_GRAMS });
+    world(on, { surfaces: ["terminal", "desktop"], history: ONE_GRAM_HISTORY });
     engineSteps(on);
     await startSession($);
     const result = await runTurn($, [HEAVY], 90000);
@@ -563,7 +566,7 @@ describe("desktop", () => {
   test("an ordinary answer puts its figure in the pinned entry", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["desktop"],
-      history: TWENTY_GRAMS,
+      history: ONE_GRAM_HISTORY,
     });
     engineSteps(on);
     await startSession($);
@@ -578,7 +581,7 @@ describe("desktop", () => {
   test("the entry follows the last answer", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["desktop"],
-      history: TWENTY_GRAMS,
+      history: ONE_GRAM_HISTORY,
     });
     engineSteps(on);
     await startSession($);
@@ -593,7 +596,7 @@ describe("desktop", () => {
   test("an unusual answer: ratio under the answer, plain figure in the entry", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["desktop"],
-      history: TWENTY_GRAMS,
+      history: ONE_GRAM_HISTORY,
     });
     engineSteps(on);
     await startSession($);
@@ -608,7 +611,7 @@ describe("desktop", () => {
   test("an excluded last answer drops the tail", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["desktop"],
-      history: TWENTY_GRAMS,
+      history: ONE_GRAM_HISTORY,
     });
     engineSteps(on);
     await startSession($);
@@ -625,7 +628,7 @@ describe("desktop", () => {
   test("a background subagent counts in the total, not in the last answer", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["desktop"],
-      history: TWENTY_GRAMS,
+      history: ONE_GRAM_HISTORY,
     });
     engineSteps(on);
     await startSession($);
@@ -645,7 +648,7 @@ describe("desktop", () => {
   test("a terminal attached keeps the short entry", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["terminal", "desktop"],
-      history: TWENTY_GRAMS,
+      history: ONE_GRAM_HISTORY,
     });
     engineSteps(on);
     await startSession($);
@@ -673,9 +676,87 @@ describe("first run", () => {
     const { toasts } = world(on, { welcomed: false });
     engineSteps(on);
     await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    await startSession($);
+    expect(toasts).toEqual([
+      "Le CO₂ de chaque réponse s'affiche en fin de réponse. Les plus lourdes ressortent après 50 réponses.",
+    ]);
+  });
+
+  test("in English in a terminal", async ($: any, on: any) => {
+    const { toasts } = world(on, { welcomed: false, lang: "en_US.UTF-8" });
+    engineSteps(on);
+    await startSession($);
+    expect(toasts).toEqual([
+      "Each answer's CO₂ shows when it ends. The heaviest stand out after 50 answers.",
+    ]);
+  });
+
+  test("on Desktop it points at the pinned total", async ($: any, on: any) => {
+    const { toasts } = world(on, { welcomed: false, surfaces: ["desktop"] });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(toasts).toEqual([
+      "Le total CO₂ de la session reste sous le prompt. Une réponse bien plus lourde que d'habitude le signale.",
+    ]);
+  });
+
+  test("a session nothing draws at start is welcomed at its first answer", async ($: any, on: any) => {
+    const surfaces: string[] = [];
+    const { toasts } = world(on, {
+      welcomed: false,
+      surfaces,
+      lang: "en_US.UTF-8",
+    });
+    engineSteps(on);
+    await startSession($, false);
+    expect(toasts.length).toBe(0);
+    surfaces.push("desktop");
+    await runTurn($, [ORDINARY], 38000);
+    await runTurn($, [ORDINARY], 21000);
+    expect(toasts).toEqual([
+      "The session's CO₂ total stays under the prompt. An answer much heavier than usual says so.",
+    ]);
+  });
+
+  test("a run nobody watches keeps the welcome for later", async ($: any, on: any) => {
+    const surfaces: string[] = [];
+    const { toasts } = world(on, { welcomed: false, surfaces });
+    engineSteps(on);
+    await startSession($, false);
+    await runTurn($, [ORDINARY], 38000);
+    expect(toasts.length).toBe(0);
+    surfaces.push("terminal");
     await startSession($);
     expect(toasts.length).toBe(1);
     expect(toasts[0]).toContain("Le CO₂ de chaque réponse");
+  });
+});
+
+describe("unusual threshold", () => {
+  test("49 answers of history: no answer stands out yet", async ($: any, on: any) => {
+    world(on, { history: ONE_GRAM_HISTORY.slice(1) });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [HEAVY], 90000);
+    const drawn = await durationLine($, 90000);
+    expect(drawn).toContain("10 gCO₂");
+    expect(drawn).not.toContain("médiane");
+  });
+
+  test("3x the median is not enough under the 97th percentile", async ($: any, on: any) => {
+    // Median 1 g, 97th percentile 12 g: 10 g is 10x the median, still ordinary
+    world(on, {
+      history: [
+        ...Array.from({ length: 90 }, () => 1),
+        ...Array.from({ length: 10 }, () => 12),
+      ],
+    });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [HEAVY], 90000);
+    expect(await durationLine($, 90000)).not.toContain("médiane");
   });
 });
 
@@ -692,7 +773,7 @@ test(
 );
 
 test("the v1 history is not read", async ($: any, on: any) => {
-  world(on, { legacyHistory: TWENTY_GRAMS });
+  world(on, { legacyHistory: ONE_GRAM_HISTORY });
   engineSteps(on);
   await startSession($);
   await runTurn($, [HEAVY], 90000);
@@ -701,14 +782,14 @@ test("the v1 history is not read", async ($: any, on: any) => {
 });
 
 test("/carbon-stats reports the median and requests per prompt", async ($: any, on: any) => {
-  world(on, { history: TWENTY_GRAMS });
+  world(on, { history: ONE_GRAM_HISTORY });
   engineSteps(on);
   await startSession($);
   const answer = await $.command.run({ command: "carbon-stats", args: "" });
   expect(plain(answer.text)).toContain(
-    "Médiane de vos 20 dernières réponses : 1,0 gCO₂",
+    "Médiane de vos 50 dernières réponses : 1,0 gCO₂",
   );
   expect(plain(answer.text)).toContain(
-    "Requêtes au modèle par prompt : 1,0 en moyenne sur 20 prompts",
+    "Requêtes au modèle par prompt : 1,0 en moyenne sur 50 prompts",
   );
 });

@@ -101,6 +101,11 @@ async function loadHistory($: EngineInterface): Promise<History> {
   };
 }
 
+// No terminal draws this session: the duration line never shows here.
+function isRemoteOnly(surfaces: readonly string[]): boolean {
+  return surfaces.length > 0 && !surfaces.includes("terminal");
+}
+
 // /clear and /resume go on in another conversation: its total and per-answer figures start over.
 async function resetSessionState($: EngineInterface) {
   await $.state.set(
@@ -163,10 +168,17 @@ export const register: Register = (on, options) => {
       // The command is a convenience: the per-answer figure works without it.
     }
 
+    // Once, worded for where the figure shows. A session nothing draws yet is
+    // welcomed at its first answer instead.
     const history = await loadHistory($);
     if (!history.welcomed && e.isInteractive) {
-      $.ui.toast(welcomeText(lang), { timeoutMs: 10000 });
-      await $.store.set(HISTORY_KEY, { ...history, welcomed: true });
+      const surfaces = await $.session.surfaces();
+      if (surfaces.length > 0) {
+        $.ui.toast(welcomeText(lang, isRemoteOnly(surfaces)), {
+          timeoutMs: 10000,
+        });
+        await $.store.set(HISTORY_KEY, { ...history, welcomed: true });
+      }
     }
 
     return next(e);
@@ -327,13 +339,24 @@ export const register: Register = (on, options) => {
       await update($, answers, (all) =>
         [...all, { durationMs: e.durationMs, co2 }].slice(-KEEP_ANSWERS),
       );
-      if (isCounted) {
+      const surfaces = await $.session.surfaces();
+      const remoteOnly = isRemoteOnly(surfaces);
+      const isWelcome = !history.welcomed && surfaces.length > 0;
+      if (isWelcome) {
+        $.ui.toast(welcomeText(lang, remoteOnly), { timeoutMs: 10000 });
+      }
+      if (isCounted || isWelcome) {
         await $.store.set(HISTORY_KEY, {
           ...history,
-          values: pushHistory(history.values, done.grams),
-          turns: history.turns + 1,
-          steps: history.steps + done.steps,
-          subagentSteps: history.subagentSteps + done.subagentSteps,
+          ...(isCounted
+            ? {
+                values: pushHistory(history.values, done.grams),
+                turns: history.turns + 1,
+                steps: history.steps + done.steps,
+                subagentSteps: history.subagentSteps + done.subagentSteps,
+              }
+            : {}),
+          welcomed: history.welcomed || isWelcome,
         });
       }
       await update($, session, (total) => ({
@@ -344,23 +367,19 @@ export const register: Register = (on, options) => {
         plugin: "claude-carbon",
         key: "session",
       });
-      const surfaces = await $.session.surfaces();
-      // No terminal draws this session: the duration line never shows here.
-      const isRemoteOnly =
-        surfaces.length > 0 && !surfaces.includes("terminal");
       // The claude-carbon status line only shows in a terminal.
       if (
-        (!hasCarbonStatusLine || isRemoteOnly) &&
+        (!hasCarbonStatusLine || remoteOnly) &&
         total !== undefined &&
         total.grams > 0
       ) {
         // The last answer's figure, in place of the duration line; dropped when the
         // answer counted nothing, so a stale figure never stays on screen.
-        const last = showPerTurn && isRemoteOnly && isCounted ? done.grams : null;
+        const last = showPerTurn && remoteOnly && isCounted ? done.grams : null;
         $.ui.status(sessionLine(total.grams, lang, last));
       }
       // The figure becomes a line under the answer, for unusual answers only.
-      if (co2 !== null && co2.isUnusual && showPerTurn && isRemoteOnly) {
+      if (co2 !== null && co2.isUnusual && showPerTurn && remoteOnly) {
         return { ...result, text: answerLine(co2) };
       }
     } catch {

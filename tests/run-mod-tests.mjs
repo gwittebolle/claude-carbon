@@ -24,11 +24,13 @@ import {
   isCarbonStatusLine,
   isUnusual,
   median,
+  percentile,
   pushHistory,
   sessionLine,
   answerLine,
   welcomeText,
   HISTORY_SIZE,
+  MIN_HISTORY,
 } from "../hooks/mod/lib/format.ts";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -134,23 +136,56 @@ check("median odd", median([5, 1, 3]), 3);
 check("median even", median([4, 1, 3, 2]), 2.5);
 check("median empty", median([]), 0);
 
-const nineteen = Array.from({ length: 19 }, () => 9);
-const twenty = Array.from({ length: 20 }, () => 9);
-check("19 turns of history: never unusual", isUnusual(1000, nineteen), false);
-check("38 g against a 9 g median: unusual", isUnusual(38, twenty), true);
-check("27 g against a 9 g median: not above 3x", isUnusual(27, twenty), false);
+check("percentile median", percentile([4, 1, 3, 2], 0.5), 2.5);
+check("percentile min", percentile([4, 1, 3, 2], 0), 1);
+check("percentile max", percentile([4, 1, 3, 2], 1), 4);
 check(
-  "floor: 1 g against 0.3 g",
-  isUnusual(
-    1,
-    Array.from({ length: 20 }, () => 0.3),
+  "percentile interpolates",
+  percentile([10, 20], 0.97),
+  10 + 10 * 0.97,
+);
+check(
+  "percentile p97 of 1..101",
+  percentile(
+    Array.from({ length: 101 }, (_, i) => i + 1),
+    0.97,
   ),
+  98,
+);
+check("percentile one value", percentile([7], 0.97), 7);
+check("percentile empty", percentile([], 0.97), 0);
+
+check("unusual needs 50 answers", MIN_HISTORY, 50);
+const flat = (n, grams) => Array.from({ length: n }, () => grams);
+const fortyNine = flat(49, 9);
+const fifty = flat(50, 9);
+check("49 turns of history: never unusual", isUnusual(1000, fortyNine), false);
+check("38 g against a flat 9 g history: unusual", isUnusual(38, fifty), true);
+check("27 g against a flat 9 g history: not above 3x", isUnusual(27, fifty), false);
+check("floor: 1 g against 0.3 g", isUnusual(1, flat(50, 0.3)), false);
+// A history shaped like real use: median 16 g, a few answers far above it.
+const realistic = [...flat(60, 16), ...flat(34, 40), ...flat(6, 200)];
+check("realistic median", median(realistic), 16);
+check("realistic p97", percentile(realistic, 0.97), 200);
+check(
+  "150 g: 9x the median, under the 97th percentile",
+  isUnusual(150, realistic),
   false,
+);
+check("230 g: above the 97th percentile", isUnusual(230, realistic), true);
+check(
+  "230 g against the realistic history",
+  buildAnswerCo2(
+    { grams: 230, subagentGrams: 0, subagents: 0 },
+    realistic,
+    "fr",
+  ).main.replaceAll(NBSP, " "),
+  "230 gCO₂ · 14× votre médiane",
 );
 
 const ordinary = buildAnswerCo2(
   { grams: 4.24, subagentGrams: 0, subagents: 0 },
-  twenty,
+  fifty,
   "fr",
 );
 check("ordinary answer", ordinary.main.replaceAll(NBSP, " "), "4,2 gCO₂");
@@ -158,7 +193,7 @@ check("ordinary answer not unusual", ordinary.isUnusual, false);
 
 const unusual = buildAnswerCo2(
   { grams: 38, subagentGrams: 22, subagents: 3 },
-  twenty,
+  fifty,
   "fr",
 );
 check(
@@ -179,7 +214,7 @@ check(
 
 const oneAgent = buildAnswerCo2(
   { grams: 38, subagentGrams: 10, subagents: 1 },
-  twenty,
+  fifty,
   "fr",
 );
 check(
@@ -190,14 +225,14 @@ check(
 
 const smallShare = buildAnswerCo2(
   { grams: 38, subagentGrams: 1.9, subagents: 2 },
-  twenty,
+  fifty,
   "fr",
 );
 check("subagents under 10 %: no sub line", smallShare.sub, null);
 
 const english = buildAnswerCo2(
   { grams: 38, subagentGrams: 22, subagents: 3 },
-  twenty,
+  fifty,
   "en",
 );
 check(
@@ -249,10 +284,11 @@ for (const [name, args, expected] of sessionCases) {
 for (const lang of ["fr", "en"]) {
   const view = buildAnswerCo2(
     { grams: 38, subagentGrams: 22, subagents: 3 },
-    twenty,
+    fifty,
     lang,
   );
-  shown.push(view.main, view.sub, answerLine(view), welcomeText(lang));
+  shown.push(view.main, view.sub, answerLine(view));
+  shown.push(welcomeText(lang), welcomeText(lang, true));
   shown.push(sessionLine(52, lang, 38), sessionLine(52, lang));
   for (const n of [0.02, 4.24, 37.6, 1234]) shown.push(formatGrams(n, lang));
 }
@@ -261,6 +297,27 @@ for (const text of shown) {
   check(`no em dash: ${text}`, text.includes("\u2014"), false);
   check(`no receipt: ${text}`, text.toLowerCase().includes("receipt"), false);
 }
+
+check(
+  "welcome, terminal",
+  welcomeText("fr"),
+  "Le CO₂ de chaque réponse s'affiche en fin de réponse. Les plus lourdes ressortent après 50 réponses.",
+);
+check(
+  "welcome, Desktop",
+  welcomeText("fr", true),
+  "Le total CO₂ de la session reste sous le prompt. Une réponse bien plus lourde que d'habitude le signale.",
+);
+check(
+  "welcome, terminal en",
+  welcomeText("en"),
+  "Each answer's CO₂ shows when it ends. The heaviest stand out after 50 answers.",
+);
+check(
+  "welcome, Desktop en",
+  welcomeText("en", true),
+  "The session's CO₂ total stays under the prompt. An answer much heavier than usual says so.",
+);
 
 check("lang fr_FR", detectLang(["fr_FR.UTF-8"]), "fr");
 check("lang en_US", detectLang(["en_US.UTF-8"]), "en");

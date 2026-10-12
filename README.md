@@ -294,8 +294,8 @@ Numbers follow the locale the report uses (`fr` prints `12,4 kg`, `us` and the w
 The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that shows the CO2 of each answer when it ends, computed locally with the same formula and factors as the status line.
 
 - **Terminal**, including the integrated terminal of an editor and the JetBrains plugin: at the right end of the line that closes each answer, `✻ Worked for 4s · done 10:32 PM          1.1 gCO₂`.
-- **Desktop app, Code tab**: a line under the answer, only for an answer that costs more than three times your median.
-- **An unusual answer** (over 3× the median of your last 200 answers, and at least 10 g) shows the ratio, and the subagents' share when they weighed on it: `38 gCO₂ · 4× your median`.
+- **Desktop app, Code tab**: a line under the answer, only for an unusual answer.
+- **An unusual answer** shows the ratio, and the subagents' share when they weighed on it: `38 gCO₂ · 4× your median`. An answer is unusual when it is above the 97th percentile of your last 200 answers, over 3× their median and at least 10 g, which is about one answer in 27; none is flagged before 50 answers are recorded.
 - **The session total** is pinned under the prompt, unless the claude-carbon status line already shows it (in a terminal). In the desktop app, where the turn duration line is not drawn, the same entry also shows the last answer: `14 gCO₂ this session · last answer 1.0 gCO₂`. Background subagents, which is how Claude Code starts most of them, count in the session total only: never in an answer, nor in your median. A foreground subagent counts in the answer that started it, not in the next one.
 
 Claude Code draws mods in the terminal and in the desktop app's Code tab only: nothing appears in the VS Code extension's chat panel, in cloud sessions or with `claude -p`. Mods need Claude Code 2.1.287 or later (2.1.286 in the desktop app).

@@ -18,7 +18,11 @@ export type TurnTotals = {
 };
 
 export const HISTORY_SIZE = 200;
-export const MIN_HISTORY = 20;
+export const MIN_HISTORY = 50;
+// About 1 answer in 27 stands out: above the 97th percentile of the history. The 3x
+// median and the 10 g floor stay as guards: over a flat history the percentile is
+// the median itself.
+export const UNUSUAL_PERCENTILE = 0.97;
 export const UNUSUAL_RATIO = 3;
 export const UNUSUAL_FLOOR_GRAMS = 10;
 export const SUBAGENT_SHARE = 0.1;
@@ -74,11 +78,26 @@ export function median(values: number[]): number {
   return sorted.length % 2 === 1 ? upper : ((sorted[mid - 1] ?? 0) + upper) / 2;
 }
 
+// Linear interpolation between the two closest ranks, q from 0 to 1.
+export function percentile(values: number[], q: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = (sorted.length - 1) * Math.min(Math.max(q, 0), 1);
+  const lower = Math.floor(rank);
+  const low = sorted[lower] ?? 0;
+  const high = sorted[Math.min(lower + 1, sorted.length - 1)] ?? low;
+  return low + (high - low) * (rank - lower);
+}
+
 // The current answer is compared before it joins the history.
 export function isUnusual(grams: number, history: number[]): boolean {
   if (history.length < MIN_HISTORY || grams < UNUSUAL_FLOOR_GRAMS) return false;
   const m = median(history);
-  return m > 0 && grams > UNUSUAL_RATIO * m;
+  return (
+    m > 0 &&
+    grams > UNUSUAL_RATIO * m &&
+    grams > percentile(history, UNUSUAL_PERCENTILE)
+  );
 }
 
 export function buildAnswerCo2(
@@ -124,10 +143,16 @@ export function sessionLine(
   return `${total} · ${fr ? "dernière réponse" : "last answer"} ${formatGrams(lastAnswerGrams, lang)}`;
 }
 
-export function welcomeText(lang: Lang): string {
+// Shown once. Where no terminal draws the session (the Desktop app), the figure is in
+// the pinned entry and only an unusual answer gets a line of its own.
+export function welcomeText(lang: Lang, isRemoteOnly = false): string {
+  if (isRemoteOnly)
+    return lang === "fr"
+      ? "Le total CO₂ de la session reste sous le prompt. Une réponse bien plus lourde que d'habitude le signale."
+      : "The session's CO₂ total stays under the prompt. An answer much heavier than usual says so.";
   return lang === "fr"
-    ? "Le CO₂ de chaque réponse s'affiche à sa fin. Les réponses inhabituelles ressortent."
-    : "Each answer's CO₂ now shows when it ends. Unusual answers stand out.";
+    ? `Le CO₂ de chaque réponse s'affiche en fin de réponse. Les plus lourdes ressortent après ${MIN_HISTORY} réponses.`
+    : `Each answer's CO₂ shows when it ends. The heaviest stand out after ${MIN_HISTORY} answers.`;
 }
 
 export function pushHistory(history: number[], grams: number): number[] {

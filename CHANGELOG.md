@@ -13,11 +13,14 @@ loop and subagents, and computes its CO2 with the formula, factors
 
 In the terminal the CO2 of each answer sits at the right end of the turn
 duration line. In the desktop app's Code tab, where that line is not drawn,
-it becomes a line under the answer, for answers over three times the user's
-median only. The session total is pinned under the prompt unless the
-claude-carbon status line is configured. In the desktop app that entry also
-gives the last answer's CO2. The mod writes every quantity as gCO₂ or kgCO₂.
-Background subagents, Claude Code's default, count in the session total only,
+it becomes a line under the answer, for unusual answers only: above the 97th
+percentile of the last 200 answers, over three times their median and at least
+10 g, once 50 answers are recorded (about one answer in 27). A one-time toast
+says where the figure shows, worded for the terminal or the desktop app. The
+session total is pinned under the prompt unless the claude-carbon status line
+is configured. In the desktop app that entry also gives the last answer's CO2.
+The mod writes every quantity as gCO₂ or kgCO₂. Background subagents, Claude
+Code's default, count in the session total only,
 never in an answer or in the median; a foreground subagent counts in the answer
 that started it, and stops counting there once sent to the background.
 `/carbon-stats` reports the median and the model requests per prompt. The mod
