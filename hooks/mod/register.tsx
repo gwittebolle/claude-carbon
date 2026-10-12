@@ -609,13 +609,16 @@ export const register: Register = (on, options) => {
       }
       pane.rows = undefined;
       await loadPaneHistory($);
-      // Tall enough for the molecule, the stripes and the buttons, inline above the
-      // prompt; a size the person gave the pane wins.
+      // Inline above the prompt (the classic renderer, or a narrow terminal): tall
+      // enough for the molecule, the stripes and the buttons. Docked beside the
+      // transcript (fullscreen rendering, from 110 columns): a sidebar wide enough
+      // for a line of buttons. A size the person gave the pane wins.
       const opened = await $.ui.open({
         id: PANE_ID,
         title: paneTitle(lang),
         closeOnEscape: true,
         rows: 10,
+        columns: 48,
       });
       if (!opened.isPlaced) {
         $.ui.toast(paneUnplaced(lang), { timeoutMs: 8000 });

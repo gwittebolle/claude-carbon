@@ -197,7 +197,7 @@ describe("the /carbon-panel pane", () => {
     expect(registered[0].immediate).toBe(true);
     await openPane($);
     expect(opened).toEqual([
-      { id: "carbon", title: "Carbone", closeOnEscape: true, rows: 10 },
+      { id: "carbon", title: "Carbone", closeOnEscape: true, rows: 10, columns: 48 },
     ]);
     await openPane($);
     expect(closed).toEqual(["carbon"]);
