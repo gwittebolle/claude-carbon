@@ -314,6 +314,8 @@ The curl, PowerShell and npm installers set up the status line, the database and
 
 To read the system's language, the mod runs one local command at session start, and only when none of these is set: `defaults read -g AppleLocale` on macOS, `reg query "HKCU\Control Panel\International" /v LocaleName` on Windows.
 
+The mod's own tests run with `bash tests/run-mod-kit.sh`, under `claude plugin test`, which mocks the engine: no login needed. CI runs them on every push with Claude Code 2.1.296.
+
 ## Using with ccstatusline
 
 Claude Code accepts a single `statusLine` command, so claude-carbon's full status line and [ccstatusline](https://github.com/sirmalloc/ccstatusline) cannot run side by side. If ccstatusline drives your status line, embed the CO2 segment instead: in the ccstatusline TUI, add a `Custom Command` widget pointing to

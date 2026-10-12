@@ -9,7 +9,9 @@ The plugin now holds a Claude Code mod (`hooks/mod/`, declared in
 in the desktop app). It follows every model request through `turn.step`, main
 loop and subagents, and computes its CO2 with the formula, factors
 (`data/factors.json`) and model resolution of the plugin;
-`tests/run-mod-tests.mjs` replays both golden-vector files in CI.
+`tests/run-mod-tests.mjs` replays both golden-vector files in CI, and
+`tests/run-mod-kit.sh` runs the mod's own tests under `claude plugin test`,
+with Claude Code 2.1.296 pinned in CI.
 
 In the terminal the CO2 of each answer sits at the right end of the turn
 duration line, which keeps its own answer's figure when it is drawn again; a

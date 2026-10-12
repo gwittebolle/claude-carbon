@@ -33,9 +33,17 @@ jobs:
           node-version: '22'
 
       # The mod's pure modules against the golden vectors and the display rules.
-      # The mod's own *.test.tsx run under `claude plugin test`.
       - name: Replay golden vectors and display rules against hooks/mod
         run: node --experimental-strip-types tests/run-mod-tests.mjs
+
+      # The kit behind `claude plugin test` ships inside the claude binary, so the version
+      # is pinned: a new Claude Code release must not change the verdict on an unchanged
+      # mod. The kit mocks the engine: no login, no API key, no secret.
+      - name: Install Claude Code 2.1.296 for its test kit
+        run: npm install -g @anthropic-ai/claude-code@2.1.296
+
+      - name: Run the mod's own tests (hooks/mod/*.test.tsx) under claude plugin test
+        run: bash tests/run-mod-kit.sh
 
   install-wiring:
     name: install and update wiring
