@@ -20,7 +20,10 @@ percentile of the last 200 answers, over three times their median and at least
 10 g, once 50 answers are recorded (about one answer in 27). A one-time toast
 says where the figure shows, worded for the terminal or the desktop app. The
 session total is pinned under the prompt unless the claude-carbon status line
-is configured. In the desktop app that entry also gives the last answer's CO2.
+is configured or the `showSessionTotal` option is off, for a status line that
+already shows the total such as ccstatusline with the claude-carbon segment;
+the desktop app, which draws no status line, keeps it. In the desktop app that
+entry also gives the last answer's CO2.
 The mod writes every quantity as gCO₂ or kgCO₂. Background subagents, Claude
 Code's default, count in the session total only,
 never in an answer or in the median; a foreground subagent counts in the answer

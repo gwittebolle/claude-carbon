@@ -2,9 +2,10 @@
 //
 // Terminal: at the right end of the turn duration line ("✻ Worked for 4s · done 10:32 PM
 // ... 1,1 gCO₂"). Desktop app, where that line is not drawn: a line under the answer, for
-// unusual answers only. The session total is pinned under the prompt, unless the
-// claude-carbon status line already shows it on this surface. Where no terminal is
-// attached, the pinned session entry also carries the last answer's figure.
+// unusual answers only. The session total is pinned under the prompt, unless a status
+// line already shows it on this surface (the claude-carbon one, or showSessionTotal
+// off). Where no terminal is attached, the pinned session entry also carries the last
+// answer's figure.
 //
 // One request at a time through turn.step, the formula and factors of the bash plugin
 // (lib/co2.ts). Writes no database, calls no network, never changes what Claude does.
@@ -143,6 +144,10 @@ async function resetSessionState($: EngineInterface) {
 
 export const register: Register = (on, options) => {
   const showPerTurn = options.showPerTurn !== false;
+  // Off where a status line already shows the total (ccstatusline with the
+  // claude-carbon segment): read like the claude-carbon status line, so the
+  // desktop app, which draws no status line, keeps it.
+  const showSessionTotal = options.showSessionTotal !== false;
   let factors: Factors = DEFAULT_FACTORS;
   let lang: Lang = "fr";
   let hasCarbonStatusLine = false;
@@ -425,9 +430,9 @@ export const register: Register = (on, options) => {
         plugin: "claude-carbon",
         key: "session",
       });
-      // The claude-carbon status line only shows in a terminal.
+      // A status line only shows in a terminal.
       if (
-        (!hasCarbonStatusLine || remoteOnly) &&
+        ((showSessionTotal && !hasCarbonStatusLine) || remoteOnly) &&
         total !== undefined &&
         total.grams > 0
       ) {
@@ -480,8 +485,8 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         {/* The engine's line fills the row and carries a blank row above it: the
-            figure sits at the right end of its last row, like the total of a bill,
-            and never moves or wraps the engine's own text. */}
+            figure sits at the right end of its last row and never moves or wraps
+            the engine's own text. */}
         <Box flexDirection="row" alignItems="flex-end">
           <Box flexGrow={1} flexShrink={1}>
             {engineLine}

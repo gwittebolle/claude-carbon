@@ -625,6 +625,31 @@ describe("terminal", () => {
     expect(statuses.length).toBe(0);
   });
 
+  test(
+    "showSessionTotal off: no session line, the answer keeps its figure",
+    { options: { showSessionTotal: false } },
+    async ($: any, on: any) => {
+      const { statuses } = world(on);
+      engineSteps(on);
+      await startSession($);
+      await runTurn($, [ORDINARY], 38000);
+      expect(statuses.length).toBe(0);
+      expect(plain(await durationLine($, 38000))).toContain("4,0 gCO₂");
+    },
+  );
+
+  test(
+    "showSessionTotal unset: the session line shows",
+    { options: {} },
+    async ($: any, on: any) => {
+      const { statuses } = world(on);
+      engineSteps(on);
+      await startSession($);
+      await runTurn($, [ORDINARY], 38000);
+      expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
+    },
+  );
+
   test("/clear and /resume start the session over", async ($: any, on: any) => {
     const { statuses } = world(on);
     engineSteps(on);
@@ -791,6 +816,20 @@ describe("desktop", () => {
       await runTurn($, [ORDINARY], 38000);
       expectNoPluginName(statuses);
       expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
+    },
+  );
+
+  test(
+    "showSessionTotal off: the desktop app, with no status line, keeps the entry",
+    { options: { showSessionTotal: false } },
+    async ($: any, on: any) => {
+      const { statuses } = world(on, { surfaces: ["desktop"] });
+      engineSteps(on);
+      await startSession($);
+      await runTurn($, [ORDINARY], 38000);
+      expect(plain(statuses.at(-1))).toBe(
+        "4,0 gCO₂ cette session · dernière réponse 4,0 gCO₂",
+      );
     },
   );
 });

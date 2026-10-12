@@ -293,20 +293,22 @@ Numbers follow the locale the report uses (`fr` prints `12,4 kg`, `us` and the w
 
 The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that shows the CO2 of each answer when it ends, computed locally with the same formula and factors as the status line.
 
-- **Terminal**, including the integrated terminal of an editor and the JetBrains plugin: at the right end of the line that closes each answer, `✻ Worked for 4s · done 10:32 PM          1.1 gCO₂`. A line keeps its own answer's figure when it is drawn again (a resize, a scroll, ctrl+o); a line drawn for the first time later, such as one only ctrl+o shows, gets no figure.
+- **Terminal**, including the integrated terminal of an editor and the JetBrains plugin: at the right end of the line that closes each answer, `✻ Worked for 38s · done 10:32 PM          16 gCO₂`. A line keeps its own answer's figure when it is drawn again (a resize, a scroll, ctrl+o); a line drawn for the first time later, such as one only ctrl+o shows, gets no figure.
 - **Desktop app, Code tab**: a line under the answer, only for an unusual answer.
-- **An unusual answer** shows the ratio, and the subagents' share when they weighed on it: `38 gCO₂ · 4× your median`. An answer is unusual when it is above the 97th percentile of your last 200 answers, over 3× their median and at least 10 g, which is about one answer in 27; none is flagged before 50 answers are recorded.
-- **The session total** is pinned under the prompt, unless the claude-carbon status line already shows it (in a terminal). In the desktop app, where the turn duration line is not drawn, the same entry also shows the last answer: `14 gCO₂ this session · last answer 1.0 gCO₂`. Background subagents, which is how Claude Code starts most of them, count in the session total only: never in an answer, nor in your median. A foreground subagent counts in the answer that started it, not in the next one.
+- **An unusual answer** shows the ratio, and the subagents' share when they weighed on it: `230 gCO₂ · 14× your median`. An answer is unusual when it is above the 97th percentile of your last 200 answers, over 3× their median and at least 10 g, which is about one answer in 27; none is flagged before 50 answers are recorded.
+- **The session total** is pinned under the prompt, unless the claude-carbon status line already shows it or the `showSessionTotal` option is off (both in a terminal only, see [ccstatusline](#using-with-ccstatusline)). In the desktop app, where the turn duration line is not drawn, the same entry also shows the last answer: `142 gCO₂ this session · last answer 16 gCO₂`. Background subagents, which is how Claude Code starts most of them, count in the session total only: never in an answer, nor in your median. A foreground subagent counts in the answer that started it, not in the next one.
 
 Claude Code draws mods in the terminal and in the desktop app's Code tab only: nothing appears in the VS Code extension's chat panel, in cloud sessions or with `claude -p`. Mods need Claude Code 2.1.287 or later (2.1.286 in the desktop app).
 
-The mod comes with the plugin. Installed from the marketplace, run `/plugin marketplace update claude-carbon` and `/plugin update claude-carbon@claude-carbon`, then restart Claude Code. A new install, in a Claude Code session:
+The mod comes with the plugin. Already installed from the marketplace: run `/plugin marketplace update claude-carbon` and `/plugin update claude-carbon@claude-carbon`, then restart Claude Code.
+
+The plugin alone is not a full install. This command gives the mod and the slash commands, but no status line and no database, so no session is recorded:
 
 ```
 /plugin install claude-carbon --marketplace gwittebolle/claude-carbon
 ```
 
-Installed with the curl, PowerShell or npm installer, you have the status line and the hooks but not the plugin, so not the mod. Installing the plugin on top would run the hooks twice: this case is not handled yet.
+The curl, PowerShell and npm installers set up the status line, the database and the hooks, but not the plugin, so not the mod. Pick one of the two: the plugin added on top of an installer runs the hooks twice.
 
 `/carbon-stats` shows the median of your last answers and the model requests per prompt. Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, makes no network call and never changes what Claude does. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then the system's language, then French.
 
@@ -321,6 +323,8 @@ Claude Code accepts a single `statusLine` command, so claude-carbon's full statu
 ```
 
 (adjust the path if you installed with `CLAUDE_CARBON_DIR`). The widget receives the same status JSON on stdin and prints just the cost + CO2 pair, e.g. `$0.68 · 35g CO₂`. Segment mode never touches the network. Recording to the local database is unaffected either way: persistence runs from hooks, not from the status line.
+
+With the segment in ccstatusline, the [mod](#the-co2-of-each-answer-mod)'s session entry under the prompt shows the total a second time. Turn it off with the `showSessionTotal` option in `/config`; the desktop app, which has no status line, keeps it.
 
 ## Emission factors
 

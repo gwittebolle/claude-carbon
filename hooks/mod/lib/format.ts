@@ -87,7 +87,8 @@ function decimal(value: number, digits: number, lang: Lang): string {
 }
 
 // < 0.1 g, one decimal under 10 g, whole grams under 1 kg, then kg with one decimal.
-// The displayed precision never exceeds the estimate's.
+// Rounding keeps the figure readable; the estimate itself is far less precise than one
+// decimal.
 export function formatGrams(grams: number, lang: Lang): string {
   if (grams < 0.1) return `<${NBSP}${decimal(0.1, 1, lang)}${NBSP}g${UNIT}`;
   const tenths = Math.round(grams * 10) / 10;
