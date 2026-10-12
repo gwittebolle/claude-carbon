@@ -6,21 +6,30 @@
 [![npm](https://img.shields.io/npm/v/claude-carbon)](https://www.npmjs.com/package/claude-carbon)
 [![CI](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml/badge.svg)](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml)
 
-claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate computed locally from your token usage, in the terminal status line next to the session cost, and in the Code tab of the Claude desktop app.
+claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate computed locally from your token usage, in the terminal status line and in the Code tab of the Claude desktop app, next to the session's API-equivalent cost.
 
 ![Live CO2 in the Claude Code status line](docs/demo.gif)
 
 ## What claude-carbon does
 
-- Adds a live CO2 estimate to the Claude Code status line, next to the session cost, and the session's CO2 and cost under the prompt in the Claude desktop app
+- Adds a live CO2 estimate to the Claude Code status line, and the session's CO2 under the prompt in the Claude desktop app, each next to the session's API-equivalent cost
 - Persists each session to a local SQLite database, so history survives the 30-day transcript purge
 - Backfills historical data from existing `~/.claude` transcripts
 - Slash commands: `/carbon-report` (text), `/carbon-card` (PNG), `/carbon-pr` (footprint of a pull request)
 - A README badge with your all-time total, and a public methodology with every factor sourced
 
+> **About the `$` figure.** It is an API equivalent: what your session would cost at Anthropic's pay-as-you-go API list prices. On a Pro or Max subscription you do not pay it; it shows the value of what you used, next to its CO2. See [How it works](#how-it-works).
+
 ## Install
 
-### In the Claude desktop app, no terminal needed
+Two ways, same result. Pick the one that fits you:
+
+- **Not a developer, or you use the Claude desktop app:** [let Claude install it for you](#option-1-from-the-claude-desktop-app-no-terminal). No terminal, one message to paste.
+- **Developer, at ease in a terminal:** [one command](#option-2-from-a-terminal-developers).
+
+Already installed? See [Updating](#updating).
+
+### Option 1: from the Claude desktop app (no terminal)
 
 ![Illustration of claude-carbon in the Code tab of the Claude desktop app: "This session: 4.9 gCO₂ · $0.47" under the prompt](docs/desktop-app.png)
 
@@ -43,7 +52,7 @@ claude-carbon is an open source Claude Code plugin that tracks the carbon footpr
 
 3. Quit the desktop app completely, open it again, and start a new session in the Code tab. Under the prompt you now see `This session: 3.6 gCO₂ · $0.12` (`Cette session : 3,6 gCO₂ · 0,12 $` in French). `/carbon-report` and `/carbon-card` work from there too.
 
-   The `$` figure is what the session would cost at Anthropic's API list prices. On a Pro or Max subscription you do not pay it: it shows the value of what you used.
+   The `$` is an API-equivalent cost, not what your subscription bills.
 
 **If the install stops**
 
@@ -53,7 +62,7 @@ claude-carbon is an open source Claude Code plugin that tracks the carbon footpr
 
 The chat and Cowork tabs are not covered: their sessions run on Anthropic's servers, so nothing reaches your machine to count.
 
-### In a terminal
+### Option 2: from a terminal (developers)
 
 **1. Install (or update):**
 
@@ -85,7 +94,7 @@ Same command to install and to update to the latest version (all three run the s
 claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 · 65g CO₂ | Use 24% ↻13:00
 ```
 
-Segments, left to right: project + git branch, model + context window %, session cost + CO2, 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
+Segments, left to right: project + git branch, model + context window %, API-equivalent session cost + CO2, 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
 
 > **Where the CO2 shows up.** The status line is a feature of the Claude Code terminal UI. It is displayed only when you run `claude` in a terminal, including the integrated terminal of VS Code or JetBrains. The IDE extensions' chat panel has no status line at all, so nothing is displayed there even though the hooks still run and your sessions are recorded: `/carbon-report` covers them. If you use the VS Code panel and want the live CO2, open a terminal in VS Code (`` Ctrl+` ``) and run `claude` from there. The web app (claude.ai/code) runs neither the status line nor the hooks, so nothing is displayed or recorded there. The desktop app does not display the status line either; the plugin's [mod](#the-co2-of-each-answer-mod) draws the CO2 in its Code tab.
 
@@ -406,6 +415,10 @@ The methodology is pinned by golden test vectors in [`tests/methodology-vectors.
 ## Updating
 
 When a newer version is available, the status line shows a discreet `⬆ /carbon-update` hint. The check runs in the background (at most once a day, never on the status line's hot path); opt out with `CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1`.
+
+- **In a terminal**, that hint appears at the end of the status line, naming the new version.
+- **In the desktop app** there is no status line, so no hint: type `/carbon-update` in the Code tab now and then, or ask Claude to update claude-carbon.
+- **Installed before the summer of 2026** (version 1.0, no hint at all)? Run the install again, from the app or the terminal, as in [Install](#install).
 
 To update, run `/carbon-update` in Claude Code, or re-run the installer:
 
