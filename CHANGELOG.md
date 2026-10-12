@@ -70,6 +70,24 @@ opener, month stamped, Totals line first, no PNG; under `CLAUDE_CARBON_NO_OPEN`
 nothing spawned and the path printed), and pins the footer strings of both
 templates in both languages.
 
+### feat: the monthly nudge gives the closed month's total (1.9.0)
+
+The status line nudge now reads `📊 September: 84.2kg CO₂ · /carbon-card` instead
+of `📊 September wrapped · /carbon-card`. The figure is the previous month's total
+from `carbon.db`, read only (the query of the card's monthly bar, excluded rows
+left out), in the status line's own CO2 format: whole grams in `g CO₂`, one
+decimal in `kg CO₂` from 1000 g. It is computed once per month and cached in
+`last-month-total` under the config dir (`YYYY-MM grams`, the key being the month
+the figure is for); a locked or unreadable database is not cached and is retried.
+A month with fewer than 7 distinct days of sessions caches `-` and shows no nudge.
+The window (day 1 to `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`), the opt-out
+(`CLAUDE_CARBON_NO_CARD_NUDGE`) and the `last-card-month` stamp are unchanged.
+`run-install-tests.sh` drives the status line on throwaway databases: figure shown
+with excluded and current-month rows left out, the cache written and reused with
+no new query, a cache for another month recomputed, fewer than 7 days giving no
+nudge, no database giving neither nudge nor cache, the threshold, the stamp and
+the opt-out.
+
 ## 2026-10-09
 
 ### fix: Opus family priced as Opus 5.5

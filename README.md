@@ -81,8 +81,11 @@ Without Playwright or Chromium there is no PNG and the command still finishes: t
 card opens in your browser at its 1080x1080 size, and a screenshot of it does the job.
 The card's footer carries `npx claude-carbon`, so whoever sees it has a command to type.
 
-From the 1st to the 10th of each month the status line ends with `📊 August wrapped · /carbon-card`:
-the month just closed has its bar on the card, under the running total. Generating a card
+From the 1st to the 10th of each month the status line ends with `📊 September: 84.2kg CO₂ · /carbon-card`:
+the total of the month just closed, the bar the card draws for it, in the same format as the
+session figure. It is read from carbon.db once a month and kept in
+`~/.claude/claude-carbon/last-month-total`. A month with fewer than 7 days of sessions gets no
+nudge, so a fresh install is not pushed to share a near-empty card. Generating a card
 clears it for the month; it goes quiet on its own after the 10th. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
 moves the cut-off, `CLAUDE_CARBON_NO_CARD_NUDGE=1` removes the nudge. Nothing is posted anywhere:
 sharing stays a human decision.

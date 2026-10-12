@@ -67,12 +67,16 @@ if [ -z "$CO2_G" ]; then
   CO2_G="$(echo "$INPUT_TOKENS $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | LC_ALL=C awk '{printf "%.0f", ($1 * $2 + $3 * $4) / 1000000}')"
 fi
 
-# Format CO2 with adaptive unit
-if [ "$CO2_G" -ge 1000 ] 2>/dev/null; then
-  CO2_DISPLAY="$(echo "$CO2_G" | LC_ALL=C awk '{printf "%.1fkg", $1/1000}') CO₂"
-else
-  CO2_DISPLAY="${CO2_G}g CO₂"
-fi
+# Format CO2 with adaptive unit: whole grams, one-decimal kilograms from 1000 g.
+# A function because the monthly nudge prints its figure the same way.
+co2_display() {
+  if [ "$1" -ge 1000 ] 2>/dev/null; then
+    echo "$(echo "$1" | LC_ALL=C awk '{printf "%.1fkg", $1/1000}') CO₂"
+  else
+    echo "${1}g CO₂"
+  fi
+}
+CO2_DISPLAY="$(co2_display "$CO2_G")"
 
 # Round cost to 2 decimals
 COST_DISPLAY="$(echo "$COST_USD" | LC_ALL=C awk '{printf "%.2f", $1}')"
@@ -278,17 +282,23 @@ if [ -z "${CLAUDE_CARBON_NO_DRIFT_CHECK:-}" ] && printf '1.0\n1.0.1\n' | sort -V
   fi
 fi
 
-# Monthly share nudge — "📊 August wrapped · /carbon-card", from the 1st through
-# the Nth of each month (N = CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY, default 10). The
-# month just closed has its bar on the card, under the cumulative total, which is
-# what makes the card worth sharing. Generating a card clears the nudge for the
-# month (generate-report.sh stamps last-card-month); otherwise it goes quiet by
-# itself after the Nth. Passive and short: a user who ignores it is not asked
-# again before next month. Local-only; opt-out via CLAUDE_CARBON_NO_CARD_NUDGE.
+# Monthly share nudge: "📊 September: 84.2kg CO₂ · /carbon-card", from the 1st
+# through the Nth of each month (N = CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY, default
+# 10). The figure is the month just closed, the bar the card draws for it, in the
+# same format as the session figure next to it. Generating a card clears the nudge
+# for the month (generate-report.sh stamps last-card-month); otherwise it goes
+# quiet by itself after the Nth. Passive and short: a user who ignores it is not
+# asked again before next month. Local-only; opt-out via CLAUDE_CARBON_NO_CARD_NUDGE.
+#
+# The total is read once per month and cached in last-month-total ("YYYY-MM grams",
+# the key being the month the figure is for), never on every refresh. A month with
+# fewer than 7 days of sessions caches "-" and shows nothing: on a fresh install
+# the nudge would otherwise advertise a near-empty card.
 #
 # It used to show to the first three sessions of the month and then stop, which
 # on a status line amounted to two or three glances at "📊 /carbon-card" with no
-# hint of what the card would show. Nobody acted on it.
+# hint of what the card would show. Nobody acted on it. "📊 August wrapped" named
+# the month but still not what the card would say.
 CARD_SEGMENT=""
 if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
   THIS_MONTH="$(date +%Y-%m)"
@@ -296,9 +306,36 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
   NUDGE_UNTIL="${CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY:-10}"
   CARD_STAMP="$(cat "${CONFIG_DIR}/claude-carbon/last-card-month" 2>/dev/null || true)"
   if [ "$CARD_STAMP" != "$THIS_MONTH" ] && [ "$TODAY_DAY" -le "$NUDGE_UNTIL" ] 2>/dev/null; then
-    CARD_SEGMENT=" | 📊 $(cc_prev_month_name "$THIS_MONTH") wrapped · /carbon-card"
+    PREV_Y="${THIS_MONTH%-*}"
+    PREV_M="$((10#${THIS_MONTH#*-} - 1))"
+    if [ "$PREV_M" -eq 0 ]; then PREV_M=12; PREV_Y="$((PREV_Y - 1))"; fi
+    PREV_MONTH="$(printf '%04d-%02d' "$PREV_Y" "$PREV_M")"
+    TOTAL_FILE="${CONFIG_DIR}/claude-carbon/last-month-total"
+    PREV_KEY=""; PREV_TOTAL=""
+    { read -r PREV_KEY PREV_TOTAL < "$TOTAL_FILE"; } 2>/dev/null || true
+    if [ "$PREV_KEY" != "$PREV_MONTH" ]; then
+      PREV_TOTAL=""
+      if [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>&1; then
+        # The card's monthly bar: same grouping on started_at, excluded rows left out.
+        MONTH_ROW="$(sqlite3 -cmd ".timeout 300" -separator ' ' "$DB_PATH" "SELECT COUNT(DISTINCT substr(started_at, 1, 10)), printf('%.0f', COALESCE(SUM(co2_grams), 0)) FROM sessions WHERE COALESCE(excluded, 0) = 0 AND substr(started_at, 1, 7) = '${PREV_MONTH}';" 2>/dev/null || true)"
+        MONTH_DAYS=""; MONTH_G=""
+        read -r MONTH_DAYS MONTH_G <<< "$MONTH_ROW" || true
+        # Cached only when the query answered: a locked or unreadable DB is retried.
+        case "${MONTH_DAYS}${MONTH_G}" in
+          ''|*[!0-9]*) ;;
+          *)
+            if [ "$MONTH_DAYS" -ge 7 ]; then PREV_TOTAL="$MONTH_G"; else PREV_TOTAL="-"; fi
+            mkdir -p "${CONFIG_DIR}/claude-carbon" 2>/dev/null || true
+            printf '%s %s\n' "$PREV_MONTH" "$PREV_TOTAL" > "$TOTAL_FILE" 2>/dev/null || true
+            ;;
+        esac
+      fi
+    fi
+    case "$PREV_TOTAL" in
+      ''|*[!0-9]*) ;;
+      *) CARD_SEGMENT=" | 📊 $(cc_prev_month_name "$THIS_MONTH"): $(co2_display "$PREV_TOTAL") · /carbon-card" ;;
+    esac
   fi
 fi
 
 echo "${PROJECT}${BRANCH_SUFFIX} | ${DOT} ${DISPLAY_NAME} ${PROGRESS_BAR} ${PCT_DISPLAY} | \$${COST_DISPLAY} · ${CO2_DISPLAY}${USAGE_SEGMENT}${UPDATE_SEGMENT}${DRIFT_SEGMENT}${CARD_SEGMENT}"
-

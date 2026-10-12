@@ -289,23 +289,67 @@ check "drift: CLAUDE_CARBON_NO_DRIFT_CHECK honoured" "no" "$(CLAUDE_CARBON_NO_DR
 
 # ------------------------------------------------------- 9b. monthly card nudge
 
-# Early in the month the status line names the month just closed and points at
-# /carbon-card. A card generated this month (last-card-month stamp) clears it, the
-# day threshold ends it, the opt-out silences it. The day is forced through the
-# threshold: 31 means "today qualifies", 0 means "no day does".
-CFG="${TMPROOT}/nudge"
-mkdir -p "${CFG}/claude-carbon"
-nudge_line() {
-  echo '{}' | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 CLAUDE_CARBON_NO_DRIFT_CHECK=1 \
-    bash "$STATUSLINE" 2>/dev/null | grep -o '📊 .*' || true
-}
-EXPECT_NUDGE="📊 $(cc_prev_month_name "$(date +%Y-%m)") wrapped · /carbon-card"
-check "nudge: names the closed month, in English" "$EXPECT_NUDGE" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
-check "nudge: past the day threshold it is gone"  ""             "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=0 nudge_line)"
-date +%Y-%m > "${CFG}/claude-carbon/last-card-month"
-check "nudge: a card this month clears it"        ""             "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
-rm -f "${CFG}/claude-carbon/last-card-month"
-check "nudge: CLAUDE_CARBON_NO_CARD_NUDGE honoured" ""           "$(CLAUDE_CARBON_NO_CARD_NUDGE=1 CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+# Early in the month the status line gives the month just closed with its total and
+# points at /carbon-card. The total is the card's monthly bar (excluded rows left
+# out), formatted like the session figure, read once and cached in last-month-total.
+# A month with fewer than 7 days of sessions shows nothing. A card generated this
+# month (last-card-month stamp) clears it, the day threshold ends it, the opt-out
+# silences it. The day is forced through the threshold: 31 means "today qualifies",
+# 0 means "no day does". Every DB here is a throwaway under TMPROOT.
+if ! command -v sqlite3 >/dev/null 2>&1; then
+  echo "SKIP monthly card nudge: sqlite3 not available"
+else
+  THIS_MONTH="$(date +%Y-%m)"
+  PREV_M="$((10#${THIS_MONTH#*-} - 1))"; PREV_Y="${THIS_MONTH%-*}"
+  if [ "$PREV_M" -eq 0 ]; then PREV_M=12; PREV_Y="$((PREV_Y - 1))"; fi
+  PREV_MONTH="$(printf '%04d-%02d' "$PREV_Y" "$PREV_M")"
+  PREV_NAME="$(cc_prev_month_name "$THIS_MONTH")"
+
+  # nudge_db <cfg> <days>: one 1500 g session on each of the first <days> days of the
+  # closed month, plus an excluded 99999 g session on another day and a 50000 g
+  # session this month, neither of which may count.
+  nudge_db() {
+    local db="${1}/claude-carbon/carbon.db" d
+    mkdir -p "${1}/claude-carbon"
+    sqlite3 "$db" "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, methodology_version INTEGER DEFAULT 2, excluded INTEGER DEFAULT 0, git_branch TEXT DEFAULT '');"
+    for d in $(seq 1 "$2"); do
+      sqlite3 "$db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('d${d}', 'p', 'claude-opus-5', 1500.0, '${PREV_MONTH}-$(printf '%02d' "$d")T10:00:00Z');"
+    done
+    sqlite3 "$db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at, excluded) VALUES ('ex', 'p', 'glm-4.7', 99999.0, '${PREV_MONTH}-20T10:00:00Z', 1);"
+    sqlite3 "$db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('now', 'p', 'claude-opus-5', 50000.0, '${THIS_MONTH}-01T10:00:00Z');"
+  }
+  nudge_line() {
+    echo '{}' | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="${CFG}/claude-carbon/carbon.db" \
+      CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 CLAUDE_CARBON_NO_DRIFT_CHECK=1 \
+      bash "$STATUSLINE" 2>/dev/null | grep -o '📊 .*' || true
+  }
+
+  CFG="${TMPROOT}/nudge"
+  nudge_db "$CFG" 7
+  check "nudge: closed month and its total, in English" "📊 ${PREV_NAME}: 10.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  check "nudge: total cached with its month key"        "${PREV_MONTH} 10500" "$(cat "${CFG}/claude-carbon/last-month-total" 2>/dev/null)"
+  # A row added after the first read is not seen: the query is not run again.
+  sqlite3 "${CFG}/claude-carbon/carbon.db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('late', 'p', 'claude-opus-5', 5000.0, '${PREV_MONTH}-09T10:00:00Z');"
+  check "nudge: cache reused, query not rerun"          "📊 ${PREV_NAME}: 10.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  printf '%s 840\n' "$PREV_MONTH" > "${CFG}/claude-carbon/last-month-total"
+  check "nudge: figure read from the cache, grams below 1 kg" "📊 ${PREV_NAME}: 840g CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  printf '1999-01 840\n' > "${CFG}/claude-carbon/last-month-total"
+  check "nudge: a cache for another month is recomputed" "📊 ${PREV_NAME}: 15.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  check "nudge: past the day threshold it is gone"      "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=0 nudge_line)"
+  date +%Y-%m > "${CFG}/claude-carbon/last-card-month"
+  check "nudge: a card this month clears it"            "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  rm -f "${CFG}/claude-carbon/last-card-month"
+  check "nudge: CLAUDE_CARBON_NO_CARD_NUDGE honoured"   "" "$(CLAUDE_CARBON_NO_CARD_NUDGE=1 CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+
+  CFG="${TMPROOT}/nudge-thin"
+  nudge_db "$CFG" 6
+  check "nudge: fewer than 7 days, no nudge"            "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  check "nudge: fewer than 7 days is cached too"        "${PREV_MONTH} -" "$(cat "${CFG}/claude-carbon/last-month-total" 2>/dev/null)"
+
+  CFG="${TMPROOT}/nudge-nodb"
+  mkdir -p "${CFG}/claude-carbon"
+  check "nudge: no DB, no nudge and no cache"           "|no cache" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)|$([ -f "${CFG}/claude-carbon/last-month-total" ] && echo cache || echo no cache)"
+fi
 
 # ------------------------------------------------------- 10. statusline CO2 source
 
