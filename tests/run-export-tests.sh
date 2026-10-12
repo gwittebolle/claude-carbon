@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run-export-tests.sh: assert cc_export_sessions (scripts/portable-lib.sh), which writes
-# sessions-history.tsv next to carbon.db for the mod's /carbon pane: only sessions of the
+# sessions-history.tsv next to carbon.db for the mod's /carbon-panel pane: only sessions of the
 # current methodology (v2), not excluded and with CO2, oldest first, as
 # id<TAB>epoch seconds<TAB>grams; an empty file for no rows; the DB left untouched; no
 # temp file left behind; a failed query keeping the previous file.

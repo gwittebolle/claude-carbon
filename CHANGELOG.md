@@ -17,15 +17,16 @@ with and without a truncated last line.
 
 ## 2026-10-12
 
-### feat: /carbon opens a pane with a CO2 molecule and the warming stripes of your sessions (1.11.0)
+### feat: /carbon-panel opens a pane with a CO2 molecule and the warming stripes of your sessions (1.11.0)
 
-The mod registers `/carbon`, which opens a pane, or closes it when it is open. At
+The mod registers `/carbon-panel`, which opens a pane, or closes it when it is open. At
 the top, a pixel CO2 molecule (`hooks/mod/lib/mascot.ts`) coloured by this
 session's CO2 against the median of past sessions, in eight classes by powers of
-two from dark blue to dark red, grey until 10 past sessions are recorded. It walks
-while a main-loop turn runs, one step every 460 ms for the bluest down to 124 ms
-for the reddest: frames blitted into a `Raster` in the terminal, a CSS animation
-inside an `Svg` in the desktop app, still under reduced motion. Below it, warming
+two from dark blue to dark red, grey until 10 past sessions are recorded. It hops
+one terminal row up and down while a main-loop turn runs, one step every 460 ms for
+the bluest down to 124 ms for the reddest: a small 13 x 4 cell molecule blitted
+into a `Raster` in the terminal, a CSS animation inside an `Svg` in the desktop
+app, still under reduced motion. Below it, warming
 stripes of past sessions, the running one included with its live total: one
 stripe per session, week (from Monday) or month, over 7, 30 or 90 days, 12 months
 or everything, coloured against the median of the stripes with sessions in them
@@ -46,7 +47,7 @@ resolve the database (`CLAUDE_CARBON_DB`, `CLAUDE_CONFIG_DIR`, then `HOME` or
 network call; `hooks/mod/carbon-pane.test.tsx` checks it. Without the file (the
 plugin installed alone) the pane shows the molecule and says where the history
 comes from. Someone welcomed by an earlier version sees a one-time toast naming
-`/carbon`. The README banner is now drawn from the mod's frames and palette by
+`/carbon-panel`. The README banner is now drawn from the mod's frames and palette by
 `scripts/render-mascot.mjs`. Tests: `tests/run-export-tests.sh` (in CI on Linux
 and Windows), 13 kit tests for the pane, and checks of the frames, the half-block
 cells, the history file, the stripes by week and month and the pane's texts in
@@ -56,7 +57,7 @@ cells, the history file, the stripes by week and month and the pane's texts in
 
 The README opens on a row of eight pixel CO2 molecules (O=C=O, the carbon in
 the middle with two eyes), coloured from dark blue to dark red like warming
-stripes. They walk, two frames each, from one step every 460 ms for the bluest
+stripes. They hop, two frames each, from one step every 460 ms for the bluest
 to one every 124 ms for the reddest; with reduced motion they stand still. The
 image is `docs/mascot-stripes.svg`: plain pixel paths and a CSS animation, no
 script, with a grey outline so the darkest colours stay visible on GitHub's

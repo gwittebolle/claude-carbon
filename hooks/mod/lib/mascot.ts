@@ -1,13 +1,13 @@
 // The mascot, a pixel CO2 molecule (O=C=O: the carbon in the middle carries the eyes),
-// and the warming stripes, drawn for the /carbon pane: an SVG where the surface has one
+// and the warming stripes, drawn for the /carbon-panel pane: an SVG where the surface has one
 // (the desktop app), terminal cells (Raster) where it does not. docs/mascot-stripes.svg,
 // the README banner, is drawn from the same frames and palette (scripts/render-mascot.mjs).
 // Pure: no Claude Code API, so Node runs it directly (tests/run-mod-tests.mjs).
 
-// 18 x 12 pixels: # body, k eyes. Frame B is the step: the body one pixel up, the legs
-// apart; the two alternate into a walk. Both frames are the same size, as a blit wants.
-export const FRAME_A: readonly string[] = [
-  "..................",
+// 18 x 14 pixels: # body, k eyes. Frame B is the hop: the whole molecule two pixels up,
+// one terminal row, its legs apart; the two alternate into a bouncing walk. Both frames
+// are the same size, as a blit wants.
+const BODY: readonly string[] = [
   ".......####.......",
   "......######......",
   ".##...######...##.",
@@ -17,16 +17,41 @@ export const FRAME_A: readonly string[] = [
   ".##...######...##.",
   "......######......",
   ".......####.......",
+];
+const EMPTY_ROW = "..................";
+export const FRAME_A: readonly string[] = [
+  EMPTY_ROW,
+  EMPTY_ROW,
+  EMPTY_ROW,
+  ...BODY,
   ".......#..#.......",
   ".......#..#.......",
 ];
 export const FRAME_B: readonly string[] = [
-  ...FRAME_A.slice(1, 10),
+  EMPTY_ROW,
+  ...BODY,
   "......#....#......",
   "......#....#......",
-  "......#....#......",
+  EMPTY_ROW,
+  EMPTY_ROW,
 ];
 export const FRAMES = [FRAME_A, FRAME_B] as const;
+
+// The terminal's molecule, small enough for an editor's terminal: 13 x 8 pixels, four
+// rows of half blocks, about the size of the engine's own welcome mascot. No outline.
+// Frame B hops one terminal row, legs apart.
+const MINI_BODY: readonly string[] = [
+  "....#####....",
+  ".##.#k#k#.##.",
+  "#############",
+  ".##.#####.##.",
+  "....#####....",
+];
+const MINI_EMPTY = ".............";
+export const MINI_FRAMES = [
+  [MINI_EMPTY, MINI_EMPTY, ...MINI_BODY, ".....#.#....."],
+  [...MINI_BODY, "....#...#....", MINI_EMPTY, MINI_EMPTY],
+] as const;
 
 // Dark blue to dark red, one colour per power of two around the median: the bluest under
 // an eighth of it, the reddest over eight times it.
@@ -42,20 +67,18 @@ export const PALETTE = [
 ] as const;
 // Too little history to compare against: the molecule stays grey.
 export const NEUTRAL = "#8b949e";
-// The outline that keeps the darkest colours visible on a dark background. A terminal
-// cell has no transparency: a solid grey there.
+// The outline that keeps the darkest colours visible on a dark background (the SVGs).
 export const OUTLINE = "#8b949e";
-export const OUTLINE_SOLID = "#5c636e";
 const EYES_DARK = "#0b0b0b";
 const EYES_LIGHT = "#d9dce3";
 // An empty period on the stripes (no session that week or month)
 export const EMPTY = "#30363d";
 
 export const SPRITE_WIDTH = 20;
-export const SPRITE_HEIGHT = 14;
-// Two pixel rows per terminal row (half blocks)
-export const CELL_COLUMNS = SPRITE_WIDTH;
-export const CELL_ROWS = SPRITE_HEIGHT / 2;
+export const SPRITE_HEIGHT = 16;
+// The terminal's Raster: two pixel rows per terminal row (half blocks)
+export const CELL_COLUMNS = 13;
+export const CELL_ROWS = 4;
 
 export function classOf(grams: number, median: number): number {
   if (!(median > 0) || !(grams > 0)) return 0;
@@ -78,7 +101,7 @@ export function eyesFor(color: string): string {
 
 type Pixel = "body" | "eye" | "outline" | null;
 
-// The frame on a 20 x 14 grid: one pixel of outline around the 18 x 12 drawing.
+// The frame on a 20 x 16 grid: one pixel of outline around the 18 x 14 drawing.
 export function pixels(frame: readonly string[]): Pixel[][] {
   const grid: Pixel[][] = Array.from({ length: SPRITE_HEIGHT }, () =>
     Array.from({ length: SPRITE_WIDTH }, () => null as Pixel),
@@ -225,20 +248,13 @@ export function encodeCells(words: readonly number[]): string {
 // half block, the bottom one in its background. A transparent pixel is the terminal's
 // default colour, so a cell with only its bottom pixel takes a lower half block instead.
 export function mascotWords(frame: readonly string[], color: string): number[] {
-  const grid = pixels(frame);
-  const paint = (p: Pixel): number | null =>
-    p === "body"
-      ? rgb(color)
-      : p === "eye"
-        ? rgb(eyesFor(color))
-        : p === "outline"
-          ? rgb(OUTLINE_SOLID)
-          : null;
+  const paint = (c: string | undefined): number | null =>
+    c === "#" ? rgb(color) : c === "k" ? rgb(eyesFor(color)) : null;
   const words: number[] = [];
   for (let row = 0; row < CELL_ROWS; row++)
     for (let x = 0; x < CELL_COLUMNS; x++) {
-      const top = paint(grid[row * 2]?.[x] ?? null);
-      const bottom = paint(grid[row * 2 + 1]?.[x] ?? null);
+      const top = paint(frame[row * 2]?.[x]);
+      const bottom = paint(frame[row * 2 + 1]?.[x]);
       if (top !== null) words.push(UPPER_HALF, top, bottom ?? DEFAULT_COLOR);
       else if (bottom !== null) words.push(LOWER_HALF, bottom, DEFAULT_COLOR);
       else words.push(SPACE, DEFAULT_COLOR, DEFAULT_COLOR);

@@ -34,7 +34,7 @@ type World = {
   history?: string | null;
   welcomed?: boolean;
   hinted?: boolean;
-  // Another extension already took /carbon
+  // Another extension already took /carbon-panel
   commandTaken?: boolean;
 };
 
@@ -173,7 +173,7 @@ async function startSession($: any) {
 }
 
 async function openPane($: any) {
-  await $.command.run({ command: "carbon", args: "" });
+  await $.command.run({ command: "carbon-panel", args: "" });
 }
 
 const texts = (node: any): string[] => {
@@ -189,15 +189,15 @@ async function drawn(ui: any): Promise<string> {
     .replaceAll(NBSP, " ");
 }
 
-describe("the /carbon pane", () => {
-  test("/carbon is registered, opens the pane without the keyboard, and closes it", async ($: any, on: any) => {
+describe("the /carbon-panel pane", () => {
+  test("/carbon-panel is registered, opens the pane without the keyboard, and closes it", async ($: any, on: any) => {
     const { opened, closed, registered } = world(on);
     await startSession($);
-    expect(registered.map((c) => c.name)).toEqual(["carbon"]);
+    expect(registered.map((c) => c.name)).toEqual(["carbon-panel"]);
     expect(registered[0].immediate).toBe(true);
     await openPane($);
     expect(opened).toEqual([
-      { id: "carbon", title: "Carbone", closeOnEscape: true },
+      { id: "carbon", title: "Carbone", closeOnEscape: true, rows: 10 },
     ]);
     await openPane($);
     expect(closed).toEqual(["carbon"]);
@@ -210,8 +210,8 @@ describe("the /carbon pane", () => {
     const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
     const mascot = await ui.find({ key: "mascot" });
     expect(mascot.type).toBe("Raster");
-    expect(mascot.props.columns).toBe(20);
-    expect(mascot.props.rows).toBe(7);
+    expect(mascot.props.columns).toBe(13);
+    expect(mascot.props.rows).toBe(4);
     const stripes = await ui.find({ key: "stripes" });
     expect(stripes.type).toBe("Raster");
     // 20 past sessions in 30 days; the running one has no total yet
@@ -304,7 +304,7 @@ describe("the /carbon pane", () => {
     await clock.advance(3000);
     expect(blits.length > 3).toBe(true);
     expect(blits[0].key).toBe("mascot");
-    expect(blits[0].columns).toBe(20);
+    expect(blits[0].columns).toBe(13);
     await $.turn.complete({
       answer: "done",
       durationMs: 3000,
@@ -345,16 +345,16 @@ describe("the /carbon pane", () => {
     expect(blits).toEqual([]);
   });
 
-  test("someone welcomed before the pane existed hears of /carbon once", async ($: any, on: any) => {
+  test("someone welcomed before the pane existed hears of /carbon-panel once", async ($: any, on: any) => {
     const { toasts } = world(on, { hinted: false });
     await startSession($);
     await startSession($);
     expect(toasts.map((t) => t.replaceAll(NBSP, " "))).toEqual([
-      "Tapez /carbon pour voir votre molécule et l'historique de vos sessions.",
+      "Tapez /carbon-panel pour voir votre molécule et l'historique de vos sessions.",
     ]);
   });
 
-  test("no hint for a /carbon that is someone else's", async ($: any, on: any) => {
+  test("no hint for a /carbon-panel that is someone else's", async ($: any, on: any) => {
     const { toasts } = world(on, { hinted: false, commandTaken: true });
     await startSession($);
     expect(toasts).toEqual([]);

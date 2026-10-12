@@ -1,4 +1,4 @@
-// The session history the /carbon pane draws: read from sessions-history.tsv, which
+// The session history the /carbon-panel pane draws: read from sessions-history.tsv, which
 // the Stop hook writes next to carbon.db (cc_export_sessions in scripts/portable-lib.sh).
 // The mod never opens the database. Pure: no Claude Code API, so Node runs it directly
 // (tests/run-mod-tests.mjs).

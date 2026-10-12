@@ -323,7 +323,7 @@ cc_ensure_schema() {
 
 # cc_export_sessions <db>: write sessions-history.tsv next to the DB, one line per
 # session counted under the current methodology (v2), oldest first: session id, start
-# time in epoch seconds, grams of CO2. The mod's /carbon pane reads it; the mod itself
+# time in epoch seconds, grams of CO2. The mod's /carbon-panel pane reads it; the mod itself
 # never opens the DB. Read-only (-readonly), so a frozen series cannot be written from
 # here. A unique temp name and a rename: two sessions ending a turn at once never leave
 # a half-written file, and a failed query leaves the previous file in place. No rows

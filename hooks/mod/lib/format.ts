@@ -193,7 +193,7 @@ export function isCarbonStatusLine(command: unknown): boolean {
   );
 }
 
-// ── The /carbon pane ────────────────────────────────────────────────────────
+// ── The /carbon-panel pane ──────────────────────────────────────────────────
 
 export function paneTitle(lang: Lang): string {
   return lang === "fr" ? "Carbone" : "Carbon";
@@ -208,8 +208,8 @@ export function commandDescription(lang: Lang): string {
 // Shown once per machine to someone already welcomed before the pane existed.
 export function paneHint(lang: Lang): string {
   return lang === "fr"
-    ? "Tapez /carbon pour voir votre molécule et l'historique de vos sessions."
-    : "Type /carbon to see your molecule and the history of your sessions.";
+    ? "Tapez /carbon-panel pour voir votre molécule et l'historique de vos sessions."
+    : "Type /carbon-panel to see your molecule and the history of your sessions.";
 }
 
 export function paneUnplaced(lang: Lang): string {

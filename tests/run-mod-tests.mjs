@@ -7,7 +7,7 @@
 //      and data/prices.json (the files the mod reads).
 //   2. Display rules (hooks/mod/lib/format.ts), French and English.
 //   3. Which turn a duration line belongs to (hooks/mod/lib/lines.ts).
-//   4. The /carbon pane: the mascot's frames, colours and terminal cells
+//   4. The /carbon-panel pane: the mascot's frames, colours and terminal cells
 //      (hooks/mod/lib/mascot.ts), the session history (hooks/mod/lib/sessions.ts)
 //      and the pane's texts.
 // Runs on Node 22.6+ with --experimental-strip-types (default from Node 23.6).
@@ -69,6 +69,7 @@ import {
   classOf,
   colorOf,
   FRAMES,
+  MINI_FRAMES,
   mascotCells,
   mascotSvg,
   mascotWords,
@@ -583,7 +584,7 @@ check(
   undefined,
 );
 
-// ── 4. The /carbon pane: mascot, stripes, history (lib/mascot.ts, lib/sessions.ts) ──
+// ── 4. The /carbon-panel pane: mascot, stripes, history (lib/mascot.ts, lib/sessions.ts) ──
 
 check("class at the median", classOf(100, 100), 4);
 check("class just under the median", classOf(99, 100), 3);
@@ -605,7 +606,7 @@ for (const c of PALETTE) check(`banner has ${c}`, banner.includes(c), true);
 
 // Half blocks: 20 x 7 cells, three words each, decodable, never the default colour as
 // the foreground of a drawn half
-const words = mascotWords(FRAMES[0], PALETTE[5]);
+const words = mascotWords(MINI_FRAMES[0], PALETTE[5]);
 check("cells count", words.length, CELL_COLUMNS * CELL_ROWS * 3);
 let badHalf = 0;
 for (let i = 0; i < words.length; i += 3) {
@@ -614,9 +615,13 @@ for (let i = 0; i < words.length; i += 3) {
   if (![0x2580, 0x2584, 0x20].includes(glyph)) badHalf += 1;
 }
 check("half blocks well formed", badHalf, 0);
-const decoded = Buffer.from(mascotCells(FRAMES[1], PALETTE[2]), "base64");
+const decoded = Buffer.from(mascotCells(MINI_FRAMES[1], PALETTE[2]), "base64");
 check("cells decode to the right size", decoded.length, CELL_COLUMNS * CELL_ROWS * 12);
-check("cells little-endian", decoded.readUInt32LE(0), mascotWords(FRAMES[1], PALETTE[2])[0]);
+check("cells little-endian", decoded.readUInt32LE(0), mascotWords(MINI_FRAMES[1], PALETTE[2])[0]);
+check("mini frames same size", MINI_FRAMES.every((f) => f.length === CELL_ROWS * 2 && f.every((r) => r.length === CELL_COLUMNS)), true);
+// The hop is one terminal row: frame B is frame A two pixels up, legs aside
+check("mini hop one row", MINI_FRAMES[0][2], MINI_FRAMES[1][0]);
+check("big hop", FRAMES[0][3], FRAMES[1][1]);
 check("stripe cells", stripeWords([{ color: "#ff0000", title: "" }, { color: null, title: "" }], 2).length, 12);
 
 const svg = mascotSvg({ color: PALETTE[6], walking: true, step: 172, title: "t" });

@@ -18,7 +18,7 @@ cat >/dev/null 2>&1 || true
 # Only if the plugin is set up
 [ -f "$DB_PATH" ] || exit 0
 
-# The history the mod's /carbon pane draws, ready before the session's first answer
+# The history the mod's /carbon-panel pane draws, ready before the session's first answer
 # (the Stop hook refreshes it after each one). Detached: a database another session is
 # writing could hold the read-only query for its busy timeout.
 cc_detach bash -c '. "$1/portable-lib.sh" && cc_export_sessions "$2"' _ "$SCRIPT_DIR" "$DB_PATH"

@@ -6,7 +6,7 @@
 // prompt, unless a status line already shows it on this surface (the claude-carbon
 // one, or showSessionTotal off).
 //
-// /carbon opens a pane: the mascot, a pixel CO2 molecule coloured by this session against
+// /carbon-panel opens a pane: the mascot, a pixel CO2 molecule coloured by this session against
 // the median of past sessions, which walks while Claude works, and the warming stripes
 // of past sessions, by session, week or month. The history comes from the file the Stop
 // hook writes next to carbon.db (lib/sessions.ts); the mod never opens the database.
@@ -62,7 +62,7 @@ import {
   CELL_ROWS,
   classOf,
   colorOf,
-  FRAMES,
+  MINI_FRAMES,
   mascotCells,
   mascotSvg,
   NEUTRAL,
@@ -106,9 +106,10 @@ const paneView = atom(
 );
 
 const PANE_ID = "carbon";
+const COMMAND = "carbon-panel";
 // The pane's last range and step, kept for the next session
 const VIEW_KEY = "pane.view";
-// The one-time "/carbon" hint, for someone welcomed before the pane existed
+// The one-time "/carbon-panel" hint, for someone welcomed before the pane existed
 const HINT_KEY = "pane.hinted";
 // The middle of the palette, for a walk with no colour to set its pace
 const NEUTRAL_CLASS = 3;
@@ -255,7 +256,7 @@ async function walkStep($: EngineInterface, run: number) {
       .blit({
         requestId: PANE_ID,
         key: "mascot",
-        cells: mascotCells(FRAMES[pane.walkFrame] ?? FRAMES[0], colorOf(cls)),
+        cells: mascotCells(MINI_FRAMES[pane.walkFrame] ?? MINI_FRAMES[0], colorOf(cls)),
         columns: CELL_COLUMNS,
         rows: CELL_ROWS,
       })
@@ -382,11 +383,11 @@ export const register: Register = (on, options) => {
     }
 
     // Last: a taken name throws, and nothing above depends on it. Someone welcomed
-    // before the pane existed then hears of /carbon once, if it is ours; a welcome
+    // before the pane existed then hears of /carbon-panel once, if it is ours; a welcome
     // shown in this very session waits for the next one: one toast at a time.
     try {
       await $.command.register({
-        name: PANE_ID,
+        name: COMMAND,
         description: commandDescription(lang),
         immediate: true,
       });
@@ -399,7 +400,7 @@ export const register: Register = (on, options) => {
         }
       }
     } catch {
-      // /carbon is someone else's here: the rest of the mod works without it.
+      // /carbon-panel is someone else's here: the rest of the mod works without it.
     }
 
     return next(e);
@@ -597,9 +598,9 @@ export const register: Register = (on, options) => {
     return next(e);
   });
 
-  // /carbon opens the pane, or closes it when it is open. Opened without the keyboard:
+  // /carbon-panel opens the pane, or closes it when it is open. Opened without the keyboard:
   // the pane has nothing to type into, and Escape must still interrupt a turn.
-  on("command.run", { command: PANE_ID }, async ($) => {
+  on("command.run", { command: COMMAND }, async ($) => {
     try {
       if (await isPaneOpen($)) {
         stopWalk();
@@ -608,10 +609,13 @@ export const register: Register = (on, options) => {
       }
       pane.rows = undefined;
       await loadPaneHistory($);
+      // Tall enough for the molecule, the stripes and the buttons, inline above the
+      // prompt; a size the person gave the pane wins.
       const opened = await $.ui.open({
         id: PANE_ID,
         title: paneTitle(lang),
         closeOnEscape: true,
+        rows: 10,
       });
       if (!opened.isPlaced) {
         $.ui.toast(paneUnplaced(lang), { timeoutMs: 8000 });
@@ -681,7 +685,7 @@ export const register: Register = (on, options) => {
           key="mascot"
           columns={CELL_COLUMNS}
           rows={CELL_ROWS}
-          cells={mascotCells(FRAMES[pane.walkFrame] ?? FRAMES[0], color)}
+          cells={mascotCells(MINI_FRAMES[pane.walkFrame] ?? MINI_FRAMES[0], color)}
         />
       ) : (
         <ui.Svg
@@ -692,13 +696,28 @@ export const register: Register = (on, options) => {
             title: mascotAlt(lang),
           })}
           alt={mascotAlt(lang)}
-          width={100}
-          height={70}
+          width={80}
+          height={64}
           isInteractive
         />
       );
+      // A terminal draws a plain button as its label alone: the choice in full
+      // strength, the others dim. The desktop app draws its own buttons.
+      const choice = (isChosen: boolean) =>
+        isTerminal
+          ? { plain: true as const, ...(isChosen ? {} : { dimColor: true }) }
+          : isChosen
+            ? { variant: "primary" as const }
+            : { dimColor: true };
       const first = shown[0];
       const last = shown.at(-1);
+      const hasStripes = pane.rows !== null && first !== undefined && last !== undefined;
+      const summary =
+        pane.rows === null
+          ? noHistoryText(lang)
+          : hasStripes
+            ? historyLine(view.range, view.step, list.length, shown.length, bm, lang)
+            : emptyRangeText(lang);
       return (
         <Box flexDirection="column">
           <Box flexDirection="row" alignItems="center">
@@ -706,65 +725,58 @@ export const register: Register = (on, options) => {
             <Box flexDirection="column" marginLeft={2} flexShrink={1}>
               <Text bold>{currentLine(total.grams, sm, lang)}</Text>
               {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
+              <Text dimColor={!hasStripes}>{summary}</Text>
             </Box>
           </Box>
-          <Box flexDirection="row" marginTop={1} columnGap={1} flexWrap="wrap">
-            {RANGES.map((range, i) => (
-              <Button
-                key={`range-${range}`}
-                label={rangeLabel(range, lang)}
-                hotkey={String(i + 1)}
-                {...(view.range === range
-                  ? { variant: "primary" as const }
-                  : { dimColor: true })}
-                onPress={() => setView({ ...view, range })}
-              />
-            ))}
-          </Box>
-          <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-            {STEPS.map((step) => (
-              <Button
-                key={`step-${step}`}
-                label={stepLabel(step, lang)}
-                {...(view.step === step
-                  ? { variant: "primary" as const }
-                  : { dimColor: true })}
-                onPress={() => setView({ ...view, step })}
-              />
-            ))}
-          </Box>
-          {pane.rows === null ? (
-            <Text dimColor>{noHistoryText(lang)}</Text>
-          ) : shown.length === 0 || first === undefined || last === undefined ? (
-            <Text dimColor>{emptyRangeText(lang)}</Text>
-          ) : (
+          {hasStripes && (
             <Box flexDirection="column" marginTop={1}>
-              <Text>
-                {historyLine(view.range, view.step, list.length, shown.length, bm, lang)}
-              </Text>
               {isTerminal ? (
                 <ui.Raster
                   key="stripes"
                   columns={stripes.length}
-                  rows={2}
-                  cells={stripeCells(stripes, 2)}
+                  rows={1}
+                  cells={stripeCells(stripes, 1)}
                 />
               ) : (
                 <ui.Svg
                   source={stripesSvg(stripes, stripesAlt(lang))}
                   alt={stripesAlt(lang)}
                   width={Math.min(640, Math.max(160, e.props.bodyColumns * 8))}
-                  height={48}
+                  height={40}
                   isInteractive
                 />
               )}
-              <Box flexDirection="row" justifyContent="space-between">
+              <Box
+                flexDirection="row"
+                justifyContent="space-between"
+                {...(isTerminal ? { width: stripes.length } : {})}
+              >
                 <Text dimColor>{dateLabel(first.start, view.step, lang)}</Text>
                 <Text dimColor>{dateLabel(last.start, view.step, lang)}</Text>
               </Box>
               {bm === null && <Text dimColor>{uncolouredText(lang)}</Text>}
             </Box>
           )}
+          <Box flexDirection="row" marginTop={1} columnGap={2} flexWrap="wrap">
+            {RANGES.map((range, i) => (
+              <Button
+                key={`range-${range}`}
+                label={rangeLabel(range, lang)}
+                hotkey={String(i + 1)}
+                {...choice(view.range === range)}
+                onPress={() => setView({ ...view, range })}
+              />
+            ))}
+            <Text dimColor>·</Text>
+            {STEPS.map((step) => (
+              <Button
+                key={`step-${step}`}
+                label={stepLabel(step, lang)}
+                {...choice(view.step === step)}
+                onPress={() => setView({ ...view, step })}
+              />
+            ))}
+          </Box>
         </Box>
       );
     } catch {

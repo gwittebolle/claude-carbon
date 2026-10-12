@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // render-mascot.mjs: draws docs/mascot-stripes.svg, the README banner, from the mod's own
 // frames and palette (hooks/mod/lib/mascot.ts): eight molecules from dark blue to dark
-// red, each walking at the pace the /carbon pane gives its colour. A CSS animation, no
+// red, each walking at the pace the /carbon-panel pane gives its colour. A CSS animation, no
 // script; still under reduced motion.
 // Run: node --experimental-strip-types scripts/render-mascot.mjs
 
