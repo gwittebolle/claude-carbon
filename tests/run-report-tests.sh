@@ -127,6 +127,18 @@ check "fr: grams and a floor under 0.1 %" \
   "  Depuis le 1er janvier : 40 g, soit < 0,1 % du budget annuel de 2 t par personne" \
   "$(line_after "$(run_report "$DB" fr_FR)" "--- Annual budget (${YEAR}) ---")"
 
+# Rounding boundaries: 9.98 kg and 9.975 % round up to 10, printed whole.
+DB="${TMPROOT}/edge-kg.db"
+make_db "$DB" "9980:${YEAR}"
+check "fr: 9.98 kg rounds to whole kg" \
+  "  Depuis le 1er janvier : 10 kg, soit 0,5 % du budget annuel de 2 t par personne" \
+  "$(line_after "$(run_report "$DB" fr_FR)" "--- Annual budget (${YEAR}) ---")"
+DB="${TMPROOT}/edge-pct.db"
+make_db "$DB" "199500:${YEAR}"
+check "fr: 9.975 % rounds to a whole percent" \
+  "  Depuis le 1er janvier : 200 kg, soit 10 % du budget annuel de 2 t par personne" \
+  "$(line_after "$(run_report "$DB" fr_FR)" "--- Annual budget (${YEAR}) ---")"
+
 # Sessions only in earlier years: the budget share starts again at zero.
 DB="${TMPROOT}/old.db"
 make_db "$DB" "500000:${LAST_YEAR}"

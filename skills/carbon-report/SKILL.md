@@ -127,13 +127,14 @@ BUDGET_FIGURES="$(echo "$YEAR_CO2" | awk -v b="$BUDGET_GRAMS" -v lang="$BUDGET_L
   }
   {
     # Grams under a kilo, then kg: one decimal under 10 kg, whole kg above.
+    # Thresholds sit where the rounding crosses over, so 9.98 kg prints "10 kg", not "10.0 kg".
     if ($1 < 999.5) qty = sprintf("%.0f", $1) " g"
-    else if ($1 < 10000) qty = group(sprintf("%.1f", $1 / 1000)) " kg"
+    else if ($1 < 9950) qty = group(sprintf("%.1f", $1 / 1000)) " kg"
     else qty = group(sprintf("%.0f", $1 / 1000)) " kg"
     pct = $1 / b * 100
     if (pct == 0) pcts = "0"
     else if (pct < 0.1) pcts = (lang == "fr") ? "< 0,1" : "< 0.1"
-    else if (pct < 10) pcts = group(sprintf("%.1f", pct))
+    else if (pct < 9.95) pcts = group(sprintf("%.1f", pct))
     else pcts = group(sprintf("%.0f", pct))
     printf "%s|%s", qty, pcts
   }')"
