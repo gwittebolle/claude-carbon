@@ -6,6 +6,11 @@
 // prompt, unless a status line already shows it on this surface (the claude-carbon
 // one, or showSessionTotal off).
 //
+// /carbon opens a pane: the mascot, a pixel CO2 molecule coloured by this session against
+// the median of past sessions, which walks while Claude works, and the warming stripes
+// of past sessions, by session, week or month. The history comes from the file the Stop
+// hook writes next to carbon.db (lib/sessions.ts); the mod never opens the database.
+//
 // One request at a time through turn.step, the formulas, factors and prices of the bash
 // plugin (lib/co2.ts, lib/cost.ts). Writes no database, starts no process, calls no
 // network, never changes what Claude does.
@@ -13,7 +18,7 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register } from "claude-code";
 
-import type { AnswerCo2Entry, SessionTotal } from "../../types";
+import type { AnswerCo2Entry, PaneView, SessionTotal } from "../../types";
 import {
   co2Grams,
   DEFAULT_FACTORS,
@@ -26,16 +31,59 @@ import type { Prices } from "./lib/cost.ts";
 import {
   answerLine,
   buildAnswerCo2,
+  colorNote,
+  commandDescription,
+  currentLine,
+  dateLabel,
   detectLang,
+  emptyRangeText,
   hasLangVariable,
+  historyLine,
   isCarbonStatusLine,
   languageSetting,
+  mascotAlt,
+  noHistoryText,
+  paneHint,
+  paneTitle,
+  paneUnplaced,
   pushHistory,
+  rangeLabel,
   sessionLine,
+  stepLabel,
+  stripesAlt,
+  stripeTitle,
+  uncolouredText,
   welcomeText,
 } from "./lib/format.ts";
 import type { Lang } from "./lib/format.ts";
 import { lineEntry } from "./lib/lines.ts";
+import {
+  CELL_COLUMNS,
+  CELL_ROWS,
+  classOf,
+  colorOf,
+  FRAMES,
+  mascotCells,
+  mascotSvg,
+  NEUTRAL,
+  stepMs,
+  stripeCells,
+  stripesSvg,
+} from "./lib/mascot.ts";
+import type { Stripe } from "./lib/mascot.ts";
+import {
+  barMedian,
+  bars,
+  DEFAULT_VIEW,
+  historyPath,
+  isView,
+  parseHistory,
+  pastSessions,
+  RANGES,
+  sessionMedian,
+  STEPS,
+} from "./lib/sessions.ts";
+import type { SessionRow } from "./lib/sessions.ts";
 
 // One entry per main-loop turn, oldest first, uncounted turns included (co2 null) so
 // a duration line never borrows another turn's figure (lib/lines.ts).
@@ -47,6 +95,23 @@ const session = atom(
   { plugin: "claude-carbon", key: "session" } as const,
   { grams: 0, usd: 0, turns: 0 } as SessionTotal,
 );
+
+const working = atom(
+  { plugin: "claude-carbon", key: "working" } as const,
+  false,
+);
+const paneView = atom(
+  { plugin: "claude-carbon", key: "view" } as const,
+  DEFAULT_VIEW as PaneView,
+);
+
+const PANE_ID = "carbon";
+// The pane's last range and step, kept for the next session
+const VIEW_KEY = "pane.view";
+// The one-time "/carbon" hint, for someone welcomed before the pane existed
+const HINT_KEY = "pane.hinted";
+// The middle of the palette, for a walk with no colour to set its pace
+const NEUTRAL_CLASS = 3;
 
 // v2: the values of v1 counted background subagents in the answer that started them.
 // The v1 key is left as it is and never read again.
@@ -101,6 +166,96 @@ async function resetSessionState($: EngineInterface) {
   );
   await $.state.set({ plugin: "claude-carbon", key: "answers" }, []);
   $.ui.status(undefined);
+}
+
+// The pane. Where the history file is, this session's id (its own row in the file holds
+// a partial total), and the history as last read: undefined until read, null when there
+// is no file to read (no database: an install without the bash hooks). The walk in the
+// terminal: the frame shown, and the timer that steps it, read by the drawing so a
+// redraw for another reason (a new request's total) keeps the step.
+const pane: {
+  historyFile: string | null;
+  sessionId: string | null;
+  rows: SessionRow[] | null | undefined;
+  walkFrame: number;
+  walkTimer: { cancel: () => void } | null;
+} = {
+  historyFile: null,
+  sessionId: null,
+  rows: undefined,
+  walkFrame: 0,
+  walkTimer: null,
+};
+
+async function loadPaneHistory($: EngineInterface) {
+  if (pane.historyFile === null) {
+    pane.rows = null;
+    return;
+  }
+  try {
+    const text = await $.fs.read(pane.historyFile);
+    pane.rows = typeof text === "string" ? parseHistory(text) : null;
+  } catch {
+    pane.rows = null;
+  }
+}
+
+async function isPaneOpen($: EngineInterface): Promise<boolean> {
+  try {
+    return (await $.ui.panes()).some((open) => open.id === PANE_ID);
+  } catch {
+    return false;
+  }
+}
+
+// The molecule's class: this session against the median of past sessions, null without
+// enough of them.
+async function currentClass($: EngineInterface): Promise<number | null> {
+  const total = await read($, session);
+  const m = sessionMedian(pastSessions(pane.rows ?? [], pane.sessionId));
+  return m === null ? null : classOf(total.grams, m);
+}
+
+function stopWalk() {
+  pane.walkTimer?.cancel();
+  pane.walkTimer = null;
+  pane.walkFrame = 0;
+}
+
+// One step of the terminal's molecule while a turn runs and the pane is open: a blit of
+// the next frame, no redraw, then the next step at the pace of the current colour. A
+// blit the surface refuses (the pane in a hidden tab, no terminal) is left be.
+async function walkStep($: EngineInterface) {
+  pane.walkTimer = null;
+  try {
+    if (!(await read($, working)) || !(await isPaneOpen($))) {
+      pane.walkFrame = 0;
+      return;
+    }
+    pane.walkFrame = 1 - pane.walkFrame;
+    const cls = await currentClass($);
+    await $.ui
+      .blit({
+        requestId: PANE_ID,
+        key: "mascot",
+        cells: mascotCells(FRAMES[pane.walkFrame] ?? FRAMES[0], colorOf(cls)),
+        columns: CELL_COLUMNS,
+        rows: CELL_ROWS,
+      })
+      .catch(() => undefined);
+    pane.walkTimer = $.clock.after(stepMs(cls ?? NEUTRAL_CLASS), () => {
+      void walkStep($);
+    });
+  } catch {
+    pane.walkFrame = 0;
+  }
+}
+
+function ensureWalk($: EngineInterface) {
+  if (pane.walkTimer !== null) return;
+  pane.walkTimer = $.clock.after(stepMs(NEUTRAL_CLASS), () => {
+    void walkStep($);
+  });
 }
 
 export const register: Register = (on, options) => {
@@ -186,6 +341,47 @@ export const register: Register = (on, options) => {
       }
     }
 
+    // The pane: where its history is, this session's id, the last range and step.
+    try {
+      pane.historyFile = historyPath({
+        db: await $.env.get("CLAUDE_CARBON_DB"),
+        configDir: await $.env.get("CLAUDE_CONFIG_DIR"),
+        home: await $.env.get("HOME"),
+        userProfile: await $.env.get("USERPROFILE"),
+      });
+      pane.sessionId = await $.session.id().catch(() => null);
+      pane.rows = undefined;
+      stopWalk();
+      await $.state.set({ plugin: "claude-carbon", key: "working" }, false);
+      const kept = await $.store.get(VIEW_KEY);
+      if (isView(kept)) {
+        await $.state.set({ plugin: "claude-carbon", key: "view" }, kept);
+      }
+      // Someone welcomed before the pane existed hears of it once. A welcome shown in
+      // this very session waits: one toast at a time.
+      if (history.welcomed && e.isInteractive) {
+        const hinted = (await $.store.get(HINT_KEY)) === true;
+        const surfaces = await $.session.surfaces();
+        if (!hinted && surfaces.length > 0) {
+          $.ui.toast(paneHint(lang), { timeoutMs: 10000 });
+          await $.store.set(HINT_KEY, true);
+        }
+      }
+    } catch {
+      // The pane opens on what could be read.
+    }
+
+    // Last: a taken name throws, and nothing above should depend on it.
+    try {
+      await $.command.register({
+        name: PANE_ID,
+        description: commandDescription(lang),
+        immediate: true,
+      });
+    } catch {
+      // /carbon is someone else's here: the rest of the mod works without it.
+    }
+
     return next(e);
   });
 
@@ -228,9 +424,15 @@ export const register: Register = (on, options) => {
     return called;
   }).catch(($, e, next) => next(e));
 
-  on("turn.start", ($, e, next) => {
+  on("turn.start", async ($, e, next) => {
     // The main loop alone raises turn.start; a subagent's run does not.
     current = openTurn(e.turnId);
+    try {
+      await $.state.set({ plugin: "claude-carbon", key: "working" }, true);
+      if (await isPaneOpen($)) ensureWalk($);
+    } catch {
+      // The molecule stands still; the turn goes on.
+    }
     return next(e);
   });
 
@@ -278,6 +480,14 @@ export const register: Register = (on, options) => {
 
   on("turn.complete", async ($, e, next) => {
     if (e.agentId !== undefined) return next(e);
+    // Before anything that may return early: a module reloaded during the turn has no
+    // open answer, and the molecule must still stop.
+    stopWalk();
+    try {
+      await $.state.set({ plugin: "claude-carbon", key: "working" }, false);
+    } catch {
+      // The next session start sets it again.
+    }
     // Only the turn that opened the answer closes it.
     const done = current;
     if (done === null || e.turnId !== done.turnId) return next(e);
@@ -362,6 +572,171 @@ export const register: Register = (on, options) => {
       await resetSessionState($);
     }
     return next(e);
+  });
+
+  // /carbon opens the pane, or closes it when it is open. Opened without the keyboard:
+  // the pane has nothing to type into, and Escape must still interrupt a turn.
+  on("command.run", { command: PANE_ID }, async ($) => {
+    try {
+      if (await isPaneOpen($)) {
+        stopWalk();
+        await $.ui.close({ id: PANE_ID });
+        return {};
+      }
+      pane.rows = undefined;
+      await loadPaneHistory($);
+      const opened = await $.ui.open({
+        id: PANE_ID,
+        title: paneTitle(lang),
+        closeOnEscape: true,
+      });
+      if (!opened.isPlaced) {
+        $.ui.toast(paneUnplaced(lang), { timeoutMs: 8000 });
+      } else if (await read($, working)) {
+        ensureWalk($);
+      }
+    } catch {
+      // Nothing opened: the command ends quietly.
+    }
+    return {};
+  }).catch(() => ({}));
+
+  on("ui.close", ($, e, next) => {
+    if (e.id === PANE_ID) stopWalk();
+    return next(e);
+  }).catch(($, e, next) => next(e));
+
+  on("ui.render", { component: "Pane", requestId: PANE_ID }, async ($, e, next) => {
+    try {
+      if (pane.rows === undefined) await loadPaneHistory($);
+      if (pane.sessionId === null)
+        pane.sessionId = await $.session.id().catch(() => null);
+      const total = await read($, session);
+      const isWorking = await read($, working);
+      const view = await read($, paneView);
+      const now = await $.clock.now();
+      const past = pastSessions(pane.rows ?? [], pane.sessionId);
+      const sm = sessionMedian(past);
+      const cls = sm === null ? null : classOf(total.grams, sm);
+      const color = colorOf(cls);
+      // The running session joins the stripes with its live total, as the newest.
+      const rows =
+        total.grams > 0
+          ? [...past, { id: pane.sessionId ?? "current", at: now, grams: total.grams }]
+          : past;
+      const list = pane.rows === null ? [] : bars(rows, view, now);
+      const bm = barMedian(list);
+      const isTerminal = e.surface === "terminal";
+      const room = Math.max(10, e.props.bodyColumns - 2);
+      const shown = isTerminal ? list.slice(-room) : list;
+      const stripes: Stripe[] = shown.map((b) => ({
+        color:
+          b.grams > 0 ? (bm === null ? NEUTRAL : colorOf(classOf(b.grams, bm))) : null,
+        title: stripeTitle(b.start, view.step, b.grams, b.sessions, lang),
+      }));
+      const setView = (chosen: PaneView) => {
+        void (async () => {
+          await $.state.set({ plugin: "claude-carbon", key: "view" }, chosen);
+          await $.store.set(VIEW_KEY, chosen);
+        })().catch(() => undefined);
+      };
+
+      const ui = $.ui.resolve(e);
+      const { Box, Text, Button } = ui;
+      const mascot = isTerminal ? (
+        <ui.Raster
+          key="mascot"
+          columns={CELL_COLUMNS}
+          rows={CELL_ROWS}
+          cells={mascotCells(FRAMES[pane.walkFrame] ?? FRAMES[0], color)}
+        />
+      ) : (
+        <ui.Svg
+          source={mascotSvg({
+            color,
+            walking: isWorking,
+            step: stepMs(cls ?? NEUTRAL_CLASS),
+            title: mascotAlt(lang),
+          })}
+          alt={mascotAlt(lang)}
+          width={100}
+          height={70}
+          isInteractive
+        />
+      );
+      const first = shown[0];
+      const last = shown.at(-1);
+      return (
+        <Box flexDirection="column">
+          <Box flexDirection="row" alignItems="center">
+            {mascot}
+            <Box flexDirection="column" marginLeft={2} flexShrink={1}>
+              <Text bold>{currentLine(total.grams, sm, lang)}</Text>
+              {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
+            </Box>
+          </Box>
+          <Box flexDirection="row" marginTop={1} columnGap={1} flexWrap="wrap">
+            {RANGES.map((range, i) => (
+              <Button
+                key={`range-${range}`}
+                label={rangeLabel(range, lang)}
+                hotkey={String(i + 1)}
+                {...(view.range === range
+                  ? { variant: "primary" as const }
+                  : { dimColor: true })}
+                onPress={() => setView({ ...view, range })}
+              />
+            ))}
+          </Box>
+          <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+            {STEPS.map((step) => (
+              <Button
+                key={`step-${step}`}
+                label={stepLabel(step, lang)}
+                {...(view.step === step
+                  ? { variant: "primary" as const }
+                  : { dimColor: true })}
+                onPress={() => setView({ ...view, step })}
+              />
+            ))}
+          </Box>
+          {pane.rows === null ? (
+            <Text dimColor>{noHistoryText(lang)}</Text>
+          ) : shown.length === 0 || first === undefined || last === undefined ? (
+            <Text dimColor>{emptyRangeText(lang)}</Text>
+          ) : (
+            <Box flexDirection="column" marginTop={1}>
+              <Text>
+                {historyLine(view.range, view.step, list.length, shown.length, bm, lang)}
+              </Text>
+              {isTerminal ? (
+                <ui.Raster
+                  key="stripes"
+                  columns={stripes.length}
+                  rows={2}
+                  cells={stripeCells(stripes, 2)}
+                />
+              ) : (
+                <ui.Svg
+                  source={stripesSvg(stripes, stripesAlt(lang))}
+                  alt={stripesAlt(lang)}
+                  width={Math.min(640, Math.max(160, e.props.bodyColumns * 8))}
+                  height={48}
+                  isInteractive
+                />
+              )}
+              <Box flexDirection="row" justifyContent="space-between">
+                <Text dimColor>{dateLabel(first.start, view.step, lang)}</Text>
+                <Text dimColor>{dateLabel(last.start, view.step, lang)}</Text>
+              </Box>
+              {bm === null && <Text dimColor>{uncolouredText(lang)}</Text>}
+            </Box>
+          )}
+        </Box>
+      );
+    } catch {
+      return next(e);
+    }
   });
 
   on("ui.render", { component: "TurnDuration" }, async ($, e, next) => {

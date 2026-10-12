@@ -1,0 +1,181 @@
+// The session history the /carbon pane draws: read from sessions-history.tsv, which
+// the Stop hook writes next to carbon.db (cc_export_sessions in scripts/portable-lib.sh).
+// The mod never opens the database. Pure: no Claude Code API, so Node runs it directly
+// (tests/run-mod-tests.mjs).
+
+import { median } from "./format.ts";
+
+export type SessionRow = {
+  id: string;
+  // Start of the session, ms since the epoch
+  at: number;
+  grams: number;
+};
+
+export type Range = "7d" | "30d" | "90d" | "1y" | "all";
+export type Step = "session" | "week" | "month";
+export type View = { range: Range; step: Step };
+
+export const RANGES: readonly Range[] = ["7d", "30d", "90d", "1y", "all"];
+export const STEPS: readonly Step[] = ["session", "week", "month"];
+export const DEFAULT_VIEW: View = { range: "30d", step: "session" };
+export const HISTORY_FILE = "sessions-history.tsv";
+// Below this many past sessions the molecule has no median to be coloured against.
+export const MIN_SESSIONS = 10;
+// Below this many periods with sessions in them the stripes stay uncoloured.
+export const MIN_STRIPES = 3;
+
+const DAY_MS = 86_400_000;
+const RANGE_DAYS: Record<Exclude<Range, "all">, number> = {
+  "7d": 7,
+  "30d": 30,
+  "90d": 90,
+  "1y": 365,
+};
+
+export function isView(value: unknown): value is View {
+  const v = value as Partial<View> | null | undefined;
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    RANGES.includes(v.range as Range) &&
+    STEPS.includes(v.step as Step)
+  );
+}
+
+// The file's directory, resolved as the bash hooks resolve carbon.db: CLAUDE_CARBON_DB's
+// directory, else CLAUDE_CONFIG_DIR/claude-carbon, else the home directory's
+// .claude/claude-carbon (HOME, or USERPROFILE on Windows, where the native process has
+// no HOME). Null when nothing names a directory.
+export function historyPath(env: {
+  db?: string;
+  configDir?: string;
+  home?: string;
+  userProfile?: string;
+}): string | null {
+  const nonEmpty = (v: string | undefined) =>
+    v !== undefined && v !== "" ? v : undefined;
+  const db = nonEmpty(env.db);
+  if (db !== undefined) {
+    const cut = Math.max(db.lastIndexOf("/"), db.lastIndexOf("\\"));
+    const dir = cut > 0 ? db.slice(0, cut) : ".";
+    return `${dir}/${HISTORY_FILE}`;
+  }
+  const config = nonEmpty(env.configDir);
+  if (config !== undefined) return `${config}/claude-carbon/${HISTORY_FILE}`;
+  const home = nonEmpty(env.home) ?? nonEmpty(env.userProfile);
+  if (home !== undefined)
+    return `${home}/.claude/claude-carbon/${HISTORY_FILE}`;
+  return null;
+}
+
+// One line per session: id, start in epoch seconds, grams, tab-separated. A line that
+// does not read as that is skipped, never guessed.
+export function parseHistory(text: string): SessionRow[] {
+  const rows: SessionRow[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const [id, start, grams] = line.split("\t");
+    if (
+      id === undefined ||
+      id === "" ||
+      start === undefined ||
+      grams === undefined
+    )
+      continue;
+    const seconds = Number(start);
+    const g = Number(grams);
+    if (!Number.isFinite(seconds) || !Number.isFinite(g) || !(g > 0)) continue;
+    rows.push({ id, at: seconds * 1000, grams: g });
+  }
+  return rows.sort((a, b) => a.at - b.at);
+}
+
+// The past sessions: the one running now is in the file with a partial total, and the
+// pane shows it from its live total instead.
+export function pastSessions(
+  rows: readonly SessionRow[],
+  currentId: string | null,
+) {
+  return currentId === null
+    ? [...rows]
+    : rows.filter((r) => r.id !== currentId);
+}
+
+// The median the molecule's colour is measured against, or null with too few sessions.
+export function sessionMedian(past: readonly SessionRow[]): number | null {
+  if (past.length < MIN_SESSIONS) return null;
+  const m = median(past.map((r) => r.grams));
+  return m > 0 ? m : null;
+}
+
+export type Bar = {
+  // Start of the period (or of the session), ms since the epoch, local time
+  start: number;
+  grams: number;
+  sessions: number;
+};
+
+// Monday 00:00, local time
+function weekStart(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  const offset = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - offset);
+  return d.getTime();
+}
+
+function monthStart(ms: number): number {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+}
+
+function nextPeriod(start: number, step: "week" | "month"): number {
+  const d = new Date(start);
+  if (step === "week") d.setDate(d.getDate() + 7);
+  else d.setMonth(d.getMonth() + 1);
+  return d.getTime();
+}
+
+export function rangeStart(range: Range, now: number): number {
+  return range === "all" ? -Infinity : now - RANGE_DAYS[range] * DAY_MS;
+}
+
+// The stripes of a view: one bar per session, or one per week or month with the total
+// of its sessions. Periods are continuous from the first one with a session to the one
+// holding `now`, empty ones included (0 g), so a quiet week shows as a gap.
+export function bars(
+  rows: readonly SessionRow[],
+  view: View,
+  now: number,
+): Bar[] {
+  const from = rangeStart(view.range, now);
+  const inRange = rows.filter((r) => r.at >= from && r.at <= now);
+  if (view.step === "session")
+    return inRange.map((r) => ({ start: r.at, grams: r.grams, sessions: 1 }));
+  const step = view.step;
+  const startOf = step === "week" ? weekStart : monthStart;
+  const totals = new Map<number, Bar>();
+  for (const r of inRange) {
+    const start = startOf(r.at);
+    const bar = totals.get(start) ?? { start, grams: 0, sessions: 0 };
+    bar.grams += r.grams;
+    bar.sessions += 1;
+    totals.set(start, bar);
+  }
+  if (totals.size === 0) return [];
+  const first = Math.min(...totals.keys());
+  const last = startOf(now);
+  const out: Bar[] = [];
+  for (let s = first; s <= last; s = nextPeriod(s, step))
+    out.push(totals.get(s) ?? { start: s, grams: 0, sessions: 0 });
+  return out;
+}
+
+// The median the stripes' colours are measured against: over the periods that have
+// sessions, or null with too few of them.
+export function barMedian(list: readonly Bar[]): number | null {
+  const full = list.filter((b) => b.grams > 0).map((b) => b.grams);
+  if (full.length < MIN_STRIPES) return null;
+  const m = median(full);
+  return m > 0 ? m : null;
+}

@@ -17,6 +17,38 @@ with and without a truncated last line.
 
 ## 2026-10-12
 
+### feat: /carbon opens a pane with a CO2 molecule and the warming stripes of your sessions (1.11.0)
+
+The mod registers `/carbon`, which opens a pane, or closes it when it is open. At
+the top, a pixel CO2 molecule (`hooks/mod/lib/mascot.ts`) coloured by this
+session's CO2 against the median of past sessions, in eight classes by powers of
+two from dark blue to dark red, grey until 10 past sessions are recorded. It walks
+while a main-loop turn runs, one step every 460 ms for the bluest down to 124 ms
+for the reddest: frames blitted into a `Raster` in the terminal, a CSS animation
+inside an `Svg` in the desktop app, still under reduced motion. Below it, warming
+stripes of past sessions, the running one included with its live total: one
+stripe per session, week (from Monday) or month, over 7, 30 or 90 days, 12 months
+or everything, coloured against the median of the stripes with sessions in them
+(uncoloured under three). Range and step are buttons; the choice is kept in
+`$.store` for the next session. The pane opens without the keyboard, so typing
+and Escape stay with the prompt.
+
+The history comes from `sessions-history.tsv`, which the Stop hook now writes next
+to `carbon.db` after each answer (`cc_export_sessions` in `scripts/portable-lib.sh`):
+sessions with `methodology_version >= 2`, not excluded and with CO2, oldest first,
+as id, start in epoch seconds and grams, from a `sqlite3 -readonly` query written
+to a temp file and renamed into place. The mod resolves the file as the hooks
+resolve the database (`CLAUDE_CARBON_DB`, `CLAUDE_CONFIG_DIR`, then `HOME` or
+`USERPROFILE`) and still writes no database, starts no process and makes no
+network call; `hooks/mod/carbon-pane.test.tsx` checks it. Without the file (the
+plugin installed alone) the pane shows the molecule and says where the history
+comes from. Someone welcomed by an earlier version sees a one-time toast naming
+`/carbon`. The README banner is now drawn from the mod's frames and palette by
+`scripts/render-mascot.mjs`. Tests: `tests/run-export-tests.sh` (in CI on Linux
+and Windows), 13 kit tests for the pane, and checks of the frames, the half-block
+cells, the history file, the stripes by week and month and the pane's texts in
+`tests/run-mod-tests.mjs`.
+
 ### docs: a pixel CO2 molecule as the README mascot
 
 The README opens on a row of eight pixel CO2 molecules (O=C=O, the carbon in

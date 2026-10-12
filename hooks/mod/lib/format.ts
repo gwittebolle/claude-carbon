@@ -192,3 +192,185 @@ export function isCarbonStatusLine(command: unknown): boolean {
     command.includes("statusline.sh")
   );
 }
+
+// ── The /carbon pane ────────────────────────────────────────────────────────
+
+export function paneTitle(lang: Lang): string {
+  return lang === "fr" ? "Carbone" : "Carbon";
+}
+
+export function commandDescription(lang: Lang): string {
+  return lang === "fr"
+    ? "Votre molécule de CO₂ et l'historique de vos sessions"
+    : "Your CO₂ molecule and the history of your sessions";
+}
+
+// Shown once per machine to someone already welcomed before the pane existed.
+export function paneHint(lang: Lang): string {
+  return lang === "fr"
+    ? "Tapez /carbon pour voir votre molécule et l'historique de vos sessions."
+    : "Type /carbon to see your molecule and the history of your sessions.";
+}
+
+export function paneUnplaced(lang: Lang): string {
+  return lang === "fr"
+    ? "Le panneau carbone ne peut pas s'ouvrir ici : élargissez la fenêtre ou mettez Claude Code à jour."
+    : "The carbon pane cannot open here: widen the window or update Claude Code.";
+}
+
+// The molecule's line: the session so far, and its ratio to the median of past sessions.
+export function currentLine(
+  grams: number,
+  sessionMedian: number | null,
+  lang: Lang,
+): string {
+  const fr = lang === "fr";
+  const head = fr ? `Cette session${NBSP}:` : "This session:";
+  const total = `${head} ${formatGrams(grams, lang)}`;
+  if (sessionMedian === null || !(sessionMedian > 0) || !(grams > 0)) return total;
+  const r = grams / sessionMedian;
+  const ratio =
+    r >= 10 ? `${Math.round(r)}` : decimal(r, r >= 1 ? 1 : 2, lang);
+  return `${total} · ${ratio}×${NBSP}${fr ? "votre médiane" : "your median"}`;
+}
+
+export function colorNote(pastSessions: number, lang: Lang): string {
+  return lang === "fr"
+    ? `La couleur arrive après 10 sessions (${pastSessions} pour l'instant).`
+    : `The colour comes after 10 sessions (${pastSessions} so far).`;
+}
+
+export function noHistoryText(lang: Lang): string {
+  return lang === "fr"
+    ? "L'historique de vos sessions vient avec l'installation complète (voir le README)."
+    : "The history of your sessions comes with the full install (see the README).";
+}
+
+export function emptyRangeText(lang: Lang): string {
+  return lang === "fr"
+    ? "Aucune session sur cette période."
+    : "No session in this period.";
+}
+
+export function uncolouredText(lang: Lang): string {
+  return lang === "fr"
+    ? "Trop peu de périodes pour colorer les bandes."
+    : "Too few periods to colour the stripes.";
+}
+
+const RANGE_LABELS: Record<string, [string, string]> = {
+  "7d": ["7 j", "7 d"],
+  "30d": ["30 j", "30 d"],
+  "90d": ["90 j", "90 d"],
+  "1y": ["1 an", "1 y"],
+  all: ["Tout", "All"],
+};
+const STEP_LABELS: Record<string, [string, string]> = {
+  session: ["Sessions", "Sessions"],
+  week: ["Semaines", "Weeks"],
+  month: ["Mois", "Months"],
+};
+const RANGE_TEXT: Record<string, [string, string]> = {
+  "7d": ["7 derniers jours", "Last 7 days"],
+  "30d": ["30 derniers jours", "Last 30 days"],
+  "90d": ["90 derniers jours", "Last 90 days"],
+  "1y": ["12 derniers mois", "Last 12 months"],
+  all: ["Depuis le début", "Since the start"],
+};
+
+function pick(pair: [string, string] | undefined, lang: Lang): string {
+  return pair === undefined ? "" : lang === "fr" ? pair[0] : pair[1];
+}
+
+export function rangeLabel(range: string, lang: Lang): string {
+  return pick(RANGE_LABELS[range], lang);
+}
+
+export function stepLabel(step: string, lang: Lang): string {
+  return pick(STEP_LABELS[step], lang);
+}
+
+function countOf(n: number, step: string, lang: Lang): string {
+  const fr = lang === "fr";
+  if (step === "week") return fr ? `${n} semaine${n > 1 ? "s" : ""}` : `${n} week${n > 1 ? "s" : ""}`;
+  if (step === "month") return fr ? `${n} mois` : `${n} month${n > 1 ? "s" : ""}`;
+  return `${n} session${n > 1 ? "s" : ""}`;
+}
+
+// Above the stripes: the range, how many stripes (the most recent `shown` of `total`
+// when the pane is too narrow for all), and the median they are coloured against.
+export function historyLine(
+  range: string,
+  step: string,
+  total: number,
+  shown: number,
+  stripeMedian: number | null,
+  lang: Lang,
+): string {
+  const fr = lang === "fr";
+  const parts = [pick(RANGE_TEXT[range], lang)];
+  const latest = fr
+    ? `${countOf(shown, step, lang)} les plus ${step === "month" ? "récents" : "récentes"} sur ${total}`
+    : `the latest ${countOf(shown, step, lang)} of ${total}`;
+  parts.push(shown < total ? latest : countOf(total, step, lang));
+  if (stripeMedian !== null) {
+    const per =
+      step === "week"
+        ? fr
+          ? " par semaine"
+          : " a week"
+        : step === "month"
+          ? fr
+            ? " par mois"
+            : " a month"
+          : "";
+    parts.push(
+      `${fr ? "médiane" : "median"} ${formatGrams(stripeMedian, lang)}${per}`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+const MONTHS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// A day ("22 août", "Aug 22"), or a month for monthly stripes ("août 2026", "Aug 2026").
+export function dateLabel(ms: number, step: string, lang: Lang): string {
+  const d = new Date(ms);
+  const month = (lang === "fr" ? MONTHS_FR : MONTHS_EN)[d.getMonth()] ?? "";
+  if (step === "month") return `${month}${NBSP}${d.getFullYear()}`;
+  return lang === "fr"
+    ? `${d.getDate()}${NBSP}${month}`
+    : `${month}${NBSP}${d.getDate()}`;
+}
+
+// A stripe's tooltip in the desktop app.
+export function stripeTitle(
+  start: number,
+  step: string,
+  grams: number,
+  sessions: number,
+  lang: Lang,
+): string {
+  const fr = lang === "fr";
+  const when =
+    step === "week"
+      ? `${fr ? "semaine du" : "week of"} ${dateLabel(start, "session", lang)}`
+      : dateLabel(start, step, lang);
+  const amount = grams > 0 ? formatGrams(grams, lang) : fr ? "aucune session" : "no session";
+  return step === "session" || sessions === 0
+    ? `${when} · ${amount}`
+    : `${when} · ${amount} · ${countOf(sessions, "session", lang)}`;
+}
+
+export function mascotAlt(lang: Lang): string {
+  return lang === "fr"
+    ? "Molécule de CO₂ en pixels, colorée selon cette session par rapport à votre médiane, du bleu (en dessous) au rouge (au-dessus)"
+    : "Pixel CO₂ molecule, coloured by this session against your median, from blue (below) to red (above)";
+}
+
+export function stripesAlt(lang: Lang): string {
+  return lang === "fr"
+    ? "Une bande par période, la plus ancienne à gauche, du bleu (sous la médiane) au rouge (au-dessus)"
+    : "One stripe per period, oldest on the left, from blue (below the median) to red (above)";
+}

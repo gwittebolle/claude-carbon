@@ -25,11 +25,20 @@ export type SessionTotal = {
   turns: number;
 };
 
+// What the /carbon pane shows: how far back, and one stripe per session, week or month.
+export type PaneView = {
+  range: "7d" | "30d" | "90d" | "1y" | "all";
+  step: "session" | "week" | "month";
+};
+
 declare module "claude-code" {
   interface PluginState {
     "claude-carbon": {
       answers: AnswerCo2Entry[];
       session: SessionTotal;
+      // True from a main-loop turn's start to its end: the molecule walks.
+      working: boolean;
+      view: PaneView;
     };
   }
 }

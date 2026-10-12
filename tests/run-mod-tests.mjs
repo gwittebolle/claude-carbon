@@ -7,6 +7,9 @@
 //      and data/prices.json (the files the mod reads).
 //   2. Display rules (hooks/mod/lib/format.ts), French and English.
 //   3. Which turn a duration line belongs to (hooks/mod/lib/lines.ts).
+//   4. The /carbon pane: the mascot's frames, colours and terminal cells
+//      (hooks/mod/lib/mascot.ts), the session history (hooks/mod/lib/sessions.ts)
+//      and the pane's texts.
 // Runs on Node 22.6+ with --experimental-strip-types (default from Node 23.6).
 
 import { readFileSync } from "node:fs";
@@ -42,8 +45,50 @@ import {
   welcomeText,
   HISTORY_SIZE,
   MIN_HISTORY,
+  colorNote,
+  commandDescription,
+  currentLine,
+  dateLabel,
+  emptyRangeText,
+  historyLine,
+  mascotAlt,
+  noHistoryText,
+  paneHint,
+  paneTitle,
+  paneUnplaced,
+  rangeLabel,
+  stepLabel,
+  stripesAlt,
+  stripeTitle,
+  uncolouredText,
 } from "../hooks/mod/lib/format.ts";
 import { lineEntry, BIND_WINDOW_MS } from "../hooks/mod/lib/lines.ts";
+import {
+  CELL_COLUMNS,
+  CELL_ROWS,
+  classOf,
+  colorOf,
+  FRAMES,
+  mascotCells,
+  mascotSvg,
+  mascotWords,
+  NEUTRAL,
+  PALETTE,
+  stepMs,
+  stripesSvg,
+  stripeWords,
+} from "../hooks/mod/lib/mascot.ts";
+import {
+  barMedian,
+  bars,
+  historyPath,
+  isView,
+  parseHistory,
+  pastSessions,
+  RANGES,
+  sessionMedian,
+  STEPS,
+} from "../hooks/mod/lib/sessions.ts";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NBSP = " ";
@@ -537,6 +582,133 @@ check(
   lineEntry([{ durationMs: 38000, co2: null }], "a", T0, noLines),
   undefined,
 );
+
+// ── 4. The /carbon pane: mascot, stripes, history (lib/mascot.ts, lib/sessions.ts) ──
+
+check("class at the median", classOf(100, 100), 4);
+check("class just under the median", classOf(99, 100), 3);
+check("class 2x", classOf(200, 100), 5);
+check("class floor", classOf(1, 100), 0);
+check("class ceiling", classOf(100000, 100), 7);
+check("class with no median", classOf(50, 0), 0);
+check("step bluest", stepMs(0), 460);
+check("step reddest", stepMs(7), 124);
+check("palette bluest", colorOf(0), "#08306b");
+check("palette reddest", colorOf(7), "#67000d");
+check("no class: grey", colorOf(null), NEUTRAL);
+check("frames same height", FRAMES[0].length, FRAMES[1].length);
+check("frames same width", FRAMES.every((f) => f.every((r) => r.length === 18)), true);
+
+// The README banner draws the same frames and palette
+const banner = readFileSync(join(REPO, "docs/mascot-stripes.svg"), "utf8");
+for (const c of PALETTE) check(`banner has ${c}`, banner.includes(c), true);
+
+// Half blocks: 20 x 7 cells, three words each, decodable, never the default colour as
+// the foreground of a drawn half
+const words = mascotWords(FRAMES[0], PALETTE[5]);
+check("cells count", words.length, CELL_COLUMNS * CELL_ROWS * 3);
+let badHalf = 0;
+for (let i = 0; i < words.length; i += 3) {
+  const [glyph, fg] = [words[i], words[i + 1]];
+  if ((glyph === 0x2580 || glyph === 0x2584) && fg === 0x01000000) badHalf += 1;
+  if (![0x2580, 0x2584, 0x20].includes(glyph)) badHalf += 1;
+}
+check("half blocks well formed", badHalf, 0);
+const decoded = Buffer.from(mascotCells(FRAMES[1], PALETTE[2]), "base64");
+check("cells decode to the right size", decoded.length, CELL_COLUMNS * CELL_ROWS * 12);
+check("cells little-endian", decoded.readUInt32LE(0), mascotWords(FRAMES[1], PALETTE[2])[0]);
+check("stripe cells", stripeWords([{ color: "#ff0000", title: "" }, { color: null, title: "" }], 2).length, 12);
+
+const svg = mascotSvg({ color: PALETTE[6], walking: true, step: 172, title: "t" });
+check("svg no script", /<script|on[a-z]+=/i.test(svg), false);
+check("svg walks", svg.includes("@keyframes") && svg.includes("344ms"), true);
+check("svg reduced motion", svg.includes("prefers-reduced-motion"), true);
+check("svg standing", mascotSvg({ color: NEUTRAL, walking: false, step: 300, title: "t" }).includes("@keyframes"), false);
+check("svg size", svg.length < 131072, true);
+const stripesDoc = stripesSvg(
+  Array.from({ length: 400 }, (_, i) => ({ color: PALETTE[i % 8], title: `<${i}> & "x"` })),
+  "t",
+);
+check("stripes svg size, 400 stripes", stripesDoc.length < 131072, true);
+check("stripes svg escapes titles", stripesDoc.includes("&lt;3&gt; &amp; &quot;x&quot;"), true);
+
+// The history file
+check(
+  "path from CLAUDE_CARBON_DB",
+  historyPath({ db: "/data/cc/carbon.db", home: "/h" }),
+  "/data/cc/sessions-history.tsv",
+);
+check(
+  "path from a Windows CLAUDE_CARBON_DB",
+  historyPath({ db: "C:\\Users\\g\\carbon.db" }),
+  "C:\\Users\\g/sessions-history.tsv",
+);
+check("path from CLAUDE_CONFIG_DIR", historyPath({ configDir: "/cfg", home: "/h" }), "/cfg/claude-carbon/sessions-history.tsv");
+check("path from HOME", historyPath({ home: "/h" }), "/h/.claude/claude-carbon/sessions-history.tsv");
+check("path from USERPROFILE", historyPath({ userProfile: "C:\\Users\\g" }), "C:\\Users\\g/.claude/claude-carbon/sessions-history.tsv");
+check("path empty values skipped", historyPath({ db: "", configDir: "", home: "/h" }), "/h/.claude/claude-carbon/sessions-history.tsv");
+check("no path", historyPath({}), null);
+
+const parsed = parseHistory("a\t100\t5.5\r\nbroken line\nb\tx\t3\nc\t200\t0\nd\t50\t2\n\n");
+check("history parse keeps valid rows", parsed.map((r) => r.id).join(","), "d,a");
+check("history parse ms", parsed[1].at, 100000);
+check("history empty", parseHistory("").length, 0);
+check("past sessions drop the current", pastSessions(parsed, "a").map((r) => r.id).join(","), "d");
+check("no median under 10 sessions", sessionMedian(parsed), null);
+const ten = Array.from({ length: 10 }, (_, i) => ({ id: `${i}`, at: i, grams: i + 1 }));
+check("median from 10 sessions", sessionMedian(ten), 5.5);
+
+// Stripes by session, week and month, local time
+const now = new Date(2026, 9, 12, 12).getTime(); // Monday 12 Oct 2026
+const day = 86_400_000;
+const rows = [
+  { id: "s1", at: new Date(2026, 8, 30, 10).getTime(), grams: 10 }, // Wed 30 Sep
+  { id: "s2", at: new Date(2026, 9, 1, 10).getTime(), grams: 20 }, // Thu 1 Oct
+  { id: "s3", at: new Date(2026, 9, 11, 23).getTime(), grams: 40 }, // Sun 11 Oct
+  { id: "old", at: now - 400 * day, grams: 1000 },
+];
+check("sessions in 30 days", bars(rows, { range: "30d", step: "session" }, now).length, 3);
+check("sessions in all", bars(rows, { range: "all", step: "session" }, now).length, 4);
+const weeks = bars(rows, { range: "30d", step: "week" }, now);
+check("weeks: 28 Sep, 5 Oct (empty), 12 Oct (empty)", weeks.map((b) => b.grams).join(","), "30,40,0");
+check("week starts on Monday", new Date(weeks[0].start).getDay(), 1);
+const months = bars(rows, { range: "90d", step: "month" }, now);
+check("months: Sep, Oct", months.map((b) => b.grams).join(","), "10,60");
+check("month starts on the 1st", new Date(months[1].start).getDate(), 1);
+check("empty range", bars(rows, { range: "7d", step: "week" }, now - 30 * day).length, 0);
+check("bar median needs 3 full bars", barMedian(weeks), null);
+check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams: 5 }]), 3);
+check("view check", isView({ range: "90d", step: "month" }), true);
+check("view check refuses", isView({ range: "2d", step: "month" }), false);
+
+// Pane texts, French and English, under the same rules as the rest of the mod
+const pane = [];
+for (const lang of ["fr", "en"]) {
+  pane.push(paneTitle(lang), commandDescription(lang), paneHint(lang), paneUnplaced(lang));
+  pane.push(currentLine(52, 140, lang), currentLine(800, 140, lang), currentLine(52, null, lang));
+  pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang), uncolouredText(lang));
+  pane.push(mascotAlt(lang), stripesAlt(lang));
+  for (const r of RANGES) pane.push(rangeLabel(r, lang));
+  for (const s of STEPS) {
+    pane.push(stepLabel(s, lang));
+    pane.push(historyLine("90d", s, 12, 12, 140, lang), historyLine("all", s, 200, 60, null, lang));
+    pane.push(dateLabel(now, s, lang), stripeTitle(now, s, 1234, 3, lang), stripeTitle(now, s, 0, 0, lang));
+  }
+}
+for (const text of pane) {
+  check(`pane text set: ${text}`, typeof text === "string" && text.length > 0, true);
+  check(`pane no plugin name: ${text}`, text.includes("claude-carbon"), false);
+  check(`pane no em dash: ${text}`, text.includes("\u2014"), false);
+  check(`pane no receipt: ${text}`, text.toLowerCase().includes("receipt"), false);
+  check(`pane unit: ${text}`, / g(?!CO₂)\b/.test(text.replaceAll(NBSP, " ")), false);
+}
+const plainText = (s) => s.replaceAll(NBSP, " ");
+check("current line", plainText(currentLine(52, 140, "fr")), "Cette session : 52 gCO₂ · 0,37× votre médiane");
+check("current line high", plainText(currentLine(1400, 140, "en")), "This session: 1.4 kgCO₂ · 10× your median");
+check("history line", plainText(historyLine("30d", "session", 42, 42, 143, "fr")), "30 derniers jours · 42 sessions · médiane 143 gCO₂");
+check("history line truncated", plainText(historyLine("all", "month", 14, 6, 30000, "fr")), "Depuis le début · 6 mois les plus récents sur 14 · médiane 30,0 kgCO₂ par mois");
+check("history line weeks en", plainText(historyLine("1y", "week", 52, 52, 1200, "en")), "Last 12 months · 52 weeks · median 1.2 kgCO₂ a week");
+check("stripe title week", plainText(stripeTitle(now, "week", 1234, 3, "fr")), "semaine du 12 oct. · 1,2 kgCO₂ · 3 sessions");
 
 console.log(`${checks - failures}/${checks} checks passed`);
 process.exit(failures === 0 ? 0 : 1);
