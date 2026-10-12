@@ -12,7 +12,9 @@ loop and subagents, and computes its CO2 with the formula, factors
 `tests/run-mod-tests.mjs` replays both golden-vector files in CI.
 
 In the terminal the CO2 of each answer sits at the right end of the turn
-duration line. In the desktop app's Code tab, where that line is not drawn,
+duration line, which keeps its own answer's figure when it is drawn again; a
+line first drawn later than its answer, such as one only ctrl+o shows, keeps
+the engine's text. In the desktop app's Code tab, where that line is not drawn,
 it becomes a line under the answer, for unusual answers only: above the 97th
 percentile of the last 200 answers, over three times their median and at least
 10 g, once 50 answers are recorded (about one answer in 27). A one-time toast

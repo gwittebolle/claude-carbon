@@ -35,9 +35,10 @@ import {
   welcomeText,
 } from "./lib/format.ts";
 import type { Lang } from "./lib/format.ts";
+import { lineEntry } from "./lib/lines.ts";
 
 // One entry per main-loop turn, oldest first, uncounted turns included (co2 null) so
-// a duration line never borrows another turn's figure.
+// a duration line never borrows another turn's figure (lib/lines.ts).
 const answers = atom(
   { plugin: "claude-carbon", key: "answers" } as const,
   [] as AnswerCo2Entry[],
@@ -153,6 +154,15 @@ export const register: Register = (on, options) => {
   // The turn each foreground subagent was started in. Its requests count in that
   // answer only, even when it outlives it.
   const owner = new Map<string, string>();
+  // The history as this session last read or wrote it: an answer's figure is ready
+  // before the engine draws its line, with no store read in between.
+  let known: History | null = null;
+  // When each duration line was first drawn, by requestId: only a line first drawn
+  // as a turn ends takes that turn's figure, never one drawn again later. Kept here,
+  // since a drawing never writes $.state.
+  const firstDrawn = new Map<string, number>();
+  const turnOf = new Map<string, string>();
+  const taken = new Set<string>();
 
   on("session.start", async ($, e, next) => {
     try {
@@ -203,13 +213,15 @@ export const register: Register = (on, options) => {
     // Once, worded for where the figure shows. A session nothing draws yet is
     // welcomed at its first answer instead.
     const history = await loadHistory($);
+    known = history;
     if (!history.welcomed && e.isInteractive) {
       const surfaces = await $.session.surfaces();
       if (surfaces.length > 0) {
         $.ui.toast(welcomeText(lang, isRemoteOnly(surfaces)), {
           timeoutMs: 10000,
         });
-        await $.store.set(HISTORY_KEY, { ...history, welcomed: true });
+        known = { ...history, welcomed: true };
+        await $.store.set(HISTORY_KEY, known);
       }
     }
 
@@ -348,37 +360,50 @@ export const register: Register = (on, options) => {
   });
 
   on("turn.complete", async ($, e, next) => {
-    const result = await next(e);
-    if (e.agentId !== undefined) return result;
+    if (e.agentId !== undefined) return next(e);
+    // Only the turn that opened the answer closes it.
+    const done = current;
+    if (done === null || e.turnId !== done.turnId) return next(e);
+    current = null;
+    const isCounted = done.grams > 0;
+    let co2: AnswerCo2Entry["co2"] = null;
     try {
-      // Only the turn that opened the answer closes it.
-      const done = current;
-      if (done === null || e.turnId !== done.turnId) return result;
-      current = null;
-      const history = await loadHistory($);
-      const isCounted = done.grams > 0;
-      const co2 = isCounted
+      // Written before the engine draws the turn's duration line, which takes the
+      // entry written within a second of its first draw.
+      if (known === null) known = await loadHistory($);
+      co2 = isCounted
         ? buildAnswerCo2(
             {
               grams: done.grams,
               subagentGrams: done.subagentGrams,
               subagents: done.stepped.size,
             },
-            history.values,
+            known.values,
             lang,
           )
         : null;
+      const at = await $.clock.now();
       await update($, answers, (all) =>
-        [...all, { durationMs: e.durationMs, co2 }].slice(-KEEP_ANSWERS),
+        [
+          ...all,
+          { turnId: done.turnId, durationMs: e.durationMs, at, co2 },
+        ].slice(-KEEP_ANSWERS),
       );
+    } catch {
+      // The line stays as the engine draws it.
+    }
+    const result = await next(e);
+    try {
+      const history = await loadHistory($);
       const surfaces = await $.session.surfaces();
       const remoteOnly = isRemoteOnly(surfaces);
       const isWelcome = !history.welcomed && surfaces.length > 0;
       if (isWelcome) {
         $.ui.toast(welcomeText(lang, remoteOnly), { timeoutMs: 10000 });
       }
+      known = history;
       if (isCounted || isWelcome) {
-        await $.store.set(HISTORY_KEY, {
+        known = {
           ...history,
           ...(isCounted
             ? {
@@ -389,7 +414,8 @@ export const register: Register = (on, options) => {
               }
             : {}),
           welcomed: history.welcomed || isWelcome,
-        });
+        };
+        await $.store.set(HISTORY_KEY, known);
       }
       await update($, session, (total) => ({
         ...total,
@@ -431,18 +457,23 @@ export const register: Register = (on, options) => {
 
   on("ui.render", { component: "TurnDuration" }, async ($, e, next) => {
     if (!showPerTurn) return next(e);
-    // The duration turn.complete reports is the one the line formats: an exact match,
-    // newest first. A line with no entry (an older turn, a resumed transcript) is left
-    // as the engine draws it.
-    const entries = await read($, answers);
-    let co2: AnswerCo2Entry["co2"] | undefined;
-    for (let i = entries.length - 1; i >= 0; i -= 1) {
-      const entry = entries[i];
-      if (entry !== undefined && entry.durationMs === e.props.durationMs) {
-        co2 = entry.co2;
-        break;
-      }
+    // A line is bound to its turn by its requestId, which stays the same through a
+    // resize, a scroll or ctrl+o. A line with no entry (an older turn, a resumed
+    // transcript, one first drawn later) is left as the engine draws it.
+    let drawnAt = firstDrawn.get(e.requestId);
+    if (drawnAt === undefined) {
+      drawnAt = await $.clock.now();
+      firstDrawn.set(e.requestId, drawnAt);
     }
+    const match = lineEntry(await read($, answers), e.requestId, drawnAt, {
+      turnOf,
+      taken,
+    });
+    if (match?.isNew) {
+      turnOf.set(e.requestId, match.entry.turnId);
+      taken.add(match.entry.turnId);
+    }
+    const co2 = match?.entry.co2;
     if (co2 === undefined || co2 === null) return next(e);
     const { Box, Text } = $.ui.resolve(e);
     const engineLine = await next(e);

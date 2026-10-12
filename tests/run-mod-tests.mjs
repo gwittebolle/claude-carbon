@@ -5,6 +5,7 @@
 //      through hooks/mod/lib/co2.ts, same 1e-6 relative tolerance as
 //      tests/run-vectors.sh, with the CURRENT data/factors.json (the file the mod reads).
 //   2. Display rules (hooks/mod/lib/format.ts), French and English.
+//   3. Which turn a duration line belongs to (hooks/mod/lib/lines.ts).
 // Runs on Node 22.6+ with --experimental-strip-types (default from Node 23.6).
 
 import { readFileSync } from "node:fs";
@@ -35,6 +36,7 @@ import {
   HISTORY_SIZE,
   MIN_HISTORY,
 } from "../hooks/mod/lib/format.ts";
+import { lineEntry, BIND_WINDOW_MS } from "../hooks/mod/lib/lines.ts";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NBSP = " ";
@@ -391,6 +393,76 @@ check(
   false,
 );
 check("status line detection, missing", isCarbonStatusLine(undefined), false);
+
+// ── 3. Duration lines ────────────────────────────────────────────────────────
+
+const T0 = 1_000_000;
+const lineEntries = [
+  { turnId: "t1", durationMs: 38000, at: T0 },
+  { turnId: "t2", durationMs: 38000, at: T0 + 60000 },
+];
+const noLines = { turnOf: new Map(), taken: new Set() };
+const turnOfLine = (match) => match?.entry.turnId;
+
+check(
+  "line first drawn as its turn ends",
+  turnOfLine(lineEntry(lineEntries, "b", T0 + 60012, noLines)),
+  "t2",
+);
+check(
+  "line first drawn as its turn ends, is new",
+  lineEntry(lineEntries, "b", T0 + 60012, noLines)?.isNew,
+  true,
+);
+check(
+  "line first drawn just before its entry",
+  turnOfLine(lineEntry(lineEntries, "b", T0 + 59990, noLines)),
+  "t2",
+);
+check(
+  "line first drawn a second later",
+  lineEntry(lineEntries, "b", T0 + 60000 + BIND_WINDOW_MS, noLines),
+  undefined,
+);
+check(
+  "bound line keeps its turn, same duration",
+  turnOfLine(
+    lineEntry(lineEntries, "a", T0 + 60012, {
+      turnOf: new Map([["a", "t1"]]),
+      taken: new Set(["t1"]),
+    }),
+  ),
+  "t1",
+);
+check(
+  "bound line is not new",
+  lineEntry(lineEntries, "a", T0, {
+    turnOf: new Map([["a", "t1"]]),
+    taken: new Set(["t1"]),
+  })?.isNew,
+  false,
+);
+check(
+  "bound line whose entry is gone",
+  lineEntry(lineEntries, "z", T0 + 60012, {
+    turnOf: new Map([["z", "t0"]]),
+    taken: new Set(["t0"]),
+  }),
+  undefined,
+);
+check(
+  "taken entry goes to no second line",
+  lineEntry(lineEntries, "c", T0 + 60200, {
+    turnOf: new Map([["b", "t2"]]),
+    taken: new Set(["t2"]),
+  }),
+  undefined,
+);
+check(
+  "entry of the earlier format",
+  lineEntry([{ durationMs: 38000, co2: null }], "a", T0, noLines),
+  undefined,
+);
 
 console.log(`${checks - failures}/${checks} checks passed`);
 process.exit(failures === 0 ? 0 : 1);

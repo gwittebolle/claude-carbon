@@ -48,9 +48,13 @@ const storedHistory = (values: number[], welcomed: boolean) => ({
   welcomed,
 });
 
+// The time the mod reads; a turn moves it on by its duration.
+let clock: any;
+
 // The engine beneath the plugin: each noun the mod calls, answered as a session would.
 // A mods API call answers { value } (or { deny }).
 function world(on: any, options: World = {}) {
+  clock = mock.clock(on, { now: 1_000_000 });
   const statuses: Array<string | undefined> = [];
   const toasts: string[] = [];
   const commands: string[][] = [];
@@ -116,6 +120,7 @@ function world(on: any, options: World = {}) {
 }
 
 let queue: Step[] = [];
+let turns = 0;
 
 function engineSteps(on: any) {
   on("turn.step", async function* ($: any, e: any) {
@@ -196,10 +201,12 @@ async function runTurn(
   durationMs: number,
   before?: () => Promise<void>,
 ) {
-  const turnId = `turn-${durationMs}`;
+  turns += 1;
+  const turnId = `turn-${turns}`;
   await $.turn.start({ text: "go", turnId });
   if (before !== undefined) await before();
   for (const [index, s] of steps.entries()) await step($, s, turnId, index);
+  await clock.advance(durationMs);
   return $.turn.complete({
     answer: "done",
     durationMs,
@@ -209,11 +216,18 @@ async function runTurn(
   });
 }
 
-async function durationLine($: any, durationMs: number) {
+// The engine draws a turn's line as the turn ends, then again under the same
+// requestId on a resize or a scroll. The line is named after the turn it closes.
+async function durationLine(
+  $: any,
+  durationMs: number,
+  requestId = `line-${durationMs}`,
+) {
   const ui = await $.ui.mount({
     plugin: PLUGIN,
     surface: "terminal",
     component: "TurnDuration",
+    requestId,
     props: { word: "Baked", durationMs },
   });
   const drawn = JSON.stringify(await ui.drawn()).replaceAll(NBSP, " ");
@@ -344,8 +358,9 @@ describe("terminal", () => {
       turnId: "t1",
       reason: "answer",
     });
-    await runTurn($, [ORDINARY, opusAgent], 21000);
     // 4.006 + 1.652 g before ctrl+b, 4.006 g alone in the next answer
+    expect(await durationLine($, 38000)).toContain("5,7 gCO₂");
+    await runTurn($, [ORDINARY, opusAgent], 21000);
     expect(await durationLine($, 38000)).toContain("5,7 gCO₂");
     const drawn = await durationLine($, 21000);
     expect(drawn).toContain("4,0 gCO₂");
@@ -449,7 +464,9 @@ describe("terminal", () => {
       turnId: "t0",
       reason: "answer",
     });
+    expect(await durationLine($, 1000)).not.toContain("CO₂");
     await step($, ORDINARY, "t1", 1);
+    await clock.advance(5000);
     await $.turn.complete({
       answer: "done",
       durationMs: 38000,
@@ -457,16 +474,100 @@ describe("terminal", () => {
       turnId: "t1",
       reason: "answer",
     });
-    expect(await durationLine($, 1000)).not.toContain("CO₂");
     expect(await durationLine($, 38000)).toContain("8,0 gCO₂");
+    expect(await durationLine($, 1000)).not.toContain("CO₂");
   });
 
-  test("a line only shows its own turn's CO2", async ($: any, on: any) => {
+  test("two turns of the same duration keep their own figures", async ($: any, on: any) => {
     world(on);
     engineSteps(on);
     await startSession($);
     await runTurn($, [ORDINARY], 38000);
-    expect(await durationLine($, 38400)).not.toContain("CO₂");
+    expect(await durationLine($, 38000, "a")).toContain("4,0 gCO₂");
+    await runTurn($, [HEAVY], 38000);
+    expect(await durationLine($, 38000, "b")).toContain("10 gCO₂");
+    // Drawn again on a resize or a scroll, in any order
+    expect(await durationLine($, 38000, "b")).toContain("10 gCO₂");
+    expect(await durationLine($, 38000, "a")).toContain("4,0 gCO₂");
+  });
+
+  test("a line takes its turn's figure whatever duration it shows", async ($: any, on: any) => {
+    world(on);
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(await durationLine($, 38300)).toContain("4,0 gCO₂");
+    // After background agents: a 1.5 s turn under a "Baked for 42s" line
+    await runTurn($, [HEAVY], 1490);
+    expect(await durationLine($, 42994)).toContain("10 gCO₂");
+  });
+
+  test("a line drawn just before its turn's figure is written takes it", async ($: any, on: any) => {
+    world(on);
+    engineSteps(on);
+    await startSession($);
+    await $.turn.start({ text: "go", turnId: "t1" });
+    await step($, ORDINARY, "t1", 0);
+    const ui = await $.ui.mount({
+      plugin: PLUGIN,
+      surface: "terminal",
+      component: "TurnDuration",
+      requestId: "early",
+      props: { word: "Baked", durationMs: 38000 },
+    });
+    expect(JSON.stringify(await ui.drawn())).not.toContain("CO₂");
+    await clock.advance(10);
+    await $.turn.complete({
+      answer: "done",
+      durationMs: 38000,
+      isAborted: false,
+      turnId: "t1",
+      reason: "answer",
+    });
+    expect(plain(JSON.stringify(await ui.drawn()))).toContain("4,0 gCO₂");
+    await ui.unmount();
+  });
+
+  test("a line first drawn more than a second after its turn shows nothing", async ($: any, on: any) => {
+    world(on);
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    // A line ctrl+o shows later, for a turn the normal view drew no line for
+    await clock.advance(47000);
+    expect(await durationLine($, 2019)).not.toContain("CO₂");
+    // The turn's own line, drawn after that, gets nothing either
+    expect(await durationLine($, 38000)).not.toContain("CO₂");
+  });
+
+  test("a figure goes to one line only", async ($: any, on: any) => {
+    world(on);
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(await durationLine($, 38000)).toContain("4,0 gCO₂");
+    // Another line first drawn in the same second (ctrl+o right after the answer)
+    await clock.advance(200);
+    expect(await durationLine($, 2019)).not.toContain("CO₂");
+    expect(await durationLine($, 38000)).toContain("4,0 gCO₂");
+  });
+
+  test("an entry of the earlier format is never bound", async ($: any, on: any) => {
+    world(on);
+    engineSteps(on);
+    const co2 = { main: "4,0 gCO₂", sub: null, isUnusual: false };
+    // What the session held under the earlier code: matched by duration alone
+    let served: unknown[] = [{ durationMs: 38000, co2 }];
+    on("state.get", ($inner: any, e: any, next: any) =>
+      e.key === "answers" ? { value: { value: served, version: 1 } } : next(e),
+    );
+    await startSession($);
+    expect(await durationLine($, 38000, "old")).not.toContain("CO₂");
+    served = [
+      ...served,
+      { turnId: "t2", durationMs: 38000, at: clock.now(), co2 },
+    ];
+    expect(await durationLine($, 38000, "new")).toContain("4,0 gCO₂");
   });
 
   test("an uncounted turn next to a counted one shows nothing", async ($: any, on: any) => {
@@ -474,6 +575,7 @@ describe("terminal", () => {
     engineSteps(on);
     await startSession($);
     await runTurn($, [ORDINARY], 4200);
+    expect(await durationLine($, 4200)).toContain("4,0 gCO₂");
     await runTurn(
       $,
       [{ model: "glm-4.7-flash", input: 5000, output: 5000 }],
@@ -490,10 +592,13 @@ describe("terminal", () => {
       world(on);
       engineSteps(on);
       await startSession($);
+      await runTurn($, [ORDINARY], 9999);
+      expect(await durationLine($, 9999)).toContain("4,0 gCO₂");
       for (let i = 0; i < 100; i += 1) await runTurn($, [ORDINARY], 10000 + i);
       await runTurn($, [HEAVY], 4200);
       expect(await durationLine($, 4200)).toContain("10 gCO₂");
-      expect(await durationLine($, 10000)).not.toContain("CO₂");
+      // The first turn's entry is gone: its line goes back to the engine's
+      expect(await durationLine($, 9999)).not.toContain("CO₂");
     },
   );
 

@@ -6,10 +6,13 @@ export type AnswerCo2 = {
   isUnusual: boolean;
 };
 
-// One main-loop turn, keyed by the duration turn.complete reports and its line draws.
+// One main-loop turn, written when it ends (`at`, ms since the epoch). Its duration
+// line takes it when first drawn within a second of that (hooks/mod/lib/lines.ts).
 // A turn that counted nothing (an excluded model, no usage) keeps a null co2.
 export type AnswerCo2Entry = {
+  turnId: string;
   durationMs: number;
+  at: number;
   co2: AnswerCo2 | null;
 };
 
