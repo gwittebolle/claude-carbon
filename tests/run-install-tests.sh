@@ -565,6 +565,14 @@ cp "$INSTALL_MOD" "${REPO_DIR}/scripts/portable-lib.sh" "${FAKE}/scripts/"
 cp -R "${REPO_DIR}/hooks" "${FAKE}/hooks"
 CLAUDE_CONFIG_DIR="$CFG" bash "${FAKE}/scripts/install-mod.sh" >/dev/null 2>&1
 check "mod: a marketplace checkout installs nothing" "no" "$(has "${CFG}/skills")"
+# The same under a config dir CLAUDE_CONFIG_DIR names without ".claude" in its path.
+CFG="${TMPROOT}/mod-mkt-custom"
+FAKE="${CFG}/plugins/cache/mkt/claude-carbon/9.9.9"
+mkdir -p "${FAKE}/scripts"
+cp "$INSTALL_MOD" "${REPO_DIR}/scripts/portable-lib.sh" "${FAKE}/scripts/"
+cp -R "${REPO_DIR}/hooks" "${FAKE}/hooks"
+CLAUDE_CONFIG_DIR="$CFG" bash "${FAKE}/scripts/install-mod.sh" >/dev/null 2>&1
+check "mod: a marketplace checkout under a custom config dir installs nothing" "no" "$(has "${CFG}/skills")"
 
 # A checkout without hooks/mod has nothing to copy.
 FAKE="${TMPROOT}/nomod"

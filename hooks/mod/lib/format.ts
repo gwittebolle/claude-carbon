@@ -4,7 +4,7 @@
 export type Lang = "fr" | "en";
 
 export type AnswerCo2View = {
-  // "4,2 gCO₂", or "38 gCO₂ · 4× votre médiane" for an unusual answer
+  // "16 gCO₂", or "230 gCO₂ · 14× votre médiane" for an unusual answer
   main: string;
   // "dont 3 sous-agents : 22 gCO₂", only on an unusual answer the subagents weighed on
   sub: string | null;

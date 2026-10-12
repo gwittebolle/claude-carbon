@@ -61,8 +61,9 @@ if [ "${CLAUDE_CARBON_NO_MOD:-}" = "1" ]; then
   exit 0
 fi
 
-# A marketplace install already loads the mod from its own hooks/hooks.json.
-case "$INSTALL_DIR" in */.claude/plugins/*) exit 0 ;; esac
+# A marketplace install already loads the mod from its own hooks/hooks.json. Its checkout
+# sits under the config dir's plugins/, whatever CLAUDE_CONFIG_DIR names that dir.
+case "$INSTALL_DIR" in */.claude/plugins/*|"${CONFIG_DIR}"/plugins/*) exit 0 ;; esac
 
 [ -f "${INSTALL_DIR}/hooks/mod/register.tsx" ] || exit 0
 
