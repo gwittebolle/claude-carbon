@@ -57,7 +57,8 @@ fi
 
 # Re-run the settings/commands wiring: it is additive and idempotent, and it repairs installs
 # made before a hook existed (setup.sh only touches the DB, it never writes settings.json).
-bash "${SCRIPT_DIR}/configure-settings.sh" >/dev/null 2>&1 || true
+# Only the mod's lines are shown: one may ask for a restart (install-mod.sh).
+bash "${SCRIPT_DIR}/configure-settings.sh" 2>&1 | grep -E '^ +(mod:|Restart)' || true
 
 # Refresh the DB schema, then re-price history (CO2-only by default: cheap, idempotent,
 # no mixed-model cost drift).

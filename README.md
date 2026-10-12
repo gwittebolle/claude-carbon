@@ -308,7 +308,9 @@ The plugin alone is not a full install. This command gives the mod and the slash
 /plugin install claude-carbon --marketplace gwittebolle/claude-carbon
 ```
 
-The curl, PowerShell and npm installers set up the status line, the database and the hooks, but not the plugin, so not the mod. Pick one of the two: the plugin added on top of an installer runs the hooks twice.
+The curl, PowerShell and npm installers set up the status line, the database and the hooks, and copy the mod alone to `~/.claude/skills/claude-carbon/`, which Claude Code loads as `claude-carbon@skills-dir`. `/carbon-update` keeps that copy up to date. The copy holds no hook, so nothing runs twice. Restart Claude Code after the install; the mod loads once the folder you open is trusted. Its median starts from zero: answers recorded by another install of the mod do not carry over. With this copy the mod is checked in the terminal; the desktop app has not been checked yet.
+
+To turn it off, run `claude plugin disable claude-carbon@skills-dir`. To remove it, run the installer with `CLAUDE_CARBON_NO_MOD=1` on the `bash` side (`curl … | CLAUDE_CARBON_NO_MOD=1 bash`); keep the variable set, in your shell or in the `env` block of `settings.json`, or the next `/carbon-update` puts it back. The installer leaves alone a `skills/claude-carbon/` folder it did not make, and skips the copy while the claude-carbon plugin is enabled. Pick one of the two: the plugin added on top of an installer runs the hooks twice.
 
 `/carbon-stats` shows the median of your last answers and the model requests per prompt. Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, makes no network call and never changes what Claude does. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then the system's language, then French.
 
@@ -368,6 +370,7 @@ curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/inst
 
 - Updating re-prices your stored history with the new factors automatically (CO2 only; cost figures are left intact). Run `scripts/recompute.sh --with-cost` yourself only after a price change.
 - If you edited `data/factors.json` or `data/prices.json` locally, the update keeps your edits; on a conflict with upstream it saves yours to `*.local.bak` and tells you.
+- The update also refreshes the [mod](#the-co2-of-each-answer-mod)'s copy. When it asks for a restart (on Windows, a copy in use cannot be replaced), restart Claude Code and run it again; until then the previous copy stays.
 - Installed via the plugin marketplace? Update with Claude Code's built-in `/plugin update` instead.
 
 ## Dependencies

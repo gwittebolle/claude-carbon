@@ -36,7 +36,15 @@ locale variable set, as in the desktop app, the mod's language follows the
 the registry's `LocaleName` on Windows), then French. The mod
 draws nothing in the VS Code extension's chat panel, in cloud sessions or under
 `claude -p`. It writes no database: the Stop hook keeps recording sessions.
-Installs made with the curl, PowerShell or npm installer do not get it yet.
+The curl, PowerShell and npm installers, and `/carbon-update`, copy the mod
+alone, with no command hook, to `skills/claude-carbon/` under the config dir,
+where Claude Code loads it as `claude-carbon@skills-dir`
+(`scripts/install-mod.sh`, run by `configure-settings.sh`).
+`CLAUDE_CARBON_NO_MOD=1` skips the copy and removes it; a folder of that name
+the installer did not make is left alone; the copy is skipped, or removed,
+while the claude-carbon plugin is enabled. The copy is built aside and swapped
+in by rename: one that cannot be replaced, such as a copy Windows holds open,
+stays whole until a restart.
 
 ## 2026-10-09
 

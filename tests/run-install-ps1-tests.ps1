@@ -5,7 +5,8 @@
 # covers everything install.ps1 owns: it parses, it finds the Git Bash that Claude
 # Code will also use, it resolves the two dependencies through that bash's own PATH,
 # it normalises the downloaded installer's line endings, it hands over, and it
-# propagates the installer's exit code.
+# propagates the installer's exit code. It also runs the one step of install.sh that
+# a Windows lock can break: the copy of the mod scripts/install-mod.sh swaps in.
 #
 # The handover target is stubbed over local HTTP, so nothing is cloned and no real
 # installation happens. Requires: Git for Windows, node (test harness only).
@@ -217,6 +218,85 @@ finally {
     Remove-Item Env:\CLAUDE_CARBON_INSTALL_URL -ErrorAction SilentlyContinue
     if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# -- 5. The mod's copy, through Git Bash --------------------------------------
+# install.sh hands over to scripts/install-mod.sh, which copies the mod into
+# skills\claude-carbon under the config dir. What only Windows can show: a config
+# dir given in native spelling, and a file Claude Code holds open in the copy in
+# use, which makes the swap fail during /carbon-update. The previous copy must then
+# stay whole and in place, with a message asking for a restart.
+Write-Host ""
+Write-Host "the mod's copy (install-mod.sh)"
+
+$installMod = Join-Path $RepoDir 'scripts\install-mod.sh'
+$modRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("cc-mod-tests-" + [System.Guid]::NewGuid().ToString('N').Substring(0, 8))
+$modCfg = Join-Path $modRoot 'cfg'
+New-Item -ItemType Directory -Path $modCfg -Force | Out-Null
+$copy = Join-Path $modCfg 'skills\claude-carbon'
+$factors = Join-Path $copy 'data\factors.json'
+$savedCfg = $env:CLAUDE_CONFIG_DIR
+
+function Invoke-InstallMod {
+    # Under 'Stop', Windows PowerShell turns any stderr line of a native command into
+    # a terminating error; the script's messages are the assertion's input here.
+    $ErrorActionPreference = 'Continue'
+    & $bash $installMod 2>&1 | Out-String
+}
+
+function Get-Leftovers {
+    @(Get-ChildItem -LiteralPath (Join-Path $modCfg 'skills') -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like '.claude-carbon.*' }).Count
+}
+
+try {
+  if (-not $bash) {
+    Write-Host "SKIP mod copy assertions: no Git Bash."
+  } else {
+    $env:CLAUDE_CONFIG_DIR = $modCfg
+
+    $out = Invoke-InstallMod
+    Assert-Contains "fresh install reports the copy"   "mod: installed"       $out
+    Assert-Equal    "copy carries the marker"          $true (Test-Path -LiteralPath (Join-Path $copy '.claude-carbon-managed'))
+    Assert-Equal    "copy has the module"              $true (Test-Path -LiteralPath (Join-Path $copy 'hooks\mod\register.tsx'))
+    Assert-Equal    "copy leaves the tests out"        $false (Test-Path -LiteralPath (Join-Path $copy 'hooks\mod\answer-co2.test.tsx'))
+    $manifest = Get-Content (Join-Path $copy '.claude-plugin\plugin.json') -Raw | ConvertFrom-Json
+    Assert-Equal    "manifest has no status line"      $null $manifest.statusLine
+    Assert-Equal    "manifest has no skills"           $null $manifest.skills
+    $hooks = Get-Content (Join-Path $copy 'hooks\hooks.json') -Raw
+    Assert-Equal    "no command hook in the copy"      $false ($hooks -match '"command"')
+
+    $out = Invoke-InstallMod
+    Assert-Contains "second run is skipped"            "already installed"    $out
+
+    # A stale copy, held open as a running session would hold it.
+    [System.IO.File]::WriteAllText($factors, 'stale')
+    $lock = [System.IO.File]::Open((Join-Path $copy 'hooks\mod\register.tsx'), 'Open', 'Read', 'None')
+    try {
+        $out = Invoke-InstallMod
+    } finally {
+        $lock.Close()
+    }
+    Assert-Contains "a locked copy asks for a restart" "Restart Claude Code, then run the installer again" $out
+    Assert-Equal    "a locked copy stays as it was"    'stale' ([System.IO.File]::ReadAllText($factors))
+    Assert-Equal    "a locked copy leaves nothing behind" 0 (Get-Leftovers)
+
+    $out = Invoke-InstallMod
+    Assert-Contains "once released, the copy updates"  "mod: updated"         $out
+    Assert-Equal    "the update brings the factors"    ([System.IO.File]::ReadAllText((Join-Path $RepoDir 'data\factors.json'))) ([System.IO.File]::ReadAllText($factors))
+    Assert-Equal    "the update leaves nothing behind" 0 (Get-Leftovers)
+
+    $env:CLAUDE_CARBON_NO_MOD = '1'
+    $out = Invoke-InstallMod
+    Remove-Item Env:\CLAUDE_CARBON_NO_MOD -ErrorAction SilentlyContinue
+    Assert-Contains "CLAUDE_CARBON_NO_MOD=1 removes the copy" "mod: removed" $out
+    Assert-Equal    "the removed copy is gone"         $false (Test-Path -LiteralPath $copy)
+  }
+}
+finally {
+    Remove-Item Env:\CLAUDE_CARBON_NO_MOD -ErrorAction SilentlyContinue
+    if ($null -eq $savedCfg) { Remove-Item Env:\CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue } else { $env:CLAUDE_CONFIG_DIR = $savedCfg }
+    Remove-Item -LiteralPath $modRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host ""
