@@ -43,18 +43,17 @@ function isLocaleValue(value: string | undefined): value is string {
 }
 
 // Same order and sentinels as detect_equiv_set (scripts/equiv-lib.sh). With no
-// variable set, the language setting or else the system locale decides (the
-// caller picks it); with neither, French, as in the bash.
+// variable set, the language setting decides; with none, French, as in the bash.
 export function detectLang(
   envValues: Array<string | undefined>,
-  systemLocale?: string,
+  setting?: string,
 ): Lang {
   const value = envValues.find(isLocaleValue);
   if (value !== undefined) {
     return value.toLowerCase().startsWith("fr") ? "fr" : "en";
   }
-  if (systemLocale !== undefined && systemLocale !== "") {
-    return systemLocale.toLowerCase().startsWith("fr") ? "fr" : "en";
+  if (setting !== undefined && setting !== "") {
+    return setting.toLowerCase().startsWith("fr") ? "fr" : "en";
   }
   return "fr";
 }
@@ -70,15 +69,6 @@ export function languageSetting(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const text = value.trim();
   return text === "" ? undefined : text;
-}
-
-// What `defaults read -g AppleLocale` ("fr_FR\n") or `reg query ... /v LocaleName`
-// ("    LocaleName    REG_SZ    en-US") prints, down to the locale.
-export function parseSystemLocale(stdout: string): string | undefined {
-  const reg = /LocaleName\s+REG_SZ\s+(\S+)/.exec(stdout);
-  if (reg) return reg[1];
-  const line = stdout.trim().split(/\r?\n/)[0]?.trim() ?? "";
-  return /^\S+$/.test(line) ? line : undefined;
 }
 
 function decimal(value: number, digits: number, lang: Lang): string {
@@ -172,16 +162,11 @@ export function sessionLine(
   return `${total} · ${fr ? "dernière réponse" : "last answer"} ${formatGrams(lastAnswerGrams, lang)}`;
 }
 
-// Shown once. Where no terminal draws the session (the Desktop app), the figure is in
-// the pinned entry and only an unusual answer gets a line of its own.
-export function welcomeText(lang: Lang, isRemoteOnly = false): string {
-  if (isRemoteOnly)
-    return lang === "fr"
-      ? "Le total CO₂ de la session reste sous le prompt. Une réponse bien plus lourde que d'habitude le signale."
-      : "The session's CO₂ total stays under the prompt. An answer much heavier than usual says so.";
+// Shown once per machine, the same on every surface.
+export function welcomeText(lang: Lang): string {
   return lang === "fr"
-    ? `Le CO₂ de chaque réponse s'affiche en fin de réponse. Les plus lourdes ressortent après ${MIN_HISTORY} réponses.`
-    : `Each answer's CO₂ shows when it ends. The heaviest stand out after ${MIN_HISTORY} answers.`;
+    ? "Le CO₂ s'affiche maintenant pour chaque réponse."
+    : "CO₂ now shows for each answer.";
 }
 
 export function pushHistory(history: number[], grams: number): number[] {

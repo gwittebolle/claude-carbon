@@ -30,9 +30,6 @@ type World = {
   lang?: string | null;
   // The `language` setting, free text
   language?: string;
-  // What the system's locale command prints; unset, the command cannot run
-  systemLocale?: string;
-  os?: string;
   statusLine?: string;
   history?: number[];
   // Values under the v1 key, which counted background subagents in the answer
@@ -42,9 +39,6 @@ type World = {
 
 const storedHistory = (values: number[], welcomed: boolean) => ({
   values,
-  turns: values.length,
-  steps: values.length,
-  subagentSteps: 0,
   welcomed,
 });
 
@@ -57,23 +51,38 @@ function world(on: any, options: World = {}) {
   clock = mock.clock(on, { now: 1_000_000 });
   const statuses: Array<string | undefined> = [];
   const toasts: string[] = [];
-  const commands: string[][] = [];
+  // Any process the mod would start: it starts none.
+  const processes: string[][] = [];
   const welcomed = options.welcomed ?? true;
-  mock.store(on, {
-    "history.v2": storedHistory(options.history ?? [], welcomed),
+  // $.store in memory, as mock.store keeps it, readable by the test.
+  const store = new Map<string, unknown>([
+    ["history.v2", storedHistory(options.history ?? [], welcomed)],
     ...(options.legacyHistory === undefined
-      ? {}
-      : { history: storedHistory(options.legacyHistory, true) }),
+      ? []
+      : [["history", storedHistory(options.legacyHistory, true)] as const]),
+  ]);
+  on("store.get", ($: any, e: any) => ({ value: store.get(e.key) }));
+  on("store.set", ($: any, e: any) => {
+    store.set(e.key, JSON.parse(JSON.stringify(e.value)));
+    return { value: undefined };
   });
-  mock.env(on, {
-    ...(options.lang === null ? {} : { LANG: options.lang ?? "fr_FR.UTF-8" }),
-    ...(options.os === undefined ? {} : { OS: options.os }),
+  on("store.delete", ($: any, e: any) => {
+    store.delete(e.key);
+    return { value: undefined };
   });
+  on("store.keys", () => ({ value: [...store.keys()] }));
+  // The answers' figures kept for the median, in grams to the milligram.
+  const storedValues = () =>
+    (store.get("history.v2") as { values: number[] }).values.map(
+      (v) => Math.round(v * 1000) / 1000,
+    );
+  mock.env(
+    on,
+    options.lang === null ? {} : { LANG: options.lang ?? "fr_FR.UTF-8" },
+  );
   on("process.run", ($: any, e: any) => {
-    commands.push([...e.argv]);
-    return options.systemLocale === undefined
-      ? { deny: "cannot start" }
-      : { value: { exitCode: 0, stdout: options.systemLocale, stderr: "" } };
+    processes.push([...e.argv]);
+    return { deny: "not expected" };
   });
   on("fs.read", () => ({ value: FACTORS }));
   on("settings.read", () => ({
@@ -85,7 +94,6 @@ function world(on: any, options: World = {}) {
     },
   }));
   on("session.surfaces", () => ({ value: options.surfaces ?? ["terminal"] }));
-  on("command.register", ($: any, e: any) => ({ value: { command: e.name } }));
   on("ui.status", ($: any, e: any) => {
     statuses.push(e.text);
     return { value: undefined };
@@ -116,7 +124,7 @@ function world(on: any, options: World = {}) {
   on("session.end", ($: any, e: any) => ({ sessionId: e.sessionId }));
   on("turn.start", ($: any, e: any) => ({ turnId: e.turnId }));
   on("turn.complete", ($: any, e: any) => ({ text: e.answer }));
-  return { statuses, toasts, commands };
+  return { statuses, toasts, processes, storedValues };
 }
 
 let queue: Step[] = [];
@@ -173,11 +181,6 @@ async function spawn(
 // The Agent call of a running agent returns `async_launched`.
 async function asyncLaunched($: any, id: string) {
   await $.tool.call({ tool: "Agent", description: id, prompt: "explore" });
-}
-
-async function stats($: any) {
-  const answer = await $.command.run({ command: "carbon-stats", args: "" });
-  return plain(answer.text) ?? "";
 }
 
 async function step($: any, s: Step, turnId: string, index: number) {
@@ -340,7 +343,7 @@ describe("terminal", () => {
   });
 
   test("a foreground subagent sent to the background leaves the answers after it", async ($: any, on: any) => {
-    const { statuses } = world(on);
+    const { statuses, storedValues } = world(on);
     engineSteps(on);
     await startSession($);
     const opusAgent = { model: "claude-opus-5-5", output: 6000, agentId: "fg-1" };
@@ -367,12 +370,12 @@ describe("terminal", () => {
     expect(drawn).not.toContain("sous-agent");
     // 5.658 + 9.912 + 4.006 + 9.912 = 29.488 g in the session
     expect(plain(statuses.at(-1))).toBe("29 gCO₂ cette session");
-    // The median of 5.658 and 4.006, with no background request in it
-    expect(await stats($)).toContain("Médiane de vos 2 dernières réponses : 4,8 gCO₂");
+    // 5.658 and 4.006 for the median, with no background request in them
+    expect(storedValues()).toEqual([5.658, 4.006]);
   });
 
   test("a subagent started in the background stays out of the next answer", async ($: any, on: any) => {
-    const { statuses } = world(on);
+    const { statuses, storedValues } = world(on);
     engineSteps(on);
     await startSession($);
     await runTurn($, [ORDINARY], 38000, async () => {
@@ -387,7 +390,7 @@ describe("terminal", () => {
     expect(await durationLine($, 21000)).toContain("4,0 gCO₂");
     // 4.006 + 4.006 + 9.912 = 17.924 g in the session
     expect(plain(statuses.at(-1))).toBe("18 gCO₂ cette session");
-    expect(await stats($)).toContain("Médiane de vos 2 dernières réponses : 4,0 gCO₂");
+    expect(storedValues()).toEqual([4.006, 4.006]);
   });
 
   test("a subagent of a background subagent is in the background too", async ($: any, on: any) => {
@@ -834,6 +837,9 @@ describe("desktop", () => {
   );
 });
 
+const FR_TOAST = "Le CO₂ s'affiche maintenant pour chaque réponse.";
+const EN_TOAST = "CO₂ now shows for each answer.";
+
 describe("first run", () => {
   test("the welcome toast shows once", async ($: any, on: any) => {
     const { toasts } = world(on, { welcomed: false });
@@ -841,28 +847,22 @@ describe("first run", () => {
     await startSession($);
     await runTurn($, [ORDINARY], 38000);
     await startSession($);
-    expect(toasts).toEqual([
-      "Le CO₂ de chaque réponse s'affiche en fin de réponse. Les plus lourdes ressortent après 50 réponses.",
-    ]);
+    expect(toasts).toEqual([FR_TOAST]);
   });
 
-  test("in English in a terminal", async ($: any, on: any) => {
+  test("in English", async ($: any, on: any) => {
     const { toasts } = world(on, { welcomed: false, lang: "en_US.UTF-8" });
     engineSteps(on);
     await startSession($);
-    expect(toasts).toEqual([
-      "Each answer's CO₂ shows when it ends. The heaviest stand out after 50 answers.",
-    ]);
+    expect(toasts).toEqual([EN_TOAST]);
   });
 
-  test("on Desktop it points at the pinned total", async ($: any, on: any) => {
+  test("the same text on Desktop", async ($: any, on: any) => {
     const { toasts } = world(on, { welcomed: false, surfaces: ["desktop"] });
     engineSteps(on);
     await startSession($);
     await runTurn($, [ORDINARY], 38000);
-    expect(toasts).toEqual([
-      "Le total CO₂ de la session reste sous le prompt. Une réponse bien plus lourde que d'habitude le signale.",
-    ]);
+    expect(toasts).toEqual([FR_TOAST]);
   });
 
   test("a session nothing draws at start is welcomed at its first answer", async ($: any, on: any) => {
@@ -878,9 +878,7 @@ describe("first run", () => {
     surfaces.push("desktop");
     await runTurn($, [ORDINARY], 38000);
     await runTurn($, [ORDINARY], 21000);
-    expect(toasts).toEqual([
-      "The session's CO₂ total stays under the prompt. An answer much heavier than usual says so.",
-    ]);
+    expect(toasts).toEqual([EN_TOAST]);
   });
 
   test("a run nobody watches keeps the welcome for later", async ($: any, on: any) => {
@@ -892,91 +890,46 @@ describe("first run", () => {
     expect(toasts.length).toBe(0);
     surfaces.push("terminal");
     await startSession($);
-    expect(toasts.length).toBe(1);
-    expect(toasts[0]).toContain("Le CO₂ de chaque réponse");
+    expect(toasts).toEqual([FR_TOAST]);
   });
 });
 
 describe("language without LANG", () => {
-  const FR_TOAST =
-    "Le CO₂ de chaque réponse s'affiche en fin de réponse. Les plus lourdes ressortent après 50 réponses.";
-  const EN_TOAST =
-    "Each answer's CO₂ shows when it ends. The heaviest stand out after 50 answers.";
-  const APPLE_LOCALE = ["defaults", "read", "-g", "AppleLocale"];
-
-  test("an en_US system gives English", async ($: any, on: any) => {
-    const { toasts, commands } = world(on, {
-      welcomed: false,
-      lang: null,
-      systemLocale: "en_US\n",
-    });
+  test("nothing set gives French, and no process is started", async ($: any, on: any) => {
+    const { toasts, processes } = world(on, { welcomed: false, lang: null });
     await startSession($);
-    expect(commands).toEqual([APPLE_LOCALE]);
-    expect(toasts).toEqual([EN_TOAST]);
-  });
-
-  test("a fr_FR system gives French", async ($: any, on: any) => {
-    const { toasts } = world(on, {
-      welcomed: false,
-      lang: null,
-      systemLocale: "fr_FR\n",
-    });
-    await startSession($);
+    expect(processes).toEqual([]);
     expect(toasts).toEqual([FR_TOAST]);
   });
 
-  test("a command that cannot run gives French", async ($: any, on: any) => {
-    const { toasts, commands } = world(on, {
-      welcomed: false,
-      lang: null,
-    });
-    await startSession($);
-    expect(commands.length).toBe(1);
-    expect(toasts).toEqual([FR_TOAST]);
-  });
-
-  test("the language setting wins over the system", async ($: any, on: any) => {
-    const { toasts, commands } = world(on, {
+  test("the language setting decides", async ($: any, on: any) => {
+    const { toasts, processes } = world(on, {
       welcomed: false,
       lang: null,
       language: "English",
-      systemLocale: "fr_FR\n",
     });
     await startSession($);
-    expect(commands).toEqual([]);
+    expect(processes).toEqual([]);
     expect(toasts).toEqual([EN_TOAST]);
   });
 
-  test("Windows reads the locale from the registry", async ($: any, on: any) => {
-    const { toasts, commands } = world(on, {
+  test("the language setting in French words", async ($: any, on: any) => {
+    const { toasts } = world(on, {
       welcomed: false,
       lang: null,
-      os: "Windows_NT",
-      systemLocale:
-        "\r\nHKEY_CURRENT_USER\\Control Panel\\International\r\n    LocaleName    REG_SZ    en-US\r\n\r\n",
+      language: "Anglais",
     });
     await startSession($);
-    expect(commands).toEqual([
-      [
-        "reg",
-        "query",
-        "HKCU\\Control Panel\\International",
-        "/v",
-        "LocaleName",
-      ],
-    ]);
     expect(toasts).toEqual([EN_TOAST]);
   });
 
-  test("LANG decides alone: nothing else is asked", async ($: any, on: any) => {
-    const { toasts, commands } = world(on, {
+  test("LANG wins over the language setting", async ($: any, on: any) => {
+    const { toasts } = world(on, {
       welcomed: false,
       lang: "en_US.UTF-8",
       language: "Français",
-      systemLocale: "fr_FR\n",
     });
     await startSession($);
-    expect(commands).toEqual([]);
     expect(toasts).toEqual([EN_TOAST]);
   });
 });
@@ -1020,23 +973,10 @@ test(
 );
 
 test("the v1 history is not read", async ($: any, on: any) => {
-  world(on, { legacyHistory: ONE_GRAM_HISTORY });
+  const { storedValues } = world(on, { legacyHistory: ONE_GRAM_HISTORY });
   engineSteps(on);
   await startSession($);
   await runTurn($, [HEAVY], 90000);
   expect(await durationLine($, 90000)).not.toContain("médiane");
-  expect(await stats($)).toContain("Votre dernière réponse : 10 gCO₂");
-});
-
-test("/carbon-stats reports the median and requests per prompt", async ($: any, on: any) => {
-  world(on, { history: ONE_GRAM_HISTORY });
-  engineSteps(on);
-  await startSession($);
-  const answer = await $.command.run({ command: "carbon-stats", args: "" });
-  expect(plain(answer.text)).toContain(
-    "Médiane de vos 50 dernières réponses : 1,0 gCO₂",
-  );
-  expect(plain(answer.text)).toContain(
-    "Requêtes au modèle par prompt : 1,0 en moyenne sur 50 prompts",
-  );
+  expect(storedValues()).toEqual([10.068]);
 });

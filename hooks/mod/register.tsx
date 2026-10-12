@@ -8,7 +8,8 @@
 // answer's figure.
 //
 // One request at a time through turn.step, the formula and factors of the bash plugin
-// (lib/co2.ts). Writes no database, calls no network, never changes what Claude does.
+// (lib/co2.ts). Writes no database, starts no process, calls no network, never changes
+// what Claude does.
 
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register } from "claude-code";
@@ -25,12 +26,9 @@ import {
   answerLine,
   buildAnswerCo2,
   detectLang,
-  formatGrams,
   hasLangVariable,
   isCarbonStatusLine,
   languageSetting,
-  median,
-  parseSystemLocale,
   pushHistory,
   sessionLine,
   welcomeText,
@@ -56,9 +54,6 @@ const KEEP_ANSWERS = 100;
 
 type History = {
   values: number[];
-  turns: number;
-  steps: number;
-  subagentSteps: number;
   welcomed: boolean;
 };
 
@@ -70,8 +65,6 @@ type OpenTurn = {
   // Subagents started in the foreground during this turn, and those that made a request
   spawned: Set<string>;
   stepped: Set<string>;
-  steps: number;
-  subagentSteps: number;
 };
 
 function openTurn(turnId: string): OpenTurn {
@@ -81,13 +74,7 @@ function openTurn(turnId: string): OpenTurn {
     subagentGrams: 0,
     spawned: new Set(),
     stepped: new Set(),
-    steps: 0,
-    subagentSteps: 0,
   };
-}
-
-function asNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 // $.store is shared by every session on the machine and has no conditional write: two
@@ -97,39 +84,12 @@ async function loadHistory($: EngineInterface): Promise<History> {
   const values = Array.isArray(raw?.values)
     ? raw.values.filter((v): v is number => typeof v === "number" && v > 0)
     : [];
-  return {
-    values,
-    turns: asNumber(raw?.turns),
-    steps: asNumber(raw?.steps),
-    subagentSteps: asNumber(raw?.subagentSteps),
-    welcomed: raw?.welcomed === true,
-  };
+  return { values, welcomed: raw?.welcomed === true };
 }
 
 // No terminal draws this session: the duration line never shows here.
 function isRemoteOnly(surfaces: readonly string[]): boolean {
   return surfaces.length > 0 && !surfaces.includes("terminal");
-}
-
-// The locale the user picked in the system settings, which Desktop and Windows do not
-// pass in LANG. Measured under 50 ms on macOS; anything wrong means undefined.
-async function systemLocale($: EngineInterface): Promise<string | undefined> {
-  const argv =
-    (await $.env.get("OS")) === "Windows_NT"
-      ? [
-          "reg",
-          "query",
-          "HKCU\\Control Panel\\International",
-          "/v",
-          "LocaleName",
-        ]
-      : ["defaults", "read", "-g", "AppleLocale"];
-  try {
-    const { exitCode, stdout } = await $.process.run(argv, { timeoutMs: 2000 });
-    return exitCode === 0 ? parseSystemLocale(stdout) : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 // /clear and /resume go on in another conversation: its total and per-answer figures start over.
@@ -190,8 +150,7 @@ export const register: Register = (on, options) => {
     hasCarbonStatusLine = isCarbonStatusLine(statusLine?.command);
 
     // Same variables, order and sentinels as the reports. The desktop app and a
-    // Windows session usually set none: then the language setting, then the
-    // system's locale, then French.
+    // Windows session usually set none: then the language setting, then French.
     const envValues = [
       await $.env.get("CLAUDE_CARBON_LOCALE"),
       await $.env.get("LC_ALL"),
@@ -202,78 +161,23 @@ export const register: Register = (on, options) => {
       envValues,
       hasLangVariable(envValues)
         ? undefined
-        : (languageSetting(settings.language) ?? (await systemLocale($))),
+        : languageSetting(settings.language),
     );
 
-    try {
-      await $.command.register({
-        name: "carbon-stats",
-        description:
-          "Show the median CO2 of your answers and the model requests per prompt",
-      });
-    } catch {
-      // The command is a convenience: the per-answer figure works without it.
-    }
-
-    // Once, worded for where the figure shows. A session nothing draws yet is
-    // welcomed at its first answer instead.
+    // Once per machine. A session nothing draws yet is welcomed at its first
+    // answer instead.
     const history = await loadHistory($);
     known = history;
     if (!history.welcomed && e.isInteractive) {
       const surfaces = await $.session.surfaces();
       if (surfaces.length > 0) {
-        $.ui.toast(welcomeText(lang, isRemoteOnly(surfaces)), {
-          timeoutMs: 10000,
-        });
+        $.ui.toast(welcomeText(lang), { timeoutMs: 10000 });
         known = { ...history, welcomed: true };
         await $.store.set(HISTORY_KEY, known);
       }
     }
 
     return next(e);
-  });
-
-  on("command.run", { command: "carbon-stats" }, async ($) => {
-    const history = await loadHistory($);
-    const { value: total } = await $.state.get({
-      plugin: "claude-carbon",
-      key: "session",
-    });
-    const fr = lang === "fr";
-    const grams = formatGrams(total?.grams ?? 0, lang);
-    const lines: string[] = [
-      fr ? `Cette session : ${grams}` : `This session: ${grams}`,
-    ];
-    const n = history.values.length;
-    if (n === 0) {
-      lines.push(
-        fr ? "Pas encore de réponse mesurée." : "No answer measured yet.",
-      );
-    } else {
-      const m = formatGrams(median(history.values), lang);
-      lines.push(
-        fr
-          ? n === 1
-            ? `Votre dernière réponse : ${m}`
-            : `Médiane de vos ${n} dernières réponses : ${m}`
-          : n === 1
-            ? `Your last answer: ${m}`
-            : `Median of your last ${n} answers: ${m}`,
-      );
-    }
-    if (history.turns > 0) {
-      const perPrompt = (history.steps + history.subagentSteps) / history.turns;
-      const value = fr
-        ? perPrompt.toFixed(1).replace(".", ",")
-        : perPrompt.toFixed(1);
-      const prompts = history.turns === 1 ? "prompt" : "prompts";
-      lines.push(
-        fr
-          ? `Requêtes au modèle par prompt : ${value} en moyenne sur ${history.turns} ${prompts}`
-          : `Model requests per prompt: ${value} on average over ${history.turns} ${prompts}`,
-      );
-    }
-    return { text: lines.join("\n") };
   });
 
   on("agent.spawn", async ($, e, next) => {
@@ -344,16 +248,11 @@ export const register: Register = (on, options) => {
                 (owner.get(agent) ?? current.turnId) === current.turnId))
           ) {
             current.grams += grams;
-            if (agent === undefined) {
-              current.steps += 1;
-            } else {
-              current.subagentSteps += 1;
-              // Work the engine runs on its own (a compaction) is in the answer's
-              // total but is not named as a subagent.
-              if (current.spawned.has(agent)) {
-                current.subagentGrams += grams;
-                current.stepped.add(agent);
-              }
+            // Work the engine runs on its own (a compaction) is in the answer's
+            // total but is not named as a subagent.
+            if (agent !== undefined && current.spawned.has(agent)) {
+              current.subagentGrams += grams;
+              current.stepped.add(agent);
             }
           }
         }
@@ -404,19 +303,14 @@ export const register: Register = (on, options) => {
       const remoteOnly = isRemoteOnly(surfaces);
       const isWelcome = !history.welcomed && surfaces.length > 0;
       if (isWelcome) {
-        $.ui.toast(welcomeText(lang, remoteOnly), { timeoutMs: 10000 });
+        $.ui.toast(welcomeText(lang), { timeoutMs: 10000 });
       }
       known = history;
       if (isCounted || isWelcome) {
         known = {
           ...history,
           ...(isCounted
-            ? {
-                values: pushHistory(history.values, done.grams),
-                turns: history.turns + 1,
-                steps: history.steps + done.steps,
-                subagentSteps: history.subagentSteps + done.subagentSteps,
-              }
+            ? { values: pushHistory(history.values, done.grams) }
             : {}),
           welcomed: history.welcomed || isWelcome,
         };

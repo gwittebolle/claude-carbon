@@ -27,7 +27,6 @@ import {
   isUnusual,
   languageSetting,
   median,
-  parseSystemLocale,
   percentile,
   pushHistory,
   sessionLine,
@@ -293,7 +292,7 @@ for (const lang of ["fr", "en"]) {
     lang,
   );
   shown.push(view.main, view.sub, answerLine(view));
-  shown.push(welcomeText(lang), welcomeText(lang, true));
+  shown.push(welcomeText(lang));
   shown.push(sessionLine(52, lang, 38), sessionLine(52, lang));
   for (const n of [0.02, 4.24, 37.6, 1234]) shown.push(formatGrams(n, lang));
 }
@@ -304,25 +303,11 @@ for (const text of shown) {
 }
 
 check(
-  "welcome, terminal",
+  "welcome",
   welcomeText("fr"),
-  "Le CO₂ de chaque réponse s'affiche en fin de réponse. Les plus lourdes ressortent après 50 réponses.",
+  "Le CO₂ s'affiche maintenant pour chaque réponse.",
 );
-check(
-  "welcome, Desktop",
-  welcomeText("fr", true),
-  "Le total CO₂ de la session reste sous le prompt. Une réponse bien plus lourde que d'habitude le signale.",
-);
-check(
-  "welcome, terminal en",
-  welcomeText("en"),
-  "Each answer's CO₂ shows when it ends. The heaviest stand out after 50 answers.",
-);
-check(
-  "welcome, Desktop en",
-  welcomeText("en", true),
-  "The session's CO₂ total stays under the prompt. An answer much heavier than usual says so.",
-);
+check("welcome en", welcomeText("en"), "CO₂ now shows for each answer.");
 
 check("lang fr_FR", detectLang(["fr_FR.UTF-8"]), "fr");
 check("lang en_US", detectLang(["en_US.UTF-8"]), "en");
@@ -336,16 +321,18 @@ check(
   detectLang(["fr", "en_US.UTF-8"]),
   "fr",
 );
-check("lang empty: system locale", detectLang([undefined, ""], "en-US"), "en");
+check("lang empty: setting", detectLang([undefined, ""], "en-US"), "en");
 check("lang nothing: French", detectLang([undefined]), "fr");
 check("lang variable set", hasLangVariable([undefined, "en_US.UTF-8"]), true);
 check("lang only C and empty", hasLangVariable(["", "C.UTF-8", undefined]), false);
 // The language setting, free text, read as a locale
 for (const [setting, expected] of [
   ["Français", "fr"],
+  ["French", "fr"],
   ["french", "fr"],
   ["fr", "fr"],
   ["English", "en"],
+  ["Anglais", "en"],
   ["anglais", "en"],
   ["Deutsch", "en"],
 ]) {
@@ -357,25 +344,6 @@ for (const [setting, expected] of [
 }
 check("lang setting blank", languageSetting("  "), undefined);
 check("lang setting not text", languageSetting(3), undefined);
-check("system locale macOS", parseSystemLocale("fr_FR\n"), "fr_FR");
-check(
-  "system locale macOS region",
-  parseSystemLocale("en_FR@rg=frzzzz\n"),
-  "en_FR@rg=frzzzz",
-);
-check(
-  "system locale Windows",
-  parseSystemLocale(
-    "\r\nHKEY_CURRENT_USER\\Control Panel\\International\r\n    LocaleName    REG_SZ    fr-FR\r\n\r\n",
-  ),
-  "fr-FR",
-);
-check("system locale empty", parseSystemLocale(""), undefined);
-check(
-  "system locale error text",
-  parseSystemLocale("The domain/default pair does not exist"),
-  undefined,
-);
 
 const full = Array.from({ length: HISTORY_SIZE }, (_, i) => i + 1);
 check("history capped", pushHistory(full, 7).length, HISTORY_SIZE);

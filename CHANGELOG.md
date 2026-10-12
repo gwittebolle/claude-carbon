@@ -19,8 +19,9 @@ line first drawn later than its answer, such as one only ctrl+o shows, keeps
 the engine's text. In the desktop app's Code tab, where that line is not drawn,
 it becomes a line under the answer, for unusual answers only: above the 97th
 percentile of the last 200 answers, over three times their median and at least
-10 g, once 50 answers are recorded (about one answer in 27). A one-time toast
-says where the figure shows, worded for the terminal or the desktop app. The
+10 g, once 50 answers are recorded (about one answer in 27). A toast shown
+once per machine says the CO2 now shows for each answer, the same text on every
+surface. The
 session total is pinned under the prompt unless the claude-carbon status line
 is configured or the `showSessionTotal` option is off, for a status line that
 already shows the total such as ccstatusline with the claude-carbon segment;
@@ -29,11 +30,10 @@ entry also gives the last answer's CO2.
 The mod writes every quantity as gCO₂ or kgCO₂. Background subagents, Claude
 Code's default, count in the session total only,
 never in an answer or in the median; a foreground subagent counts in the answer
-that started it, and stops counting there once sent to the background.
-`/carbon-stats` reports the median and the model requests per prompt. With no
-locale variable set, as in the desktop app, the mod's language follows the
-`language` setting, then the system's (`defaults read -g AppleLocale` on macOS,
-the registry's `LocaleName` on Windows), then French. The mod
+that started it, and stops counting there once sent to the background. With
+no locale variable set, as in the desktop app, the mod's language follows the
+`language` setting (free text such as `Français` or `English`), then French; the
+mod starts no process. The mod
 draws nothing in the VS Code extension's chat panel, in cloud sessions or under
 `claude -p`. It writes no database: the Stop hook keeps recording sessions.
 The curl, PowerShell and npm installers, and `/carbon-update`, copy the mod
