@@ -46,7 +46,7 @@ while the claude-carbon plugin is enabled. The copy is built aside and swapped
 in by rename: one that cannot be replaced, such as a copy Windows holds open,
 stays whole until a restart.
 
-### feat: /carbon-card without Chromium opens the card in the browser, and the card carries `npx claude-carbon` (1.9.0)
+### feat: /carbon-card without Chromium opens the card in the browser, and the card says where to find the tool (1.9.0)
 
 Without `playwright-core`, or with a Chromium that does not start (checked by
 launching it), `scripts/generate-report.sh` no longer exits 1. It saves the
@@ -61,9 +61,9 @@ stamps it only when at least one PNG was written.
 The `Totals since ...` line now comes before the Playwright lookup, so both paths
 print it. The PNG export is otherwise unchanged.
 
-The footer of the four card templates reads `Mesurez la vôtre : npx claude-carbon`
-(non-breaking space before the colon) and `Measure yours: npx claude-carbon`, the
-command in orange monospace, with `github.com/gwittebolle/claude-carbon` below
+The footer of the four card templates reads `Mesurez la vôtre : claude-carbon sur GitHub`
+(non-breaking space before the colon) and `Measure yours: claude-carbon on GitHub`, the
+name in the card's orange, with `github.com/gwittebolle/claude-carbon` below
 in smaller grey text. The TokenClimate team-view mention is unchanged.
 `skills/carbon-card/SKILL.md` describes the browser path.
 `tests/run-portability-tests.sh` runs the script with no `playwright-core`, with

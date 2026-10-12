@@ -467,8 +467,8 @@ footer_text() {
   grep -m1 "class=\"$2\"" "$1" | sed -e 's/<[^>]*>//g' -e "s/&nbsp;/${NBSP}/g" -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
 }
 for t in report-summary report-detailed; do
-  is "${t} FR: command"         "Mesurez la vôtre${NBSP}: npx claude-carbon" "$(footer_text "${REPO_DIR}/templates/${t}.html" cta-label)"
-  is "${t} EN: command"         "Measure yours: npx claude-carbon"           "$(footer_text "${REPO_DIR}/templates/${t}-en.html" cta-label)"
+  is "${t} FR: footer"          "Mesurez la vôtre${NBSP}: claude-carbon sur GitHub" "$(footer_text "${REPO_DIR}/templates/${t}.html" cta-label)"
+  is "${t} EN: footer"          "Measure yours: claude-carbon on GitHub"     "$(footer_text "${REPO_DIR}/templates/${t}-en.html" cta-label)"
   is "${t} FR: repo kept"       "github.com/gwittebolle/claude-carbon"      "$(footer_text "${REPO_DIR}/templates/${t}.html" cta-link)"
   is "${t} EN: repo kept"       "github.com/gwittebolle/claude-carbon"      "$(footer_text "${REPO_DIR}/templates/${t}-en.html" cta-link)"
   is "${t} FR: team view kept"  "vue équipe · tokenclimate.com"             "$(footer_text "${REPO_DIR}/templates/${t}.html" team-link)"
