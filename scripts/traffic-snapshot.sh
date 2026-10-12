@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# traffic-snapshot.sh — Persist GitHub traffic data (14-day rolling window)
-# into stats/, merging per-day entries so the series survives the window.
+# traffic-snapshot.sh: persist GitHub traffic data (14-day rolling window)
+# and npm daily downloads into stats/, merging per-day entries so the series
+# survives the window.
 # Runs weekly via .github/workflows/traffic.yml; can be run locally too
 # (uses your gh auth; in Actions, GH_TOKEN must be a PAT with
 # repository Administration read permission - the traffic API requires it).
+# The npm downloads API is public: no token.
 set -euo pipefail
 
 REPO="${TRAFFIC_REPO:-gwittebolle/claude-carbon}"
+NPM_PACKAGE="claude-carbon"
 STATS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/stats"
 mkdir -p "$STATS_DIR"
 FILE="$STATS_DIR/traffic.json"
@@ -28,4 +31,22 @@ DATE="$(date -u +%F)"
 gh api "repos/$REPO/traffic/popular/referrers" | jq -c --arg d "$DATE" '{date: $d, referrers: .}' >> "$STATS_DIR/referrers.jsonl"
 gh api "repos/$REPO/traffic/popular/paths" | jq -c --arg d "$DATE" '{date: $d, paths: .}' >> "$STATS_DIR/paths.jsonl"
 
-echo "Snapshot done: $(jq '.views | length' "$FILE") days of views, $(jq '.clones | length' "$FILE") days of clones."
+# npm downloads per day, last 365 days (the API's day ends at UTC midnight).
+# Same upsert as the views: the latest fetch wins, so a rerun never counts a day
+# twice. The zero days before the package first appears are left out.
+NPM_FILE="$STATS_DIR/npm.json"
+[ -f "$NPM_FILE" ] || echo '{"downloads":{}}' > "$NPM_FILE"
+# A failed fetch skips npm and keeps the GitHub snapshot, whose window is short.
+if NPM="$(curl -fsS --max-time 30 "https://api.npmjs.org/downloads/range/last-year/$NPM_PACKAGE")"; then
+  jq --argjson n "$NPM" '
+    ([(.downloads | keys | min), ($n.downloads | map(select(.downloads > 0)) | .[0].day)]
+      | map(select(. != null)) | min) as $from
+  | .downloads = (.downloads + ($n.downloads
+      | map(select($from != null and .day >= $from) | {(.day): {count: .downloads}})
+      | add // {}))
+  ' "$NPM_FILE" > "$NPM_FILE.tmp" && mv "$NPM_FILE.tmp" "$NPM_FILE"
+else
+  echo "npm downloads: fetch failed, skipped" >&2
+fi
+
+echo "Snapshot done: $(jq '.views | length' "$FILE") days of views, $(jq '.clones | length' "$FILE") days of clones, $(jq '.downloads | length' "$NPM_FILE") days of npm downloads."

@@ -95,6 +95,17 @@ no new query the same day, a cache from another day recomputed, fewer than 7 day
 nudge, no database giving neither nudge nor cache, the threshold, the stamp and
 the opt-out.
 
+### chore: the weekly snapshot also records npm downloads
+
+`scripts/traffic-snapshot.sh` now also fetches the daily downloads of the
+`claude-carbon` npm package for the last 365 days (the public
+`api.npmjs.org/downloads/range` endpoint, no token) and merges them per day into
+`stats/npm.json`, the latest fetch winning on days already stored, so a rerun
+never counts a day twice. The zero days before the package first appears are left
+out. A failed npm fetch is skipped and the GitHub snapshot is still written. It
+runs in the same weekly `.github/workflows/traffic.yml` job, whose commit step
+already adds `stats/`.
+
 ## 2026-10-09
 
 ### fix: Opus family priced as Opus 5.5
