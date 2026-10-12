@@ -290,10 +290,13 @@ fi
 # quiet by itself after the Nth. Passive and short: a user who ignores it is not
 # asked again before next month. Local-only; opt-out via CLAUDE_CARBON_NO_CARD_NUDGE.
 #
-# The total is read once per month and cached in last-month-total ("YYYY-MM grams",
-# the key being the month the figure is for), never on every refresh. A month with
-# fewer than 7 days of sessions caches "-" and shows nothing: on a fresh install
-# the nudge would otherwise advertise a near-empty card.
+# The total is read once a day and cached in last-month-total ("YYYY-MM-DD grams",
+# the key being the day it was read), never on every refresh. Daily rather than
+# monthly: the Stop hook keeps adding to a session under its start date, so a
+# session begun before midnight on the last day still grows the closed month after
+# the 1st, and the card would show more than a figure frozen on the 1st. A month
+# with fewer than 7 days of sessions caches "-" and shows nothing: on a fresh
+# install the nudge would otherwise advertise a near-empty card.
 #
 # It used to show to the first three sessions of the month and then stop, which
 # on a status line amounted to two or three glances at "📊 /carbon-card" with no
@@ -311,9 +314,10 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
     if [ "$PREV_M" -eq 0 ]; then PREV_M=12; PREV_Y="$((PREV_Y - 1))"; fi
     PREV_MONTH="$(printf '%04d-%02d' "$PREV_Y" "$PREV_M")"
     TOTAL_FILE="${CONFIG_DIR}/claude-carbon/last-month-total"
+    printf -v TOTAL_KEY '%s-%02d' "$THIS_MONTH" "$TODAY_DAY"
     PREV_KEY=""; PREV_TOTAL=""
     { read -r PREV_KEY PREV_TOTAL < "$TOTAL_FILE"; } 2>/dev/null || true
-    if [ "$PREV_KEY" != "$PREV_MONTH" ]; then
+    if [ "$PREV_KEY" != "$TOTAL_KEY" ]; then
       PREV_TOTAL=""
       if [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>&1; then
         # The card's monthly bar: same grouping on started_at, excluded rows left out.
@@ -326,7 +330,7 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
           *)
             if [ "$MONTH_DAYS" -ge 7 ]; then PREV_TOTAL="$MONTH_G"; else PREV_TOTAL="-"; fi
             mkdir -p "${CONFIG_DIR}/claude-carbon" 2>/dev/null || true
-            printf '%s %s\n' "$PREV_MONTH" "$PREV_TOTAL" > "$TOTAL_FILE" 2>/dev/null || true
+            printf '%s %s\n' "$TOTAL_KEY" "$PREV_TOTAL" > "$TOTAL_FILE" 2>/dev/null || true
             ;;
         esac
       fi

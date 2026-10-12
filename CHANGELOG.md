@@ -49,12 +49,15 @@ stays whole until a restart.
 ### feat: /carbon-card without Chromium opens the card in the browser, and the card carries `npx claude-carbon` (1.9.0)
 
 Without `playwright-core`, or with a Chromium that does not start (checked by
-launching it), `scripts/generate-report.sh` no longer exits 1. It opens the
-summary card, already laid out at 1080x1080, in the default browser (`open` on
+launching it), `scripts/generate-report.sh` no longer exits 1. It saves the
+summary card as an HTML page in the export folder, logo inline and scaled down to
+fit the window (the page clips its overflow, so a laptop screen shorter than
+1080px could not reach the footer), and opens it in the default browser (`open` on
 macOS, `explorer.exe` on Windows, `xdg-open` on Linux; skipped under
 `CLAUDE_CARBON_NO_OPEN`, CI or without a display, where the line gives the page's
 path instead), prints one line saying there is no PNG and a screenshot is enough,
-with the install command, stamps `last-card-month` like the PNG path and exits 0.
+with the install command, stamps `last-card-month` and exits 0. The PNG path now
+stamps it only when at least one PNG was written.
 The `Totals since ...` line now comes before the Playwright lookup, so both paths
 print it. `CLAUDE_CARBON_PLAYWRIGHT_CORE` names a `playwright-core` directory
 outright. The PNG path is unchanged.
@@ -66,8 +69,10 @@ in smaller grey text. The TokenClimate team-view mention is unchanged.
 `skills/carbon-card/SKILL.md` describes the browser path.
 `tests/run-portability-tests.sh` runs the script with no `playwright-core` and with
 one whose Chromium fails to launch (exit 0, the FR summary handed to a faked
-opener, month stamped, Totals line first, no PNG; under `CLAUDE_CARBON_NO_OPEN`
-nothing spawned and the path printed), and pins the footer strings of both
+opener, month stamped, Totals line first, no PNG, the page in the export folder
+with its logo inline and its fit script, no temp page left; under
+`CLAUDE_CARBON_NO_OPEN` nothing spawned and the path printed), with one whose
+exports all fail (month not stamped), and pins the footer strings of both
 templates in both languages.
 
 ### feat: the monthly nudge gives the closed month's total (1.9.0)
@@ -76,15 +81,17 @@ The status line nudge now reads `📊 September: 84.2kg CO₂ · /carbon-card` i
 of `📊 September wrapped · /carbon-card`. The figure is the previous month's total
 from `carbon.db`, read only (the query of the card's monthly bar, excluded rows
 left out), in the status line's own CO2 format: whole grams in `g CO₂`, one
-decimal in `kg CO₂` from 1000 g. It is computed once per month and cached in
-`last-month-total` under the config dir (`YYYY-MM grams`, the key being the month
-the figure is for); a locked or unreadable database is not cached and is retried.
+decimal in `kg CO₂` from 1000 g. It is computed once a day and cached in
+`last-month-total` under the config dir (`YYYY-MM-DD grams`, the key being the day
+it was read): the Stop hook keeps adding to a session under its start date, so a
+session running across midnight on the last day still grows the closed month after
+the 1st. A locked or unreadable database is not cached and is retried.
 A month with fewer than 7 distinct days of sessions caches `-` and shows no nudge.
 The window (day 1 to `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`), the opt-out
 (`CLAUDE_CARBON_NO_CARD_NUDGE`) and the `last-card-month` stamp are unchanged.
 `run-install-tests.sh` drives the status line on throwaway databases: figure shown
 with excluded and current-month rows left out, the cache written and reused with
-no new query, a cache for another month recomputed, fewer than 7 days giving no
+no new query the same day, a cache from another day recomputed, fewer than 7 days giving no
 nudge, no database giving neither nudge nor cache, the threshold, the stamp and
 the opt-out.
 

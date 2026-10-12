@@ -291,7 +291,8 @@ check "drift: CLAUDE_CARBON_NO_DRIFT_CHECK honoured" "no" "$(CLAUDE_CARBON_NO_DR
 
 # Early in the month the status line gives the month just closed with its total and
 # points at /carbon-card. The total is the card's monthly bar (excluded rows left
-# out), formatted like the session figure, read once and cached in last-month-total.
+# out), formatted like the session figure, read once a day and cached in
+# last-month-total.
 # A month with fewer than 7 days of sessions shows nothing. A card generated this
 # month (last-card-month stamp) clears it, the day threshold ends it, the opt-out
 # silences it. The day is forced through the threshold: 31 means "today qualifies",
@@ -304,6 +305,7 @@ else
   if [ "$PREV_M" -eq 0 ]; then PREV_M=12; PREV_Y="$((PREV_Y - 1))"; fi
   PREV_MONTH="$(printf '%04d-%02d' "$PREV_Y" "$PREV_M")"
   PREV_NAME="$(cc_prev_month_name "$THIS_MONTH")"
+  TODAY_KEY="$(date +%Y-%m-%d)"
 
   # nudge_db <cfg> <days>: one 1500 g session on each of the first <days> days of the
   # closed month, plus an excluded 99999 g session on another day and a 50000 g
@@ -327,14 +329,16 @@ else
   CFG="${TMPROOT}/nudge"
   nudge_db "$CFG" 7
   check "nudge: closed month and its total, in English" "📊 ${PREV_NAME}: 10.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
-  check "nudge: total cached with its month key"        "${PREV_MONTH} 10500" "$(cat "${CFG}/claude-carbon/last-month-total" 2>/dev/null)"
+  check "nudge: total cached under today's date"       "${TODAY_KEY} 10500" "$(cat "${CFG}/claude-carbon/last-month-total" 2>/dev/null)"
   # A row added after the first read is not seen: the query is not run again.
   sqlite3 "${CFG}/claude-carbon/carbon.db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('late', 'p', 'claude-opus-5', 5000.0, '${PREV_MONTH}-09T10:00:00Z');"
   check "nudge: cache reused, query not rerun"          "📊 ${PREV_NAME}: 10.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
-  printf '%s 840\n' "$PREV_MONTH" > "${CFG}/claude-carbon/last-month-total"
+  printf '%s 840\n' "$TODAY_KEY" > "${CFG}/claude-carbon/last-month-total"
   check "nudge: figure read from the cache, grams below 1 kg" "📊 ${PREV_NAME}: 840g CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
-  printf '1999-01 840\n' > "${CFG}/claude-carbon/last-month-total"
-  check "nudge: a cache for another month is recomputed" "📊 ${PREV_NAME}: 15.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  # A cache from an earlier day is read again: a session still running across the
+  # 1st keeps adding to the closed month under its start date.
+  printf '%s-01 840\n' "$PREV_MONTH" > "${CFG}/claude-carbon/last-month-total"
+  check "nudge: a cache from another day is recomputed" "📊 ${PREV_NAME}: 15.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
   check "nudge: past the day threshold it is gone"      "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=0 nudge_line)"
   date +%Y-%m > "${CFG}/claude-carbon/last-card-month"
   check "nudge: a card this month clears it"            "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
@@ -344,7 +348,7 @@ else
   CFG="${TMPROOT}/nudge-thin"
   nudge_db "$CFG" 6
   check "nudge: fewer than 7 days, no nudge"            "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
-  check "nudge: fewer than 7 days is cached too"        "${PREV_MONTH} -" "$(cat "${CFG}/claude-carbon/last-month-total" 2>/dev/null)"
+  check "nudge: fewer than 7 days is cached too"        "${TODAY_KEY} -" "$(cat "${CFG}/claude-carbon/last-month-total" 2>/dev/null)"
 
   CFG="${TMPROOT}/nudge-nodb"
   mkdir -p "${CFG}/claude-carbon"

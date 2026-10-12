@@ -400,7 +400,24 @@ if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && comm
     is "${what}: Totals line, then the browser line" "Totals|No" \
       "$(printf '%s\n' "$OUT" | grep -E '^(Totals since|No Chromium)' | cut -d' ' -f1 | paste -sd'|' -)"
     is "${what}: no PNG written"                  "0" "$(find "${FAKE_HOME}/out" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+    # The browser copy sits in the export folder (a snap browser cannot read /tmp,
+    # and the system cleans it), carries its logo and fits itself to the window.
+    PAGE="$(find "${FAKE_HOME}/out" -name 'claude-carbon-summary-fr-*.html' 2>/dev/null | head -1)"
+    is "${what}: page in the export folder"       "yes" "$([ -n "$PAGE" ] && echo yes || echo no)"
+    is "${what}: logo inline, fit script in"      "0|1|1" \
+      "$(grep -c 'src="logo.png"' "$PAGE" 2>/dev/null)|$(grep -c 'data:image/png;base64,' "$PAGE" 2>/dev/null)|$(grep -c 'function ccFit' "$PAGE" 2>/dev/null)"
+    is "${what}: no temp page left"               "0" "$(find "${FAKE_HOME}/tmp" -name 'claude-carbon-*.html' 2>/dev/null | wc -l | tr -d ' ')"
+    rm -f "${FAKE_HOME}/out/"*.html
   done
+
+  # Chromium starts but every export fails: no card, so the month is not stamped
+  # and the status line nudge stays up.
+  NO_SHOT="${FAKE_HOME}/playwright-noshot"
+  mkdir -p "$NO_SHOT"
+  echo 'const page = { goto: async () => {}, waitForTimeout: async () => {}, screenshot: async () => {} }; exports.chromium = { launch: async () => ({ newPage: async () => page, close: async () => {} }) };' > "${NO_SHOT}/index.js"
+  rm -f "${FAKE_HOME}/cfg/claude-carbon/last-card-month"
+  OUT="$(CARD_NO_OPEN=1 card "$NO_SHOT")"
+  is "exports all fail: month not stamped"      "none" "$(cat "${FAKE_HOME}/cfg/claude-carbon/last-card-month" 2>/dev/null || echo none)"
 
   : > "$MARK"
   OUT="$(CARD_NO_OPEN=1 card "${FAKE_HOME}/absent")"

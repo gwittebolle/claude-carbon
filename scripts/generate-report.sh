@@ -512,17 +512,37 @@ pw.chromium.launch({ timeout: 30000 }).then((b) => b.close()).then(() => process
 
 # Without Playwright or Chromium the card still exists: the summary page is laid out
 # at 1080x1080, so it opens in the browser and a screenshot of it is the card.
+# The browser gets its own copy, in the export folder next to where the PNGs would
+# be: the temp dir is cleaned by the system, and a snap browser (Ubuntu's default
+# Firefox) cannot read /tmp at all. The copy carries the logo inline and scales
+# itself down to the window: the page clips its overflow, so on a laptop screen
+# shorter than 1080px the footer was out of reach, even by scrolling.
 if [ -z "$PW_PATH" ] || ! chromium_ready; then
-  if [ "$LEAD_LANG" = "fr" ]; then
-    LEAD_HTML="$TMP_SUMMARY_FR"
-    rm -f "$TMP_SUMMARY_EN" "$TMP_DETAILED_FR" "$TMP_DETAILED_EN"
-  else
-    LEAD_HTML="$TMP_SUMMARY_EN"
-    rm -f "$TMP_SUMMARY_FR" "$TMP_DETAILED_FR" "$TMP_DETAILED_EN"
-  fi
-  # The page loads logo.png from its own folder. It stays on disk: the browser reads
-  # it after this script has exited.
-  cp -f "$TEMPLATE_DIR/logo.png" "${CC_TMP}/logo.png" 2>/dev/null || true
+  if [ "$LEAD_LANG" = "fr" ]; then LEAD_TMP="$TMP_SUMMARY_FR"; else LEAD_TMP="$TMP_SUMMARY_EN"; fi
+  LEAD_HTML="$EXPORT_DIR/claude-carbon-summary-${LEAD_LANG}-${FILE_TAG}.html"
+  node -e '
+const fs = require("fs");
+const [src, logo, dst] = process.argv.slice(1);
+let html = fs.readFileSync(src, "utf8");
+try {
+  const uri = "data:image/png;base64," + fs.readFileSync(logo).toString("base64");
+  html = html.split("src=\"logo.png\"").join("src=\"" + uri + "\"");
+} catch (e) {}
+const fit = `<style>html{background:#e9e4dd}body{position:fixed;top:0;left:0;transform-origin:0 0}</style>
+<script>
+function ccFit(){var s=Math.min(1,innerWidth/1080,innerHeight/1080),b=document.body;b.style.transform="scale("+s+")";b.style.left=Math.max(0,(innerWidth-1080*s)/2)+"px";}
+addEventListener("DOMContentLoaded",ccFit);addEventListener("resize",ccFit);
+</script>
+`;
+fs.writeFileSync(dst, html.replace("</head>", fit + "</head>"));
+' "$(cc_native_path "$LEAD_TMP")" "$(cc_native_path "$TEMPLATE_DIR/logo.png")" "$(cc_native_path "$LEAD_HTML")" 2>/dev/null || {
+    # No copy (export folder not writable): the temp page, with the logo beside it.
+    LEAD_HTML="$LEAD_TMP"
+    cp -f "$TEMPLATE_DIR/logo.png" "${CC_TMP}/logo.png" 2>/dev/null || true
+  }
+  for f in "$TMP_SUMMARY_FR" "$TMP_SUMMARY_EN" "$TMP_DETAILED_FR" "$TMP_DETAILED_EN"; do
+    [ "$f" = "$LEAD_HTML" ] || rm -f "$f"
+  done
   stamp_card_month
   PW_HINT="PNG export: npm install -g playwright-core && npx playwright install chromium"
   if open_in_browser "$LEAD_HTML"; then
@@ -606,11 +626,13 @@ const { chromium } = require('$(cc_native_path "$PW_PATH")');
     local size
     size="$(du -h "$output" | cut -f1 | tr -d ' ')"
     echo "  ${label}: $(cc_native_path "$output") (${size})"
+    CARD_OK=1
   else
     echo "  ${label}: FAILED" >&2
   fi
 }
 
+CARD_OK=""
 if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "fr" ]; then
   export_png "$TMP_SUMMARY_FR" "$EXPORT_DIR/claude-carbon-summary-fr-${FILE_TAG}.png" "Summary FR"
   export_png "$TMP_DETAILED_FR" "$EXPORT_DIR/claude-carbon-detailed-fr-${FILE_TAG}.png" "Detailed FR"
@@ -621,7 +643,11 @@ if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "en" ]; then
   export_png "$TMP_DETAILED_EN" "$EXPORT_DIR/claude-carbon-detailed-en-${FILE_TAG}.png" "Detailed EN"
 fi
 
-stamp_card_month
+# Stamped only when a PNG came out: a run where every export failed leaves the
+# nudge up, since the user has no card to share.
+if [ -n "$CARD_OK" ]; then
+  stamp_card_month
+fi
 
 # Put the card in front of the user: the folder opens in the file manager, with
 # the summary card selected where the platform allows it. CLAUDE_CARBON_NO_OPEN
