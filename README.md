@@ -43,6 +43,8 @@ claude-carbon is an open source Claude Code plugin that tracks the carbon footpr
 
 3. Quit the desktop app completely, open it again, and start a new session in the Code tab. Under the prompt you now see `This session: 3.6 gCO₂ · $0.12` (`Cette session : 3,6 gCO₂ · 0,12 $` in French). `/carbon-report` and `/carbon-card` work from there too.
 
+   The `$` figure is what the session would cost at Anthropic's API list prices. On a Pro or Max subscription you do not pay it: it shows the value of what you used.
+
 **If the install stops**
 
 - **macOS opens a window about "command line developer tools".** That is `git`, which the installer needs and a Mac without developer tools does not have yet. Click **Install**, wait until it finishes (a few minutes), then tell Claude: "Run the claude-carbon install again."
