@@ -61,7 +61,7 @@ Accurate on every plan, including Max 20x.
 
 **3. Use the slash commands:**
 
-- `/carbon-report` - text report with totals, equivalences, top sessions
+- `/carbon-report` - text report with totals, a car equivalent, this year's share of a 2 t per-person budget, top sessions
 - `/carbon-card` - generate shareable PNG report cards (PNG export needs `playwright-core`, see [Dependencies](#dependencies); without it the card opens in your browser)
 - `/carbon-update` - update to the latest version and re-price history (see [Updating](#updating))
 
@@ -253,7 +253,7 @@ Sessions recorded since September 2026 are re-derived model by model, exactly. O
 
 | Command          | What it does                                        |
 | ---------------- | --------------------------------------------------- |
-| `/carbon-report` | Text report with totals, equivalences, top sessions |
+| `/carbon-report` | Text report with totals, car equivalent, share of a 2 t budget, top sessions |
 | `/carbon-card`   | Generate shareable PNG report cards                 |
 | `/carbon-badge`  | Shields.io badge of your total footprint for your READMEs |
 | `/carbon-pr`     | Post the dev footprint of the current branch on its PR |
@@ -356,7 +356,9 @@ Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), an arXiv pr
 - Carbon intensity uses the AWS region grid (location-based, 0.287 kgCO2e/kWh), not real-time grid data. This sits at the low end of the location-based range; the US national average is ~380 g/kWh.
 - Anthropic does not publish Scope 1, 2, or 3 emissions. These estimates are independent and based on academic research, not provider data.
 
-Report equivalences follow your locale, since a car and a kWh differ by ~2x between countries: ADEME/SNCF factors on a French or undetected locale, EPA ones in miles on a US locale, world-average ones otherwise (200 gCO2/km by car, 8.7 g per smartphone charge). Force a set with `CLAUDE_CARBON_LOCALE` (`fr`, `us`, `world`, or any locale string). The factors live in `data/factors.json` under `equivalences`.
+The car equivalent in reports and cards follows your locale, since a km by car emits up to ~1.7x more in one country than in another: ADEME's 142 gCO2e/km on a French or undetected locale, EPA's 393 gCO2e/mile on a US locale, a 200 gCO2/km world average otherwise. Force a set with `CLAUDE_CARBON_LOCALE` (`fr`, `us`, `world`, or any locale string). The factors live in `data/factors.json` under `equivalences`.
+
+`/carbon-report` also gives this calendar year's total as a share of 2 tCO2e, the 2050 per-person target for a whole footprint (Carbone 4, *Faire sa part ?*, 2019). It is there for scale: the 2 t covers everything a person emits in a year, AI included. Sources and caveats: [METHODOLOGY.md](METHODOLOGY.md#annual-budget-line).
 
 Factors are editable in `data/factors.json`. See [METHODOLOGY.md](METHODOLOGY.md) for the full scientific basis, formula, and equivalences.
 

@@ -69,6 +69,18 @@ jobs:
       - name: Assert badge URL and snippet against fixture databases
         run: bash tests/run-badge-tests.sh
 
+  report:
+    name: carbon-report output
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # The /carbon-report skill's bash block against throwaway fixture DBs via
+      # CLAUDE_CARBON_DB: car row per locale set, budget share on the calendar year.
+      - name: Assert the car equivalent and the annual budget line
+        run: bash tests/run-report-tests.sh
+
   pr-report:
     name: carbon-pr pipeline
     runs-on: ubuntu-latest
@@ -173,6 +185,10 @@ jobs:
       - name: Badge output
         if: always()
         run: bash tests/run-badge-tests.sh
+
+      - name: carbon-report output
+        if: always()
+        run: bash tests/run-report-tests.sh
 
       - name: carbon-pr pipeline
         if: always()
