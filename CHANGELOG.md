@@ -65,7 +65,7 @@ The footer of the four card templates reads `Mesurez la vôtre : claude-carbon s
 (non-breaking space before the colon) and `Measure yours: claude-carbon on GitHub`, the
 name in the card's orange, with `github.com/gwittebolle/claude-carbon` below
 in smaller grey text. The TokenClimate team-view mention is unchanged.
-`skills/carbon-card/SKILL.md` describes the browser path.
+`skills/carbon-card/SKILL.md` describes the browser path. After the card, the skill now encourages posting it and offers to help write the post, instead of writing a draft unasked.
 `tests/run-portability-tests.sh` runs the script with no `playwright-core`, with
 one that fails to load and with one whose Chromium fails to launch, found through
 `NODE_PATH` as node finds any module (exit 0, the FR summary handed to a faked
