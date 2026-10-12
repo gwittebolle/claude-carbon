@@ -29,8 +29,9 @@ into a `Raster` in the terminal, a CSS animation inside an `Svg` in the desktop
 app, still under reduced motion. Below it, warming
 stripes of past sessions, the running one included with its live total: one
 stripe per session, week (from Monday) or month, over 7, 30 or 90 days, 12 months
-or everything, coloured against the median of the stripes with sessions in them
-(uncoloured under three), the one still filling left out of that median; at most
+or everything; by session coloured against the molecule's own median, by week or
+month against the median of the periods shown with sessions in them (uncoloured
+under three), the one still filling left out of it; at most
 600 stripes in the desktop app and 512 in the terminal, the most recent. Range and
 step are buttons; the choice is kept in
 `$.store` for the next session. The pane opens without the keyboard, so typing

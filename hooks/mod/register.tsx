@@ -666,10 +666,11 @@ export const register: Register = (on, options) => {
         ? Math.min(RASTER_MAX_COLUMNS, Math.max(10, e.props.bodyColumns - 2))
         : DESKTOP_MAX_STRIPES;
       const shown = list.slice(-room);
-      // The colours measure the stripes shown against each other, the one still
-      // filling (this week, this month, the running session) left out of the median.
-      const isFilling = view.step !== "session" || isLive;
-      const bm = barMedian(isFilling ? shown.slice(0, -1) : shown);
+      // By session, the stripes are coloured against the molecule's own median, that of
+      // all past sessions: one median on screen. By week or month, against the median
+      // of the periods shown, the one still filling (this week, this month) left out.
+      const bm =
+        view.step === "session" ? sm : barMedian(shown.slice(0, -1));
       const stripes: Stripe[] = shown.map((b) => ({
         color:
           b.grams > 0 ? (bm === null ? NEUTRAL : colorOf(classOf(b.grams, bm))) : null,
