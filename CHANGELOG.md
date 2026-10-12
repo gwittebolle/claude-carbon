@@ -1,8 +1,8 @@
 # Changelog
 
-## 2026-10-10
+## 2026-10-12
 
-### feat: a Claude Code mod in the plugin shows the CO2 of each answer
+### feat: a Claude Code mod in the plugin shows the CO2 of each answer (1.9.0)
 
 The plugin now holds a Claude Code mod (`hooks/mod/`, declared in
 `hooks/hooks.json` beside the bash hooks; Claude Code 2.1.287 or later, 2.1.286
