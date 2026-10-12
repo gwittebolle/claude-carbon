@@ -36,17 +36,21 @@ gh api "repos/$REPO/traffic/popular/paths" | jq -c --arg d "$DATE" '{date: $d, p
 # twice. The zero days before the package first appears are left out.
 NPM_FILE="$STATS_DIR/npm.json"
 [ -f "$NPM_FILE" ] || echo '{"downloads":{}}' > "$NPM_FILE"
-# A failed fetch skips npm and keeps the GitHub snapshot, whose window is short.
-if NPM="$(curl -fsS --max-time 30 "https://api.npmjs.org/downloads/range/last-year/$NPM_PACKAGE")"; then
-  jq --argjson n "$NPM" '
+# A failed fetch, or an answer that is not the expected JSON, skips npm and keeps
+# the GitHub snapshot, whose window is short. No temp file is left for the
+# workflow's `git add stats/` to commit.
+if NPM="$(curl -fsS --max-time 30 "https://api.npmjs.org/downloads/range/last-year/$NPM_PACKAGE")" \
+  && jq --argjson n "$NPM" '
     ([(.downloads | keys | min), ($n.downloads | map(select(.downloads > 0)) | .[0].day)]
       | map(select(. != null)) | min) as $from
   | .downloads = (.downloads + ($n.downloads
       | map(select($from != null and .day >= $from) | {(.day): {count: .downloads}})
       | add // {}))
-  ' "$NPM_FILE" > "$NPM_FILE.tmp" && mv "$NPM_FILE.tmp" "$NPM_FILE"
+  ' "$NPM_FILE" > "$NPM_FILE.tmp"; then
+  mv "$NPM_FILE.tmp" "$NPM_FILE"
 else
-  echo "npm downloads: fetch failed, skipped" >&2
+  rm -f "$NPM_FILE.tmp"
+  echo "npm downloads: fetch failed or unexpected answer, skipped" >&2
 fi
 
 echo "Snapshot done: $(jq '.views | length' "$FILE") days of views, $(jq '.clones | length' "$FILE") days of clones, $(jq '.downloads | length' "$NPM_FILE") days of npm downloads."

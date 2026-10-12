@@ -102,7 +102,8 @@ the opt-out.
 `api.npmjs.org/downloads/range` endpoint, no token) and merges them per day into
 `stats/npm.json`, the latest fetch winning on days already stored, so a rerun
 never counts a day twice. The zero days before the package first appears are left
-out. A failed npm fetch is skipped and the GitHub snapshot is still written. It
+out. A failed npm fetch, or an answer that is not the expected JSON, is skipped,
+with no temp file left in `stats/`, and the GitHub snapshot is still written. It
 runs in the same weekly `.github/workflows/traffic.yml` job, whose commit step
 already adds `stats/`.
 
