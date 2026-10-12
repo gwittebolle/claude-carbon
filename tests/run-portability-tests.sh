@@ -8,7 +8,8 @@
 # absence of dependencies Git for Windows does not ship, and the two places where
 # the same logic is written twice and could silently drift apart.
 #
-# Runs on every platform. Dependencies: bash, awk.
+# Runs on every platform. Dependencies: bash, awk (the /carbon-card run in 7b also
+# needs sqlite3, node and jq, and skips without them).
 set -uo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -324,7 +325,9 @@ done
 reveal() ( # reveal <os> <file>; REVEAL_NO_OPEN / REVEAL_CI set by the caller stand in for the real variables
   # shellcheck source=scripts/portable-lib.sh
   . "${REPO_DIR}/scripts/portable-lib.sh"
-  CC_OS="$1"; CC_CYGPATH=""
+  # Both read by cc_reveal, which shellcheck does not follow into the library.
+  # shellcheck disable=SC2034
+  CC_OS="$1" CC_CYGPATH=""
   PATH="${FAKE_BIN}:/usr/bin:/bin"
   # Empty is unset to cc_reveal, and it shields the run from a real CI variable.
   export DISPLAY=:0 CLAUDE_CARBON_NO_OPEN="${REVEAL_NO_OPEN:-}" CI="${REVEAL_CI:-}"
@@ -353,6 +356,124 @@ REVEAL_CI=true reveal darwin "$CARD" >/dev/null
 is "CI: nothing spawned"                    "" "$(cat "$MARK")"
 is "missing file: exits 0, nothing spawned" "rc=0" "$(reveal darwin "${FAKE_HOME}/absent.png")"
 is "missing file: log still empty"          "" "$(cat "$MARK")"
+
+# ── 7b. /carbon-card without Chromium ────────────────────────────────────────
+# No playwright-core, or one whose Chromium cannot start: the script must not end
+# in an error. The summary page opens in the browser (the same fakes as above
+# stand in for open, explorer.exe and xdg-open), the month is stamped for the
+# status line, and the Totals line is printed first. The script finds its
+# playwright-core the way it does for a user: node's resolution, which NODE_PATH
+# points at a stub, then the global npm root (a fake npm answers an empty one) and
+# HOME (a throwaway one). Only the fixed Homebrew paths cannot be faked: with a
+# Playwright there, the no-playwright-core case is skipped.
+echo ""
+echo "/carbon-card without Chromium (opener faked on PATH)"
+
+if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+  CARD_DB="${FAKE_HOME}/carbon.db"
+  sqlite3 "$CARD_DB" "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, methodology_version INTEGER DEFAULT 2, excluded INTEGER DEFAULT 0, git_branch TEXT DEFAULT '');"
+  sqlite3 "$CARD_DB" "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, started_at) VALUES ('c1', 'p', 'claude-opus-5', 1000, 100, 1.5, 2500.0, '$(date +%Y-%m)-01T10:00:00Z');"
+  # Each NODE_PATH dir below holds a playwright-core, or none: one that fails to
+  # load, one that loads but whose Chromium will not start.
+  NO_PW="${FAKE_HOME}/np-absent"
+  BROKEN_PW="${FAKE_HOME}/np-broken"
+  NO_CHROMIUM="${FAKE_HOME}/np-no-chromium"
+  mkdir -p "$NO_PW" "${BROKEN_PW}/playwright-core" "${NO_CHROMIUM}/playwright-core" "${FAKE_HOME}/tmp" "${FAKE_HOME}/cfg" "${FAKE_HOME}/card-bin"
+  echo 'throw new Error("Cannot find module playwright-core/lib");' > "${BROKEN_PW}/playwright-core/index.js"
+  echo 'exports.chromium = { launch: () => Promise.reject(new Error("Executable does not exist")) };' > "${NO_CHROMIUM}/playwright-core/index.js"
+  printf '#!/usr/bin/env bash\necho "%s"\n' "${FAKE_HOME}/npm-global" > "${FAKE_HOME}/card-bin/npm"
+  chmod +x "${FAKE_HOME}/card-bin/npm"
+
+  card() ( # card <NODE_PATH dir>; CARD_NO_OPEN set by the caller stands in for CLAUDE_CARBON_NO_OPEN
+    PATH="${FAKE_HOME}/card-bin:${FAKE_BIN}:${PATH}"
+    # Out of the repo, so node resolves nothing from a node_modules above it.
+    cd "$FAKE_HOME" || exit 1
+    export HOME="$FAKE_HOME" TMPDIR="${FAKE_HOME}/tmp" DISPLAY=:0 CI="" \
+      CLAUDE_CONFIG_DIR="${FAKE_HOME}/cfg" CLAUDE_CARBON_DB="$CARD_DB" \
+      CLAUDE_CARBON_EXPORT_DIR="${FAKE_HOME}/out" CLAUDE_CARBON_LOCALE=fr_FR \
+      NODE_PATH="$1" CLAUDE_CARBON_NO_OPEN="${CARD_NO_OPEN:-}"
+    bash "${REPO_DIR}/scripts/generate-report.sh" 2>&1
+    echo "rc=$?"
+  )
+  # The lookup's two paths no test can fake.
+  HOMEBREW_PW=""
+  for d in /opt/homebrew/lib/node_modules/playwright-core /opt/homebrew/lib/node_modules/playwright/node_modules/playwright-core; do
+    [ -d "$d" ] && HOMEBREW_PW="$d"
+  done
+  CARD_CASES="$BROKEN_PW $NO_CHROMIUM"
+  if [ -z "$HOMEBREW_PW" ]; then
+    CARD_CASES="$NO_PW $CARD_CASES"
+  else
+    echo "  skip no playwright-core: one is installed at $HOMEBREW_PW"
+  fi
+  opened() { # what the opener was handed, once a backgrounded xdg-open has had up to 2s to land
+    for _ in $(seq 1 20); do [ -s "$MARK" ] && break; sleep 0.1; done
+    case "$(cat "$MARK")" in *claude-carbon-summary-fr-*.html) echo "summary fr" ;; "") echo "nothing" ;; *) cat "$MARK" ;; esac
+  }
+
+  for pw in $CARD_CASES; do
+    case "$pw" in
+      *absent) what="no playwright-core" ;;
+      *broken) what="playwright-core does not load" ;;
+      *) what="Chromium does not start" ;;
+    esac
+    : > "$MARK"
+    rm -f "${FAKE_HOME}/cfg/claude-carbon/last-card-month"
+    OUT="$(card "$pw")"
+    is "${what}: exits 0"                         "rc=0" "$(printf '%s\n' "$OUT" | tail -1)"
+    is "${what}: the browser gets the FR summary" "summary fr" "$(opened)"
+    is "${what}: month stamped"                   "$(date +%Y-%m)" "$(cat "${FAKE_HOME}/cfg/claude-carbon/last-card-month" 2>/dev/null)"
+    is "${what}: Totals line, then the browser line" "Totals|No" \
+      "$(printf '%s\n' "$OUT" | grep -E '^(Totals since|No Chromium)' | cut -d' ' -f1 | paste -sd'|' -)"
+    is "${what}: no PNG written"                  "0" "$(find "${FAKE_HOME}/out" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+    # The browser copy sits in the export folder (a snap browser cannot read /tmp,
+    # and the system cleans it), carries its logo and fits itself to the window.
+    PAGE="$(find "${FAKE_HOME}/out" -name 'claude-carbon-summary-fr-*.html' 2>/dev/null | head -1)"
+    is "${what}: page in the export folder"       "yes" "$([ -n "$PAGE" ] && echo yes || echo no)"
+    is "${what}: logo inline, fit script in"      "0|1|1" \
+      "$(grep -c 'src="logo.png"' "$PAGE" 2>/dev/null)|$(grep -c 'data:image/png;base64,' "$PAGE" 2>/dev/null)|$(grep -c 'function ccFit' "$PAGE" 2>/dev/null)"
+    is "${what}: no temp page left"               "0" "$(find "${FAKE_HOME}/tmp" -name 'claude-carbon-*.html' 2>/dev/null | wc -l | tr -d ' ')"
+    rm -f "${FAKE_HOME}/out/"*.html
+  done
+
+  # Chromium starts but every export fails: no card, so the month is not stamped
+  # and the status line nudge stays up.
+  NO_SHOT="${FAKE_HOME}/np-no-shot"
+  mkdir -p "${NO_SHOT}/playwright-core"
+  echo 'const page = { goto: async () => {}, waitForTimeout: async () => {}, screenshot: async () => {} }; exports.chromium = { launch: async () => ({ newPage: async () => page, close: async () => {} }) };' > "${NO_SHOT}/playwright-core/index.js"
+  rm -f "${FAKE_HOME}/cfg/claude-carbon/last-card-month"
+  OUT="$(CARD_NO_OPEN=1 card "$NO_SHOT")"
+  is "exports all fail: month not stamped"      "none" "$(cat "${FAKE_HOME}/cfg/claude-carbon/last-card-month" 2>/dev/null || echo none)"
+
+  : > "$MARK"
+  OUT="$(CARD_NO_OPEN=1 card "$NO_CHROMIUM")"
+  is "CLAUDE_CARBON_NO_OPEN: nothing spawned" "nothing" "$(opened)"
+  case "$OUT" in
+    *"No Chromium, so no PNG: open "*claude-carbon-summary-fr-*.html" in a browser"*) ok "CLAUDE_CARBON_NO_OPEN: the line names the page instead" ;;
+    *) bad "CLAUDE_CARBON_NO_OPEN: the line names the page instead" "$OUT" ;;
+  esac
+else
+  echo "  skip (sqlite3, node and jq are needed)"
+fi
+
+# ── 7c. The card's footer: a command to type, the repo under it ──────────────
+echo ""
+echo "card footer"
+
+NBSP="$(printf '\302\240')"
+# footer_text <template> <class>: the text of that footer element, tags stripped,
+# &nbsp; turned into the real character.
+footer_text() {
+  grep -m1 "class=\"$2\"" "$1" | sed -e 's/<[^>]*>//g' -e "s/&nbsp;/${NBSP}/g" -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+for t in report-summary report-detailed; do
+  is "${t} FR: footer"          "Mesurez la vôtre${NBSP}: claude-carbon sur GitHub" "$(footer_text "${REPO_DIR}/templates/${t}.html" cta-label)"
+  is "${t} EN: footer"          "Measure yours: claude-carbon on GitHub"     "$(footer_text "${REPO_DIR}/templates/${t}-en.html" cta-label)"
+  is "${t} FR: repo kept"       "github.com/gwittebolle/claude-carbon"      "$(footer_text "${REPO_DIR}/templates/${t}.html" cta-link)"
+  is "${t} EN: repo kept"       "github.com/gwittebolle/claude-carbon"      "$(footer_text "${REPO_DIR}/templates/${t}-en.html" cta-link)"
+  is "${t} FR: team view kept"  "vue équipe · tokenclimate.com"             "$(footer_text "${REPO_DIR}/templates/${t}.html" team-link)"
+  is "${t} EN: team view kept"  "team view · tokenclimate.com"              "$(footer_text "${REPO_DIR}/templates/${t}-en.html" team-link)"
+done
 
 rm -rf "$FAKE_HOME"
 

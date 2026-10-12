@@ -179,3 +179,7 @@ for SKILL_NAME in carbon-report carbon-card carbon-update carbon-badge carbon-pr
     echo "  /${SKILL_NAME}: installed"
   fi
 done
+
+# The mod (hooks/mod), as a copy Claude Code loads from skills/ that carries no command hook,
+# so the hooks above never run twice. See install-mod.sh; it never fails the install.
+bash "${SCRIPT_DIR}/install-mod.sh" || true

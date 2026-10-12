@@ -50,7 +50,7 @@ claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 
 
 Segments, left to right: project + git branch, model + context window %, session cost + CO2, 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
 
-> **Where the CO2 shows up.** The status line is a feature of the Claude Code terminal UI. It is displayed only when you run `claude` in a terminal, including the integrated terminal of VS Code or JetBrains. The IDE extensions' chat panel has no status line at all, so nothing is displayed there even though the hooks still run and your sessions are recorded: `/carbon-report` covers them. If you use the VS Code panel and want the live CO2, open a terminal in VS Code (`` Ctrl+` ``) and run `claude` from there. The web app (claude.ai/code) and the desktop app run neither the status line nor the hooks, so nothing is displayed or recorded there.
+> **Where the CO2 shows up.** The status line is a feature of the Claude Code terminal UI. It is displayed only when you run `claude` in a terminal, including the integrated terminal of VS Code or JetBrains. The IDE extensions' chat panel has no status line at all, so nothing is displayed there even though the hooks still run and your sessions are recorded: `/carbon-report` covers them. If you use the VS Code panel and want the live CO2, open a terminal in VS Code (`` Ctrl+` ``) and run `claude` from there. The web app (claude.ai/code) runs neither the status line nor the hooks, so nothing is displayed or recorded there. The desktop app does not display the status line either; the plugin's [mod](#the-co2-of-each-answer-mod) draws the CO2 in its Code tab.
 
 **5h quota source.** The percentage comes directly from Anthropic's `/api/oauth/usage` endpoint (the same data Claude Code displays in `/usage`). No heuristic, no token-limit file to seed. Two sources in order:
 
@@ -62,7 +62,7 @@ Accurate on every plan, including Max 20x.
 **3. Use the slash commands:**
 
 - `/carbon-report` - text report with totals, equivalences, top sessions
-- `/carbon-card` - generate shareable PNG report cards (requires `playwright-core`, see [Dependencies](#dependencies))
+- `/carbon-card` - generate shareable PNG report cards (PNG export needs `playwright-core`, see [Dependencies](#dependencies); without it the card opens in your browser)
 - `/carbon-update` - update to the latest version and re-price history (see [Updating](#updating))
 
 ## Example report
@@ -77,8 +77,16 @@ OneDrive-redirected one is honoured) and the folder opens in your file manager, 
 card selected on macOS. `CLAUDE_CARBON_EXPORT_DIR` picks another folder;
 `CLAUDE_CARBON_NO_OPEN=1` skips the opening.
 
-From the 1st to the 10th of each month the status line ends with `📊 August wrapped · /carbon-card`:
-the month just closed has its bar on the card, under the running total. Generating a card
+Without Playwright or Chromium there is no PNG and the command still finishes: the summary
+card is saved as an HTML page in the same folder and opens in your browser, scaled to fit the
+window, and a screenshot of it does the job.
+The card's footer says where to find the tool, `claude-carbon sur GitHub` / `claude-carbon on GitHub`, with the address below it.
+
+From the 1st to the 10th of each month the status line ends with `📊 September: 84.2kg CO₂ · /carbon-card`:
+the total of the month just closed, the bar the card draws for it, in the same format as the
+session figure. It is read from carbon.db once a day while the nudge shows, and kept in
+`~/.claude/claude-carbon/last-month-total`. A month with fewer than 7 days of sessions gets no
+nudge, so a fresh install is not pushed to share a near-empty card. Generating a card
 clears it for the month; it goes quiet on its own after the 10th. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
 moves the cut-off, `CLAUDE_CARBON_NO_CARD_NUDGE=1` removes the nudge. Nothing is posted anywhere:
 sharing stays a human decision.
@@ -289,6 +297,33 @@ It is one developer's total, so it belongs in your profile README or a personal 
 
 Numbers follow the locale the report uses (`fr` prints `12,4 kg`, `us` and the world default print `12.4 kg`); `CLAUDE_CARBON_LOCALE` forces a set.
 
+## The CO2 of each answer (mod)
+
+The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that shows the CO2 of each answer when it ends, computed locally with the same formula and factors as the status line.
+
+- **Terminal**, including the integrated terminal of an editor and the JetBrains plugin: at the right end of the line that closes each answer, `✻ Worked for 38s · done 10:32 PM          16 gCO₂`. A line keeps its own answer's figure when it is drawn again (a resize, a scroll, ctrl+o); a line drawn for the first time later, such as one only ctrl+o shows, gets no figure.
+- **Desktop app, Code tab**: a line under the answer, only for an unusual answer.
+- **An unusual answer** shows the ratio, and the subagents' share when they weighed on it: `230 gCO₂ · 14× your median`. An answer is unusual when it is above the 97th percentile of your last 200 answers, over 3× their median and at least 10 g, which is about one answer in 27; none is flagged before 50 answers are recorded.
+- **The session total** is pinned under the prompt, unless the claude-carbon status line already shows it or the `showSessionTotal` option is off (both in a terminal only, see [ccstatusline](#using-with-ccstatusline)). In the desktop app, where the turn duration line is not drawn, the same entry also shows the last answer: `142 gCO₂ this session · last answer 16 gCO₂`. Background subagents, which is how Claude Code starts most of them, count in the session total only: never in an answer, nor in your median. A foreground subagent counts in the answer that started it, not in the next one.
+
+Claude Code draws mods in the terminal and in the desktop app's Code tab only: nothing appears in the VS Code extension's chat panel, in cloud sessions or with `claude -p`. Mods need Claude Code 2.1.287 or later (2.1.286 in the desktop app).
+
+The mod comes with the plugin. Already installed from the marketplace: run `/plugin marketplace update claude-carbon` and `/plugin update claude-carbon@claude-carbon`, then restart Claude Code.
+
+The plugin alone is not a full install. This command gives the mod and the slash commands, but no status line and no database, so no session is recorded:
+
+```
+/plugin install claude-carbon --marketplace gwittebolle/claude-carbon
+```
+
+The curl, PowerShell and npm installers set up the status line, the database and the hooks, and copy the mod alone to `~/.claude/skills/claude-carbon/`, which Claude Code loads as `claude-carbon@skills-dir`. `/carbon-update` keeps that copy up to date. The copy holds no hook, so nothing runs twice. Restart Claude Code after the install; the mod loads once the folder you open is trusted. Its median starts from zero: answers recorded by another install of the mod do not carry over. With this copy the mod shows in the terminal, in the editor's integrated terminal and in the desktop app's Code tab.
+
+To turn it off, run `claude plugin disable claude-carbon@skills-dir`. To remove it, run the installer with `CLAUDE_CARBON_NO_MOD=1` on the `bash` side (`curl … | CLAUDE_CARBON_NO_MOD=1 bash`); keep the variable set, in your shell or in the `env` block of `settings.json`, or the next `/carbon-update` puts it back. The installer leaves alone a `skills/claude-carbon/` folder it did not make, and skips the copy while the claude-carbon plugin is enabled. Pick one of the two: the plugin added on top of an installer runs the hooks twice.
+
+Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, starts no process, makes no network call and never changes what Claude does. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then French.
+
+The mod's own tests run with `bash tests/run-mod-kit.sh`, under `claude plugin test`, which mocks the engine: no login needed. CI runs them on every push with Claude Code 2.1.296.
+
 ## Using with ccstatusline
 
 Claude Code accepts a single `statusLine` command, so claude-carbon's full status line and [ccstatusline](https://github.com/sirmalloc/ccstatusline) cannot run side by side. If ccstatusline drives your status line, embed the CO2 segment instead: in the ccstatusline TUI, add a `Custom Command` widget pointing to
@@ -298,6 +333,8 @@ Claude Code accepts a single `statusLine` command, so claude-carbon's full statu
 ```
 
 (adjust the path if you installed with `CLAUDE_CARBON_DIR`). The widget receives the same status JSON on stdin and prints just the cost + CO2 pair, e.g. `$0.68 · 35g CO₂`. Segment mode never touches the network. Recording to the local database is unaffected either way: persistence runs from hooks, not from the status line.
+
+With the segment in ccstatusline, the [mod](#the-co2-of-each-answer-mod)'s session entry under the prompt shows the total a second time. Turn it off with the `showSessionTotal` option in `/config`; the desktop app, which has no status line, keeps it.
 
 ## Emission factors
 
@@ -339,6 +376,7 @@ curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/inst
 
 - Updating re-prices your stored history with the new factors automatically (CO2 only; cost figures are left intact). Run `scripts/recompute.sh --with-cost` yourself only after a price change.
 - If you edited `data/factors.json` or `data/prices.json` locally, the update keeps your edits; on a conflict with upstream it saves yours to `*.local.bak` and tells you.
+- The update also refreshes the [mod](#the-co2-of-each-answer-mod)'s copy. When it asks for a restart (on Windows, a copy in use cannot be replaced), restart Claude Code and run it again; until then the previous copy stays.
 - Installed via the plugin marketplace? Update with Claude Code's built-in `/plugin update` instead.
 
 ## Dependencies
@@ -357,6 +395,9 @@ To use `/carbon-card`, install Playwright and its Chromium browser:
 npm install -g playwright-core
 npx playwright install chromium
 ```
+
+The script looks for `playwright-core` in node's own resolution, the global npm root, `~/node_modules`
+and Homebrew's node modules.
 
 ## Windows
 

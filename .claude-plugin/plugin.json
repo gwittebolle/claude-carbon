@@ -1,6 +1,6 @@
 {
   "name": "claude-carbon",
-  "version": "1.8.1",
+  "version": "1.9.0",
   "description": "Track the carbon footprint of your Claude Code sessions",
   "author": {
     "name": "Gaetan Wittebolle",
@@ -19,5 +19,20 @@
   "statusLine": {
     "type": "command",
     "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/statusline.sh\""
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "showPerTurn": {
+      "type": "boolean",
+      "title": "CO2 of each answer",
+      "description": "Show the CO2 of each answer at the end of the turn duration line. Off: only the session total stays.",
+      "default": true
+    },
+    "showSessionTotal": {
+      "type": "boolean",
+      "title": "CO2 session total in the terminal",
+      "description": "Pin the session's CO2 total under the prompt in a terminal. Turn it off when your status line already shows it, such as ccstatusline with the claude-carbon segment. The desktop app keeps it.",
+      "default": true
+    }
   }
 }

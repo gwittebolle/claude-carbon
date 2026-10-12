@@ -83,6 +83,8 @@ Token counts come from parsing the JSONL transcripts (`message.usage`). Assistan
 
 Each deduplicated message is counted under the model that produced it (`message.model`), and a session's main transcript and every subagent transcript (`<session>/subagents/*.jsonl`) are merged per model. A session where the main thread ran on Opus 5.5, a `/model` switch sent a few turns to Sonnet 4.6 and subagents ran on Haiku 4.5 is stored as three rows of the `session_models` table, each priced and converted at its own model; the `sessions` row keeps the totals and the main thread's dominant model, and its `co2_grams` and `cost_usd` are the sum over those rows. A message without a model string is counted under its file's dominant model. Until September 2026 the split was per file: each file was priced at its dominant model, which is the same thing unless a model switch happened inside one file.
 
+The plugin's mod (`hooks/mod/`) applies the same formula, factors and model resolution to each model request as it happens, read from Claude Code's per-request `usage` instead of the transcript, and shows the CO2 of each answer. It stores nothing in `carbon.db`: the totals in reports still come from the Stop hook. Its calculation is replayed against both golden-vector files in CI.
+
 ## Surviving the 30-day transcript purge
 
 Claude Code purges JSONL transcripts after about 30 days, so the SQLite DB is the only durable record. Three design choices follow:

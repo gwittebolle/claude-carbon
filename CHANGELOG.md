@@ -1,5 +1,112 @@
 # Changelog
 
+## 2026-10-12
+
+### feat: a Claude Code mod in the plugin shows the CO2 of each answer (1.9.0)
+
+The plugin now holds a Claude Code mod (`hooks/mod/`, declared in
+`hooks/hooks.json` beside the bash hooks; Claude Code 2.1.287 or later, 2.1.286
+in the desktop app). It follows every model request through `turn.step`, main
+loop and subagents, and computes its CO2 with the formula, factors
+(`data/factors.json`) and model resolution of the plugin;
+`tests/run-mod-tests.mjs` replays both golden-vector files in CI, and
+`tests/run-mod-kit.sh` runs the mod's own tests under `claude plugin test`,
+with Claude Code 2.1.296 pinned in CI.
+
+In the terminal the CO2 of each answer sits at the right end of the turn
+duration line, which keeps its own answer's figure when it is drawn again; a
+line first drawn later than its answer, such as one only ctrl+o shows, keeps
+the engine's text. In the desktop app's Code tab, where that line is not drawn,
+it becomes a line under the answer, for unusual answers only: above the 97th
+percentile of the last 200 answers, over three times their median and at least
+10 g, once 50 answers are recorded (about one answer in 27). A toast shown
+once per machine says the CO2 now shows for each answer, the same text on every
+surface. The
+session total is pinned under the prompt unless the claude-carbon status line
+is configured or the `showSessionTotal` option is off, for a status line that
+already shows the total such as ccstatusline with the claude-carbon segment;
+the desktop app, which draws no status line, keeps it. In the desktop app that
+entry also gives the last answer's CO2.
+The mod writes every quantity as gCO₂ or kgCO₂. Background subagents, Claude
+Code's default, count in the session total only,
+never in an answer or in the median; a foreground subagent counts in the answer
+that started it, and stops counting there once sent to the background. With
+no locale variable set, as in the desktop app, the mod's language follows the
+`language` setting (free text such as `Français` or `English`), then French; the
+mod starts no process. The mod
+draws nothing in the VS Code extension's chat panel, in cloud sessions or under
+`claude -p`. It writes no database: the Stop hook keeps recording sessions.
+The curl, PowerShell and npm installers, and `/carbon-update`, copy the mod
+alone, with no command hook, to `skills/claude-carbon/` under the config dir,
+where Claude Code loads it as `claude-carbon@skills-dir`
+(`scripts/install-mod.sh`, run by `configure-settings.sh`).
+`CLAUDE_CARBON_NO_MOD=1` skips the copy and removes it; a folder of that name
+the installer did not make is left alone; the copy is skipped, or removed,
+while the claude-carbon plugin is enabled. The copy is built aside and swapped
+in by rename: one that cannot be replaced, such as a copy Windows holds open,
+stays whole until a restart.
+
+### feat: /carbon-card without Chromium opens the card in the browser, and the card says where to find the tool (1.9.0)
+
+Without `playwright-core`, or with a Chromium that does not start (checked by
+launching it), `scripts/generate-report.sh` no longer exits 1. It saves the
+summary card as an HTML page in the export folder, logo inline and scaled down to
+fit the window (the page clips its overflow, so a laptop screen shorter than
+1080px could not reach the footer), and opens it in the default browser (`open` on
+macOS, `explorer.exe` on Windows, `xdg-open` on Linux; skipped under
+`CLAUDE_CARBON_NO_OPEN`, CI or without a display, where the line gives the page's
+path instead), prints one line saying there is no PNG and a screenshot is enough,
+with the install command, stamps `last-card-month` and exits 0. The PNG path now
+stamps it only when at least one PNG was written.
+The `Totals since ...` line now comes before the Playwright lookup, so both paths
+print it. The PNG export is otherwise unchanged.
+
+The footer of the four card templates reads `Mesurez la vôtre : claude-carbon sur GitHub`
+(non-breaking space before the colon) and `Measure yours: claude-carbon on GitHub`, the
+name in the card's orange, with `github.com/gwittebolle/claude-carbon` below
+in smaller grey text. The TokenClimate team-view mention is unchanged.
+`skills/carbon-card/SKILL.md` describes the browser path. After the card, the skill now encourages posting it and offers to help write the post, instead of writing a draft unasked.
+`tests/run-portability-tests.sh` runs the script with no `playwright-core`, with
+one that fails to load and with one whose Chromium fails to launch, found through
+`NODE_PATH` as node finds any module (exit 0, the FR summary handed to a faked
+opener, month stamped, Totals line first, no PNG, the page in the export folder
+with its logo inline and its fit script, no temp page left; under
+`CLAUDE_CARBON_NO_OPEN` nothing spawned and the path printed), with one whose
+exports all fail (month not stamped), and pins the footer strings of both
+templates in both languages.
+
+### feat: the monthly nudge gives the closed month's total (1.9.0)
+
+The status line nudge now reads `📊 September: 84.2kg CO₂ · /carbon-card` instead
+of `📊 September wrapped · /carbon-card`. The figure is the previous month's total
+from `carbon.db`, read only (the query of the card's monthly bar, excluded rows
+left out), in the status line's own CO2 format: whole grams in `g CO₂`, one
+decimal in `kg CO₂` from 1000 g. It is computed once a day and cached in
+`last-month-total` under the config dir (`YYYY-MM-DD grams`, the key being the day
+it was read): the Stop hook keeps adding to a session under its start date, so a
+session running across midnight on the last day still grows the closed month after
+the 1st. A locked or unreadable database is not cached and is retried.
+A month with fewer than 7 distinct days of sessions caches `-` and shows no nudge.
+The window (day 1 to `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`), the opt-out
+(`CLAUDE_CARBON_NO_CARD_NUDGE`) and the `last-card-month` stamp are unchanged.
+`run-install-tests.sh` drives the status line on throwaway databases: figure shown
+with excluded and current-month rows left out, the cache written and reused with
+no new query the same day, a cache from another day recomputed, fewer than 7 days giving no
+nudge, no database giving neither nudge nor cache, the threshold, the stamp and
+the opt-out.
+
+### chore: the weekly snapshot also records npm downloads
+
+`scripts/traffic-snapshot.sh` now also fetches the daily downloads of the
+`claude-carbon` npm package for the last 365 days (the public
+`api.npmjs.org/downloads/range` endpoint, no token) and merges them per day into
+`stats/npm.json`, the latest fetch winning on days already stored, so a rerun
+never counts a day twice. The zero days before the package first appears are left
+out. A failed npm fetch, or an answer that is not the expected JSON, is skipped,
+with no temp file left in `stats/`, and the GitHub snapshot is still written. It
+runs in the same weekly `.github/workflows/traffic.yml` job, whose commit step
+already adds `stats/`.
+
 ## 2026-10-09
 
 ### fix: Opus family priced as Opus 5.5

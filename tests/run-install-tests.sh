@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # run-install-tests.sh — exercise the wiring that puts claude-carbon into Claude Code:
-# scripts/configure-settings.sh (settings.json merge + /carbon-* commands) and the repair
-# path scripts/update.sh takes on an install that predates a hook.
+# scripts/configure-settings.sh (settings.json merge + /carbon-* commands), the copy of the
+# mod scripts/install-mod.sh makes under skills/, and the repair path scripts/update.sh
+# takes on an install that predates a hook.
 #
 # Every case runs under its own throwaway CLAUDE_CONFIG_DIR; the real ~/.claude is never read
 # or written. No network: the update case clones this repo from the local filesystem.
@@ -223,11 +224,21 @@ else
 EOF
     mkdir -p "${CFG}/claude-carbon"
     sqlite3 "${CFG}/claude-carbon/carbon.db" "CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY);" 2>/dev/null
-    CLAUDE_CONFIG_DIR="$CFG" bash "${CLONE}/scripts/update.sh" >/dev/null 2>&1
+    UPD_OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "${CLONE}/scripts/update.sh" 2>&1)"
     # configure-settings.sh writes the hook in native spelling (C:/... on Windows,
     # see CMD_BASE above), so the expectation has to be spelled the same way.
     check "update repairs SessionStart" "$(cc_native_path "$CLONE")/scripts/safety-rescan.sh" "$(hook_commands "${CFG}/settings.json" SessionStart)"
     check "update keeps Stop single"    "1" "$(hook_count "${CFG}/settings.json" Stop)"
+    # update.sh hides the settings chatter but not the mod's lines, which may ask for a restart.
+    check "update installs the mod" "yes" "$([ -f "${CFG}/skills/claude-carbon/.claude-carbon-managed" ] && echo yes || echo no)"
+    case "$UPD_OUT" in
+      *"mod: installed"*"Restart Claude Code"*) ok "update shows the mod's lines" ;;
+      *) bad "update shows the mod's lines" "'mod: installed' then a restart line" "$UPD_OUT" ;;
+    esac
+    case "$UPD_OUT" in
+      *" hook: "*) bad "update keeps the settings chatter hidden" "no 'hook:' line" "$UPD_OUT" ;;
+      *) ok "update keeps the settings chatter hidden" ;;
+    esac
   else
     echo "SKIP update repair: clone unavailable or without an upstream branch"
   fi
@@ -278,23 +289,71 @@ check "drift: CLAUDE_CARBON_NO_DRIFT_CHECK honoured" "no" "$(CLAUDE_CARBON_NO_DR
 
 # ------------------------------------------------------- 9b. monthly card nudge
 
-# Early in the month the status line names the month just closed and points at
-# /carbon-card. A card generated this month (last-card-month stamp) clears it, the
-# day threshold ends it, the opt-out silences it. The day is forced through the
-# threshold: 31 means "today qualifies", 0 means "no day does".
-CFG="${TMPROOT}/nudge"
-mkdir -p "${CFG}/claude-carbon"
-nudge_line() {
-  echo '{}' | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 CLAUDE_CARBON_NO_DRIFT_CHECK=1 \
-    bash "$STATUSLINE" 2>/dev/null | grep -o '📊 .*' || true
-}
-EXPECT_NUDGE="📊 $(cc_prev_month_name "$(date +%Y-%m)") wrapped · /carbon-card"
-check "nudge: names the closed month, in English" "$EXPECT_NUDGE" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
-check "nudge: past the day threshold it is gone"  ""             "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=0 nudge_line)"
-date +%Y-%m > "${CFG}/claude-carbon/last-card-month"
-check "nudge: a card this month clears it"        ""             "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
-rm -f "${CFG}/claude-carbon/last-card-month"
-check "nudge: CLAUDE_CARBON_NO_CARD_NUDGE honoured" ""           "$(CLAUDE_CARBON_NO_CARD_NUDGE=1 CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+# Early in the month the status line gives the month just closed with its total and
+# points at /carbon-card. The total is the card's monthly bar (excluded rows left
+# out), formatted like the session figure, read once a day and cached in
+# last-month-total.
+# A month with fewer than 7 days of sessions shows nothing. A card generated this
+# month (last-card-month stamp) clears it, the day threshold ends it, the opt-out
+# silences it. The day is forced through the threshold: 31 means "today qualifies",
+# 0 means "no day does". Every DB here is a throwaway under TMPROOT.
+if ! command -v sqlite3 >/dev/null 2>&1; then
+  echo "SKIP monthly card nudge: sqlite3 not available"
+else
+  THIS_MONTH="$(date +%Y-%m)"
+  PREV_M="$((10#${THIS_MONTH#*-} - 1))"; PREV_Y="${THIS_MONTH%-*}"
+  if [ "$PREV_M" -eq 0 ]; then PREV_M=12; PREV_Y="$((PREV_Y - 1))"; fi
+  PREV_MONTH="$(printf '%04d-%02d' "$PREV_Y" "$PREV_M")"
+  PREV_NAME="$(cc_prev_month_name "$THIS_MONTH")"
+  TODAY_KEY="$(date +%Y-%m-%d)"
+
+  # nudge_db <cfg> <days>: one 1500 g session on each of the first <days> days of the
+  # closed month, plus an excluded 99999 g session on another day and a 50000 g
+  # session this month, neither of which may count.
+  nudge_db() {
+    local db="${1}/claude-carbon/carbon.db" d
+    mkdir -p "${1}/claude-carbon"
+    sqlite3 "$db" "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, methodology_version INTEGER DEFAULT 2, excluded INTEGER DEFAULT 0, git_branch TEXT DEFAULT '');"
+    for d in $(seq 1 "$2"); do
+      sqlite3 "$db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('d${d}', 'p', 'claude-opus-5', 1500.0, '${PREV_MONTH}-$(printf '%02d' "$d")T10:00:00Z');"
+    done
+    sqlite3 "$db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at, excluded) VALUES ('ex', 'p', 'glm-4.7', 99999.0, '${PREV_MONTH}-20T10:00:00Z', 1);"
+    sqlite3 "$db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('now', 'p', 'claude-opus-5', 50000.0, '${THIS_MONTH}-01T10:00:00Z');"
+  }
+  nudge_line() {
+    echo '{}' | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="${CFG}/claude-carbon/carbon.db" \
+      CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 CLAUDE_CARBON_NO_DRIFT_CHECK=1 \
+      bash "$STATUSLINE" 2>/dev/null | grep -o '📊 .*' || true
+  }
+
+  CFG="${TMPROOT}/nudge"
+  nudge_db "$CFG" 7
+  check "nudge: closed month and its total, in English" "📊 ${PREV_NAME}: 10.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  check "nudge: total cached under today's date"       "${TODAY_KEY} 10500" "$(cat "${CFG}/claude-carbon/last-month-total" 2>/dev/null)"
+  # A row added after the first read is not seen: the query is not run again.
+  sqlite3 "${CFG}/claude-carbon/carbon.db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('late', 'p', 'claude-opus-5', 5000.0, '${PREV_MONTH}-09T10:00:00Z');"
+  check "nudge: cache reused, query not rerun"          "📊 ${PREV_NAME}: 10.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  printf '%s 840\n' "$TODAY_KEY" > "${CFG}/claude-carbon/last-month-total"
+  check "nudge: figure read from the cache, grams below 1 kg" "📊 ${PREV_NAME}: 840g CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  # A cache from an earlier day is read again: a session still running across the
+  # 1st keeps adding to the closed month under its start date.
+  printf '%s-01 840\n' "$PREV_MONTH" > "${CFG}/claude-carbon/last-month-total"
+  check "nudge: a cache from another day is recomputed" "📊 ${PREV_NAME}: 15.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  check "nudge: past the day threshold it is gone"      "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=0 nudge_line)"
+  date +%Y-%m > "${CFG}/claude-carbon/last-card-month"
+  check "nudge: a card this month clears it"            "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  rm -f "${CFG}/claude-carbon/last-card-month"
+  check "nudge: CLAUDE_CARBON_NO_CARD_NUDGE honoured"   "" "$(CLAUDE_CARBON_NO_CARD_NUDGE=1 CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+
+  CFG="${TMPROOT}/nudge-thin"
+  nudge_db "$CFG" 6
+  check "nudge: fewer than 7 days, no nudge"            "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  check "nudge: fewer than 7 days is cached too"        "${TODAY_KEY} -" "$(cat "${CFG}/claude-carbon/last-month-total" 2>/dev/null)"
+
+  CFG="${TMPROOT}/nudge-nodb"
+  mkdir -p "${CFG}/claude-carbon"
+  check "nudge: no DB, no nudge and no cache"           "|no cache" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)|$([ -f "${CFG}/claude-carbon/last-month-total" ] && echo cache || echo no cache)"
+fi
 
 # ------------------------------------------------------- 10. statusline CO2 source
 
@@ -378,6 +437,199 @@ EOF
     *) ok "decode context: a filled row is not re-filled" ;;
   esac
 fi
+
+# ------------------------------------------------------- 12. the mod's copy under skills/
+
+# install-mod.sh gives a git-clone install the mod as a plugin Claude Code loads from
+# $CONFIG_DIR/skills/claude-carbon/ (claude-carbon@skills-dir). The copy must carry the
+# module and nothing that runs a bash hook, never overwrite a folder the user made, step
+# aside for an enabled claude-carbon plugin, and never be left half-written.
+INSTALL_MOD="${REPO_DIR}/scripts/install-mod.sh"
+MANAGED=".claude-carbon-managed"
+
+# mod_run <config dir> [VAR=value...]: run install-mod.sh against that config dir, echo its output.
+mod_run() {
+  local cfg="$1"; shift
+  env "$@" CLAUDE_CONFIG_DIR="$cfg" bash "$INSTALL_MOD" 2>&1
+}
+# Work directories left next to the copy, "" when there are none.
+leftovers() {
+  local d out=""
+  for d in "$1"/skills/.claude-carbon.*; do
+    [ -e "$d" ] && out="${out}${d##*/} "
+  done
+  printf '%s' "$out"
+}
+has() { [ -e "$1" ] && echo yes || echo no; }
+same() { cmp -s "$1" "$2" && echo yes || echo no; }
+said() {
+  case "$3" in
+    *"$2"*) ok "$1" ;;
+    *) bad "$1" "output containing '$2'" "$3" ;;
+  esac
+}
+
+# The cold start of section 1 went through configure-settings.sh: the copy is there.
+CFG="${TMPROOT}/cold"
+M="${CFG}/skills/claude-carbon"
+check "mod: configure-settings.sh installs the copy" "yes" "$(has "${M}/${MANAGED}")"
+check "mod: manifest keeps the plugin's name" "claude-carbon" "$(jq -r '.name' "${M}/.claude-plugin/plugin.json" 2>/dev/null)"
+check "mod: manifest keeps the plugin's version" "$(jq -r '.version' "${REPO_DIR}/.claude-plugin/plugin.json")" "$(jq -r '.version' "${M}/.claude-plugin/plugin.json" 2>/dev/null)"
+check "mod: manifest keeps the options" "$(jq -c '.userConfig' "${REPO_DIR}/.claude-plugin/plugin.json")" "$(jq -c '.userConfig' "${M}/.claude-plugin/plugin.json" 2>/dev/null)"
+check "mod: manifest has no status line and no skills" "false false" "$(jq -r '"\(has("statusLine")) \(has("skills"))"' "${M}/.claude-plugin/plugin.json" 2>/dev/null)"
+check "mod: hooks.json declares the module only" '{"modules":["./mod/register.tsx"]}' "$(jq -c '.' "${M}/hooks/hooks.json" 2>/dev/null | tr -d '\r')"
+check "mod: no command in the copy's manifests" "0" "$(cat "${M}/.claude-plugin/plugin.json" "${M}/hooks/hooks.json" | grep -c '"command"')"
+check "mod: no skill, script or command in the copy" "no no no" "$(has "${M}/skills") $(has "${M}/scripts") $(has "${M}/commands")"
+check "mod: module identical to the clone's" "yes" "$(diff -r -x '*.test.tsx' "${REPO_DIR}/hooks/mod" "${M}/hooks/mod" >/dev/null 2>&1 && echo yes || echo no)"
+check "mod: tests left out" "no" "$(has "${M}/hooks/mod/answer-co2.test.tsx")"
+check "mod: factors travel with it" "yes" "$(same "${REPO_DIR}/data/factors.json" "${M}/data/factors.json")"
+check "mod: types travel with it" "yes" "$(same "${REPO_DIR}/types/index.d.ts" "${M}/types/index.d.ts")"
+check "mod: no work directory left" "" "$(leftovers "$CFG")"
+
+OUT="$(mod_run "$CFG")"
+said "mod: a second run is skipped" "mod: already installed (skipped)" "$OUT"
+check "mod: a second run leaves nothing behind" "" "$(leftovers "$CFG")"
+
+# A stale copy (an older version) is replaced whole.
+printf 'stale' > "${M}/data/factors.json"
+OUT="$(mod_run "$CFG")"
+said "mod: a stale copy is updated" "mod: updated" "$OUT"
+said "mod: an update asks for a restart" "Restart Claude Code to load it" "$OUT"
+check "mod: the update brings the current factors" "yes" "$(same "${REPO_DIR}/data/factors.json" "${M}/data/factors.json")"
+check "mod: the update keeps the marker" "yes" "$(has "${M}/${MANAGED}")"
+check "mod: the update leaves nothing behind" "" "$(leftovers "$CFG")"
+
+# The swap fails, as when Windows holds the copy in use during /carbon-update: the previous
+# copy stays whole and in place, the new one is dropped, and the user is told to restart.
+# A fake mv on PATH refuses the renames whose source matches SHIM_REFUSE and hands every
+# other call to the real one.
+SHIM="${TMPROOT}/shim"
+mkdir -p "$SHIM"
+REAL_MV="$(command -v mv)"
+cat > "${SHIM}/mv" <<EOF
+#!/usr/bin/env bash
+case "\$1" in \${SHIM_REFUSE}) exit 1 ;; esac
+exec "${REAL_MV}" "\$@"
+EOF
+chmod +x "${SHIM}/mv"
+
+printf 'stale' > "${M}/data/factors.json"
+OUT="$(mod_run "$CFG" PATH="${SHIM}:${PATH}" SHIM_REFUSE='*/skills/claude-carbon')"
+said "mod: a locked copy asks for a restart" "Restart Claude Code, then run the installer again" "$OUT"
+check "mod: a locked copy stays as it was" "stale" "$(cat "${M}/data/factors.json")"
+check "mod: a locked copy keeps its marker" "yes" "$(has "${M}/${MANAGED}")"
+check "mod: a locked copy leaves nothing behind" "" "$(leftovers "$CFG")"
+
+# The new copy cannot be renamed in: the previous one is put back.
+OUT="$(mod_run "$CFG" PATH="${SHIM}:${PATH}" SHIM_REFUSE='*/.claude-carbon.tmp.*')"
+said "mod: a failed rename asks for a restart" "Restart Claude Code, then run the installer again" "$OUT"
+check "mod: a failed rename puts the previous copy back" "stale" "$(cat "${M}/data/factors.json" 2>/dev/null)"
+check "mod: a failed rename leaves nothing behind" "" "$(leftovers "$CFG")"
+
+# skills/ is read-only: nothing can be built, the previous copy stays. Root and Windows
+# ignore the permission bits, so the case only runs where they hold.
+chmod 555 "${CFG}/skills"
+if [ -w "${CFG}/skills" ]; then
+  echo "SKIP mod read-only skills/: permission bits not enforced here"
+else
+  OUT="$(mod_run "$CFG")"
+  said "mod: a read-only skills/ changes nothing" "nothing changed" "$OUT"
+  check "mod: a read-only skills/ keeps the previous copy" "stale" "$(cat "${M}/data/factors.json")"
+  check "mod: a read-only skills/ leaves nothing behind" "" "$(leftovers "$CFG")"
+fi
+chmod 755 "${CFG}/skills"
+
+mod_run "$CFG" >/dev/null
+check "mod: the next run brings the copy up to date" "yes" "$(same "${REPO_DIR}/data/factors.json" "${M}/data/factors.json")"
+
+# A folder of the same name the user made is never touched.
+CFG="${TMPROOT}/mod-user"
+mkdir -p "${CFG}/skills/claude-carbon"
+printf 'mine' > "${CFG}/skills/claude-carbon/notes.txt"
+OUT="$(mod_run "$CFG")"
+said "mod: a user's folder is reported" "was not made by this installer" "$OUT"
+check "mod: a user's folder is left intact" "mine no" "$(cat "${CFG}/skills/claude-carbon/notes.txt") $(has "${CFG}/skills/claude-carbon/.claude-plugin")"
+mod_run "$CFG" CLAUDE_CARBON_NO_MOD=1 >/dev/null
+check "mod: CLAUDE_CARBON_NO_MOD=1 spares a user's folder" "mine" "$(cat "${CFG}/skills/claude-carbon/notes.txt" 2>/dev/null)"
+
+# CLAUDE_CARBON_NO_MOD=1 skips the step and removes the copy this installer made.
+CFG="${TMPROOT}/mod-optout"
+mkdir -p "$CFG"
+OUT="$(mod_run "$CFG" CLAUDE_CARBON_NO_MOD=1)"
+said "mod: CLAUDE_CARBON_NO_MOD=1 skips" "mod: skipped (CLAUDE_CARBON_NO_MOD=1)" "$OUT"
+check "mod: CLAUDE_CARBON_NO_MOD=1 installs nothing" "no" "$(has "${CFG}/skills/claude-carbon")"
+mod_run "$CFG" >/dev/null
+OUT="$(mod_run "$CFG" CLAUDE_CARBON_NO_MOD=1)"
+said "mod: CLAUDE_CARBON_NO_MOD=1 removes the copy" "mod: removed (CLAUDE_CARBON_NO_MOD=1)" "$OUT"
+check "mod: the removed copy is gone" "no" "$(has "${CFG}/skills/claude-carbon")"
+check "mod: the removal leaves nothing behind" "" "$(leftovers "$CFG")"
+# Through the real entry point too: configure-settings.sh passes the variable on.
+mod_run "$CFG" >/dev/null
+CLAUDE_CARBON_NO_MOD=1 CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+check "mod: CLAUDE_CARBON_NO_MOD=1 honoured through configure-settings.sh" "no" "$(has "${CFG}/skills/claude-carbon")"
+
+# The claude-carbon plugin enabled from a marketplace already brings the mod.
+for key in "claude-carbon@claude-carbon" "co2-tracker@claude-community"; do
+  CFG="${TMPROOT}/mod-plugin-${key%%@*}"
+  mkdir -p "$CFG"
+  jq -n --arg k "$key" '{enabledPlugins: {($k): true}}' > "${CFG}/settings.json"
+  OUT="$(mod_run "$CFG")"
+  said "mod: ${key} enabled skips the step" "brings it" "$OUT"
+  check "mod: ${key} enabled installs nothing" "no" "$(has "${CFG}/skills/claude-carbon")"
+done
+
+# Enabled after a copy was made: the copy goes, or every figure would be drawn twice.
+CFG="${TMPROOT}/mod-plugin-later"
+mkdir -p "$CFG"
+mod_run "$CFG" >/dev/null
+check "mod: fixture copy made" "yes" "$(has "${CFG}/skills/claude-carbon/${MANAGED}")"
+echo '{"enabledPlugins": {"claude-carbon@claude-carbon": true}}' > "${CFG}/settings.json"
+OUT="$(mod_run "$CFG")"
+said "mod: a plugin enabled later removes the copy" "mod: removed the copy" "$OUT"
+check "mod: the copy is gone once the plugin is enabled" "no" "$(has "${CFG}/skills/claude-carbon")"
+
+# A disabled plugin does not count, and neither does the copy's own entry, whatever its value.
+for entry in '"claude-carbon@claude-carbon": false' '"claude-carbon@skills-dir": true' '"claude-carbon@skills-dir": false'; do
+  CFG="${TMPROOT}/mod-entry-$(printf '%s' "$entry" | tr -cd 'a-z')"
+  mkdir -p "$CFG"
+  echo "{\"enabledPlugins\": {${entry}}}" > "${CFG}/settings.json"
+  mod_run "$CFG" >/dev/null
+  check "mod: installed with ${entry}" "yes" "$(has "${CFG}/skills/claude-carbon/${MANAGED}")"
+done
+
+# Unreadable settings could hide an enabled plugin: no copy rather than a doubled mod.
+CFG="${TMPROOT}/mod-badjson"
+mkdir -p "$CFG"
+printf '{ not json' > "${CFG}/settings.json"
+OUT="$(mod_run "$CFG")"
+said "mod: invalid settings.json skips the step" "is not valid JSON" "$OUT"
+check "mod: invalid settings.json installs nothing" "no" "$(has "${CFG}/skills/claude-carbon")"
+
+# A marketplace checkout loads the mod from its own hooks/hooks.json.
+FAKE="${TMPROOT}/home/.claude/plugins/cache/mkt/claude-carbon/9.9.9"
+CFG="${TMPROOT}/mod-mkt"
+mkdir -p "${FAKE}/scripts" "$CFG"
+cp "$INSTALL_MOD" "${REPO_DIR}/scripts/portable-lib.sh" "${FAKE}/scripts/"
+cp -R "${REPO_DIR}/hooks" "${FAKE}/hooks"
+CLAUDE_CONFIG_DIR="$CFG" bash "${FAKE}/scripts/install-mod.sh" >/dev/null 2>&1
+check "mod: a marketplace checkout installs nothing" "no" "$(has "${CFG}/skills")"
+# The same under a config dir CLAUDE_CONFIG_DIR names without ".claude" in its path.
+CFG="${TMPROOT}/mod-mkt-custom"
+FAKE="${CFG}/plugins/cache/mkt/claude-carbon/9.9.9"
+mkdir -p "${FAKE}/scripts"
+cp "$INSTALL_MOD" "${REPO_DIR}/scripts/portable-lib.sh" "${FAKE}/scripts/"
+cp -R "${REPO_DIR}/hooks" "${FAKE}/hooks"
+CLAUDE_CONFIG_DIR="$CFG" bash "${FAKE}/scripts/install-mod.sh" >/dev/null 2>&1
+check "mod: a marketplace checkout under a custom config dir installs nothing" "no" "$(has "${CFG}/skills")"
+
+# A checkout without hooks/mod has nothing to copy.
+FAKE="${TMPROOT}/nomod"
+CFG="${TMPROOT}/mod-none"
+mkdir -p "${FAKE}/scripts" "${FAKE}/.claude-plugin" "$CFG"
+cp "$INSTALL_MOD" "${REPO_DIR}/scripts/portable-lib.sh" "${FAKE}/scripts/"
+cp "${REPO_DIR}/.claude-plugin/plugin.json" "${FAKE}/.claude-plugin/"
+CLAUDE_CONFIG_DIR="$CFG" bash "${FAKE}/scripts/install-mod.sh" >/dev/null 2>&1
+check "mod: a checkout without hooks/mod installs nothing" "no" "$(has "${CFG}/skills")"
 
 # ----------------------------------------------------------------
 

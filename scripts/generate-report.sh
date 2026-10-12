@@ -410,6 +410,65 @@ NODEEOF
 
 rm -f "$TMP_MONTHLY"
 
+# ── Totals line ─────────────────────────────────────────────
+# Printed before the Playwright lookup: the social draft quotes it, and it holds
+# whether the card ends up as a PNG or in the browser.
+# Its car figure must match a card the user gets: the locale set (the EN card) by
+# default, the French set when only the FR card was asked for. The label stays
+# English: the line itself is English.
+if [ "$LANG_FILTER" = "fr" ]; then
+  EQUIV_KM="$EQUIV_KM_FR"
+  EQUIV_UNIT="km"
+  EQUIV_SRC="$EQUIV_SRC_FR"
+else
+  EQUIV_KM="$EQUIV_KM_EN"
+  EQUIV_UNIT="$EQUIV_UNIT_EN"
+  EQUIV_SRC="$EQUIV_SRC_EN"
+fi
+echo "Totals since ${SINCE_LABEL_EN}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${EQUIV_SRC}) · ${TOTAL_SESSIONS} sessions"
+
+# The card put in front of the user: the French one on the French (or undetected)
+# locale, which is also the set whose figure the Totals line quotes.
+if [ "$LANG_FILTER" = "fr" ] || { [ -z "$LANG_FILTER" ] && [ "$EQUIV_SET" = "fr" ]; }; then
+  LEAD_LANG="fr"
+else
+  LEAD_LANG="en"
+fi
+
+# Stamp the month so the statusline's monthly share nudge clears. A card opened in
+# the browser counts as much as a PNG: the user has it in front of them either way.
+STATE_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
+stamp_card_month() {
+  mkdir -p "$STATE_DIR" 2>/dev/null || true
+  date +%Y-%m > "${STATE_DIR}/last-card-month" 2>/dev/null || true
+}
+
+# open_in_browser <file>: the page in the default browser, the way cc_reveal shows
+# the folder: open on macOS, explorer.exe on Windows (it hands an .html file to the
+# default browser, and wants a native path), xdg-open on Linux. Returns 1 when
+# nothing was spawned (CLAUDE_CARBON_NO_OPEN, CI, no display, no opener), so the
+# caller prints the path instead.
+open_in_browser() {
+  local f="$1"
+  { [ -z "${CLAUDE_CARBON_NO_OPEN:-}" ] && [ -z "${CI:-}" ]; } || return 1
+  case "$CC_OS" in
+    darwin)
+      command -v open >/dev/null 2>&1 || return 1
+      open "$f" >/dev/null 2>&1 || return 1
+      ;;
+    windows)
+      command -v explorer.exe >/dev/null 2>&1 || return 1
+      # explorer.exe exits 1 even when it succeeds.
+      explorer.exe "$(cc_native_path "$f")" >/dev/null 2>&1 || true
+      ;;
+    *)
+      { [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; } || return 1
+      xdg-open "$f" >/dev/null 2>&1 &
+      ;;
+  esac
+  return 0
+}
+
 # ── Find Playwright ─────────────────────────────────────────
 PW_PATH="$(node -e "try { console.log(require.resolve('playwright-core').replace(/\/index\.js$/, '')); } catch(e) { process.exit(1); }" 2>/dev/null)" || true
 
@@ -432,11 +491,58 @@ if [ -z "$PW_PATH" ]; then
   done
 fi
 
-if [ -z "$PW_PATH" ]; then
-  echo "Error: playwright-core not found." >&2
-  echo "Install: npm install -g playwright-core && npx playwright install chromium" >&2
-  rm -f "$TMP_SUMMARY_FR" "$TMP_SUMMARY_EN" "$TMP_DETAILED_FR" "$TMP_DETAILED_EN"
-  exit 1
+# chromium_ready: playwright-core loads AND its Chromium starts. A launch rather than
+# a look for the binary: recent Playwright launches a separate headless shell, and a
+# Linux box missing a system library has the binary but cannot start it.
+chromium_ready() {
+  node -e "
+let pw;
+try { pw = require(process.argv[1]); } catch (e) { process.exit(1); }
+pw.chromium.launch({ timeout: 30000 }).then((b) => b.close()).then(() => process.exit(0), () => process.exit(1));
+" "$(cc_native_path "$PW_PATH")" >/dev/null 2>&1
+}
+
+# Without Playwright or Chromium the card still exists: the summary page is laid out
+# at 1080x1080, so it opens in the browser and a screenshot of it is the card.
+# The browser gets its own copy, in the export folder next to where the PNGs would
+# be: the temp dir is cleaned by the system, and a snap browser (Ubuntu's default
+# Firefox) cannot read /tmp at all. The copy carries the logo inline and scales
+# itself down to the window: the page clips its overflow, so on a laptop screen
+# shorter than 1080px the footer was out of reach, even by scrolling.
+if [ -z "$PW_PATH" ] || ! chromium_ready; then
+  if [ "$LEAD_LANG" = "fr" ]; then LEAD_TMP="$TMP_SUMMARY_FR"; else LEAD_TMP="$TMP_SUMMARY_EN"; fi
+  LEAD_HTML="$EXPORT_DIR/claude-carbon-summary-${LEAD_LANG}-${FILE_TAG}.html"
+  node -e '
+const fs = require("fs");
+const [src, logo, dst] = process.argv.slice(1);
+let html = fs.readFileSync(src, "utf8");
+try {
+  const uri = "data:image/png;base64," + fs.readFileSync(logo).toString("base64");
+  html = html.split("src=\"logo.png\"").join("src=\"" + uri + "\"");
+} catch (e) {}
+const fit = `<style>html{background:#e9e4dd}body{position:fixed;top:0;left:0;transform-origin:0 0}</style>
+<script>
+function ccFit(){var s=Math.min(1,innerWidth/1080,innerHeight/1080),b=document.body;b.style.transform="scale("+s+")";b.style.left=Math.max(0,(innerWidth-1080*s)/2)+"px";}
+addEventListener("DOMContentLoaded",ccFit);addEventListener("resize",ccFit);
+</script>
+`;
+fs.writeFileSync(dst, html.replace("</head>", fit + "</head>"));
+' "$(cc_native_path "$LEAD_TMP")" "$(cc_native_path "$TEMPLATE_DIR/logo.png")" "$(cc_native_path "$LEAD_HTML")" 2>/dev/null || {
+    # No copy (export folder not writable): the temp page, with the logo beside it.
+    LEAD_HTML="$LEAD_TMP"
+    cp -f "$TEMPLATE_DIR/logo.png" "${CC_TMP}/logo.png" 2>/dev/null || true
+  }
+  for f in "$TMP_SUMMARY_FR" "$TMP_SUMMARY_EN" "$TMP_DETAILED_FR" "$TMP_DETAILED_EN"; do
+    [ "$f" = "$LEAD_HTML" ] || rm -f "$f"
+  done
+  stamp_card_month
+  PW_HINT="PNG export: npm install -g playwright-core && npx playwright install chromium"
+  if open_in_browser "$LEAD_HTML"; then
+    echo "No Chromium, so no PNG: the card is open in your browser, a screenshot of it is enough. ${PW_HINT}"
+  else
+    echo "No Chromium, so no PNG: open $(cc_native_path "$LEAD_HTML") in a browser, a screenshot of it is enough. ${PW_HINT}"
+  fi
+  exit 0
 fi
 
 # ── Export PNGs ──────────────────────────────────────────────
@@ -512,11 +618,13 @@ const { chromium } = require('$(cc_native_path "$PW_PATH")');
     local size
     size="$(du -h "$output" | cut -f1 | tr -d ' ')"
     echo "  ${label}: $(cc_native_path "$output") (${size})"
+    CARD_OK=1
   else
     echo "  ${label}: FAILED" >&2
   fi
 }
 
+CARD_OK=""
 if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "fr" ]; then
   export_png "$TMP_SUMMARY_FR" "$EXPORT_DIR/claude-carbon-summary-fr-${FILE_TAG}.png" "Summary FR"
   export_png "$TMP_DETAILED_FR" "$EXPORT_DIR/claude-carbon-detailed-fr-${FILE_TAG}.png" "Detailed FR"
@@ -527,34 +635,15 @@ if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "en" ]; then
   export_png "$TMP_DETAILED_EN" "$EXPORT_DIR/claude-carbon-detailed-en-${FILE_TAG}.png" "Detailed EN"
 fi
 
-echo ""
-# The Totals line is quoted by the social draft, so its car figure must match a card
-# that was exported: the locale set (the EN card) by default, the French set when
-# only the FR card was. The label stays English: the line itself is English.
-if [ "$LANG_FILTER" = "fr" ]; then
-  EQUIV_KM="$EQUIV_KM_FR"
-  EQUIV_UNIT="km"
-  EQUIV_SRC="$EQUIV_SRC_FR"
-else
-  EQUIV_KM="$EQUIV_KM_EN"
-  EQUIV_UNIT="$EQUIV_UNIT_EN"
-  EQUIV_SRC="$EQUIV_SRC_EN"
+# Stamped only when a PNG came out: a run where every export failed leaves the
+# nudge up, since the user has no card to share.
+if [ -n "$CARD_OK" ]; then
+  stamp_card_month
 fi
-echo "Totals since ${SINCE_LABEL_EN}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${EQUIV_SRC}) · ${TOTAL_SESSIONS} sessions"
-
-# Stamp the month so the statusline's monthly share nudge clears
-STATE_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
-mkdir -p "$STATE_DIR" 2>/dev/null || true
-date +%Y-%m > "${STATE_DIR}/last-card-month" 2>/dev/null || true
 
 # Put the card in front of the user: the folder opens in the file manager, with
 # the summary card selected where the platform allows it. CLAUDE_CARBON_NO_OPEN
-# skips this. The French card leads on the French (or undetected) locale, which
-# is also the set whose figure the Totals line quotes.
-if [ "$LANG_FILTER" = "fr" ] || { [ -z "$LANG_FILTER" ] && [ "$EQUIV_SET" = "fr" ]; }; then
-  cc_reveal "$EXPORT_DIR/claude-carbon-summary-fr-${FILE_TAG}.png"
-else
-  cc_reveal "$EXPORT_DIR/claude-carbon-summary-en-${FILE_TAG}.png"
-fi
+# skips this.
+cc_reveal "$EXPORT_DIR/claude-carbon-summary-${LEAD_LANG}-${FILE_TAG}.png"
 
 echo "Done. $(cc_native_path "$EXPORT_DIR")/"

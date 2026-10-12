@@ -25,6 +25,8 @@ README).
 ```bash
 bash tests/run-vectors.sh         # the methodology maths
 bash tests/run-install-tests.sh   # the settings.json wiring and the update repair path
+node --experimental-strip-types tests/run-mod-tests.mjs   # the mod's pure modules
+bash tests/run-mod-kit.sh         # the mod's own tests, under claude plugin test
 bash scripts/check-versions.sh    # the three version manifests agree
 shellcheck --severity=warning $(find . -name '*.sh' -not -path './.git/*')
 ```
@@ -40,7 +42,11 @@ hooks that must survive untouched, repeated runs, paths spelled differently
 performs. Every case runs under its own throwaway `CLAUDE_CONFIG_DIR`, so your
 real `~/.claude` is never touched, and nothing hits the network.
 
-CI runs all four on every push and pull request.
+`run-mod-kit.sh` needs a `claude` binary on the PATH (or `CLAUDE_BIN`) but no
+login: the kit mocks the engine, under a throwaway `HOME` and `CLAUDE_CONFIG_DIR`.
+CI pins Claude Code 2.1.296 for it, since the kit ships inside the binary.
+
+CI runs all of them on every push and pull request.
 
 ## Changing the methodology (factors or prices)
 
