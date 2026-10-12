@@ -20,25 +20,32 @@ claude-carbon is an open source Claude Code plugin that tracks the carbon footpr
 
 ### In the Claude desktop app, no terminal needed
 
-Open the **Code** tab of the Claude desktop app, start a session, and paste this message. Claude runs the installer for you:
+1. Open the **Code** tab of the Claude desktop app and start a session, in any folder.
+2. Paste the message for your system. It works in any language. Claude runs the installer for you and asks before running the command: accept.
 
-```text
-Install claude-carbon for me by running this command:
-curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
-```
+   macOS or Linux:
 
-On Windows, use this message instead:
+   ```text
+   Install claude-carbon for me by running this command:
+   curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
+   ```
 
-```text
-Install claude-carbon for me by running this command in PowerShell:
-irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
-```
+   Windows:
 
-1. Claude asks before running the command: accept. If a tool is missing (`git`, `jq` or `sqlite3`), the installer says which one, and you can ask Claude to install it. On a Mac that never had Apple's developer tools, macOS first opens a window to install them.
-2. Quit the desktop app completely and open it again, then start a new session in the Code tab.
-3. Under the prompt you now see `x gCO₂ this session · last answer x gCO₂`. `/carbon-report` and `/carbon-card` work from the same session.
+   ```text
+   Install claude-carbon for me by running this command in PowerShell:
+   irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
+   ```
 
-The message works in any language. The chat and Cowork tabs are not covered yet.
+3. Quit the desktop app completely, open it again, and start a new session in the Code tab. Under the prompt you now see `This session: 3.6 gCO₂ · $0.12` (`Cette session : 3,6 gCO₂ · 0,12 $` in French). `/carbon-report` and `/carbon-card` work from there too.
+
+**If the install stops**
+
+- **macOS opens a window about "command line developer tools".** That is `git`, which the installer needs and a Mac without developer tools does not have yet. Click **Install**, wait until it finishes (a few minutes), then tell Claude: "Run the claude-carbon install again."
+- **"jq is not installed" or "sqlite3 is not installed".** Tell Claude: "Install what is missing, then run the claude-carbon install again." Recent macOS versions already include both. On Windows the installer prints the `winget` command to use.
+- **Windows says Git Bash is missing.** Install [Git for Windows](https://git-scm.com/downloads/win) (Claude Code needs it on Windows anyway), reopen the app, and ask Claude again.
+
+The chat and Cowork tabs are not covered: their sessions run on Anthropic's servers, so nothing reaches your machine to count.
 
 ### In a terminal
 
