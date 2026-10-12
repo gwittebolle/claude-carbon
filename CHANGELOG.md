@@ -2,6 +2,49 @@
 
 ## 2026-10-12
 
+### feat: the mod's pinned entry gives the session's CO2 and API-price cost (1.10.0)
+
+The entry the mod pins under the prompt now reads `Cette session : 3,6 gCO₂ ·
+0,12 $` in French and `This session: 3.6 gCO₂ · $0.12` in English, with
+no-break spaces before the French colon and around the units. It no longer
+carries the last answer's figure in the desktop app; the line under an unusual
+answer stays as it was, and the entry is pinned in the same cases as before.
+
+The cost is computed by the mod from each request's tokens in `turn.step`, the
+same requests as the CO2, with `data/prices.json` and the formula and model
+resolution of the bash plugin's `cost_usd` (`hooks/mod/lib/cost.ts`). `turn.step`
+does not split cache writes by tier, so they are priced at the 1-hour tier,
+the one Claude Code writes at. It shows with two decimals, `< 0,01 $` /
+`< $0.01` under a cent, and is left out when `data/prices.json` cannot be
+read, then until the total starts over: a part of the cost never shows as the
+whole. `tests/run-mod-tests.mjs` replays the `expected_cost_usd` of both
+golden-vector files through it, and the installers' copy of the mod now
+carries `data/prices.json` beside `data/factors.json`.
+
+### feat: /carbon-report gives a car equivalent and this year's share of a 2 t budget (1.10.0)
+
+The equivalence block of `/carbon-report` printed four lines for the all-time
+total (car, Gemini prompts, TGV or phone charges, beef steaks). It now prints
+the car line of the detected locale set only, the same factor, label and source
+as the cards, and a second line with the current calendar year's total as a
+share of 2 tCO2e per person and per year: `Depuis le 1er janvier : 1 214 kg,
+soit 61 % du budget annuel de 2 t par personne` on the French set, `Since
+January 1: 1,214 kg, 61% of a 2 t per-person annual budget` on the US and world
+sets, followed by the source. The share runs on this year's sessions only,
+never on the all-time total. METHODOLOGY.md ("Annual budget line") quotes the
+2 t figure from Carbone 4, _Faire sa part ?_ (June 2019), and ADEME's Nos Gestes
+Climat (2025), and states that it is a 2050 target for a person's whole
+footprint, used as a scale. `data/factors.json` is unchanged: the Gemini, TGV,
+steak and charge rows stay there, unused by the report. `tests/run-report-tests.sh`
+runs the skill against fixture databases, in CI on Linux and Windows.
+
+### docs: install from the Claude desktop app, no terminal needed (1.10.0)
+
+The README opens its install section with the desktop app: paste a message in the
+Code tab and Claude runs the installer, with the line to expect under the prompt
+and what to do when the install stops (the macOS developer tools window that
+brings `git`, a missing `jq` or `sqlite3`, Git for Windows).
+
 ### feat: a Claude Code mod in the plugin shows the CO2 of each answer (1.9.0)
 
 The plugin now holds a Claude Code mod (`hooks/mod/`, declared in

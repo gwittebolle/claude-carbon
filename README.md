@@ -6,7 +6,7 @@
 [![npm](https://img.shields.io/npm/v/claude-carbon)](https://www.npmjs.com/package/claude-carbon)
 [![CI](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml/badge.svg)](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml)
 
-claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate in the status line, computed locally from your token usage, next to the session cost.
+claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate computed locally from your token usage, in the terminal status line next to the session cost, and in the Code tab of the Claude desktop app.
 
 ![Live CO2 in the Claude Code status line](docs/demo.gif)
 
@@ -17,6 +17,37 @@ claude-carbon is an open source Claude Code plugin that tracks the carbon footpr
 - Backfills historical data from existing `~/.claude` transcripts
 - Slash commands: `/carbon-report` (text), `/carbon-card` (PNG), `/carbon-pr` (footprint of a pull request)
 - A README badge with your all-time total, and a public methodology with every factor sourced
+
+### In the Claude desktop app, no terminal needed
+
+1. Open the **Code** tab of the Claude desktop app and start a session, in any folder.
+2. Paste the message for your system. It works in any language. Claude runs the installer for you and asks before running the command: accept.
+
+   macOS or Linux:
+
+   ```text
+   Install claude-carbon for me by running this command:
+   curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
+   ```
+
+   Windows:
+
+   ```text
+   Install claude-carbon for me by running this command in PowerShell:
+   irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
+   ```
+
+3. Quit the desktop app completely, open it again, and start a new session in the Code tab. Under the prompt you now see `This session: 3.6 gCO₂ · $0.12` (`Cette session : 3,6 gCO₂ · 0,12 $` in French). `/carbon-report` and `/carbon-card` work from there too.
+
+**If the install stops**
+
+- **macOS opens a window about "command line developer tools".** That is `git`, which the installer needs and a Mac without developer tools does not have yet. Click **Install**, wait until it finishes (a few minutes), then tell Claude: "Run the claude-carbon install again."
+- **"jq is not installed" or "sqlite3 is not installed".** Tell Claude: "Install what is missing, then run the claude-carbon install again." Recent macOS versions already include both. On Windows the installer prints the `winget` command to use.
+- **Windows says Git Bash is missing.** Install [Git for Windows](https://git-scm.com/downloads/win) (Claude Code needs it on Windows anyway), reopen the app, and ask Claude again.
+
+The chat and Cowork tabs are not covered: their sessions run on Anthropic's servers, so nothing reaches your machine to count.
+
+### In a terminal
 
 **1. Install (or update):**
 
@@ -61,7 +92,7 @@ Accurate on every plan, including Max 20x.
 
 **3. Use the slash commands:**
 
-- `/carbon-report` - text report with totals, equivalences, top sessions
+- `/carbon-report` - text report with totals, a car equivalent, this year's share of a 2 t per-person budget, top sessions
 - `/carbon-card` - generate shareable PNG report cards (PNG export needs `playwright-core`, see [Dependencies](#dependencies); without it the card opens in your browser)
 - `/carbon-update` - update to the latest version and re-price history (see [Updating](#updating))
 
@@ -253,7 +284,7 @@ Sessions recorded since September 2026 are re-derived model by model, exactly. O
 
 | Command          | What it does                                        |
 | ---------------- | --------------------------------------------------- |
-| `/carbon-report` | Text report with totals, equivalences, top sessions |
+| `/carbon-report` | Text report with totals, car equivalent, share of a 2 t budget, top sessions |
 | `/carbon-card`   | Generate shareable PNG report cards                 |
 | `/carbon-badge`  | Shields.io badge of your total footprint for your READMEs |
 | `/carbon-pr`     | Post the dev footprint of the current branch on its PR |
@@ -299,12 +330,12 @@ Numbers follow the locale the report uses (`fr` prints `12,4 kg`, `us` and the w
 
 ## The CO2 of each answer (mod)
 
-The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that shows the CO2 of each answer when it ends, computed locally with the same formula and factors as the status line.
+The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that shows the CO2 of each answer when it ends, computed locally with the same formula and factors as the status line, and the session's total with its API-price cost.
 
 - **Terminal**, including the integrated terminal of an editor and the JetBrains plugin: at the right end of the line that closes each answer, `✻ Worked for 38s · done 10:32 PM          16 gCO₂`. A line keeps its own answer's figure when it is drawn again (a resize, a scroll, ctrl+o); a line drawn for the first time later, such as one only ctrl+o shows, gets no figure.
 - **Desktop app, Code tab**: a line under the answer, only for an unusual answer.
 - **An unusual answer** shows the ratio, and the subagents' share when they weighed on it: `230 gCO₂ · 14× your median`. An answer is unusual when it is above the 97th percentile of your last 200 answers, over 3× their median and at least 10 g, which is about one answer in 27; none is flagged before 50 answers are recorded.
-- **The session total** is pinned under the prompt, unless the claude-carbon status line already shows it or the `showSessionTotal` option is off (both in a terminal only, see [ccstatusline](#using-with-ccstatusline)). In the desktop app, where the turn duration line is not drawn, the same entry also shows the last answer: `142 gCO₂ this session · last answer 16 gCO₂`. Background subagents, which is how Claude Code starts most of them, count in the session total only: never in an answer, nor in your median. A foreground subagent counts in the answer that started it, not in the next one.
+- **The session total** is pinned under the prompt, CO2 and API-price cost: `This session: 142 gCO₂ · $3.41`, in French `Cette session : 142 gCO₂ · 3,41 $`. It shows unless the claude-carbon status line already gives it or the `showSessionTotal` option is off (both in a terminal only, see [ccstatusline](#using-with-ccstatusline)). The cost is the pay-as-you-go API list price of the same requests as the CO2, from `data/prices.json` with the formula of `/carbon-report`, cache writes at the 1-hour tier Claude Code uses; under a cent it reads `< $0.01`, and it is left out when the price list cannot be read, then until the total starts over, so the cost never covers only part of the requests. It is what the usage would cost on the API, not what a subscription bills. Background subagents, which is how Claude Code starts most of them, count in the session total only: never in an answer, nor in your median. A foreground subagent counts in the answer that started it, not in the next one.
 
 Claude Code draws mods in the terminal and in the desktop app's Code tab only: nothing appears in the VS Code extension's chat panel, in cloud sessions or with `claude -p`. Mods need Claude Code 2.1.287 or later (2.1.286 in the desktop app).
 
@@ -356,7 +387,9 @@ Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), an arXiv pr
 - Carbon intensity uses the AWS region grid (location-based, 0.287 kgCO2e/kWh), not real-time grid data. This sits at the low end of the location-based range; the US national average is ~380 g/kWh.
 - Anthropic does not publish Scope 1, 2, or 3 emissions. These estimates are independent and based on academic research, not provider data.
 
-Report equivalences follow your locale, since a car and a kWh differ by ~2x between countries: ADEME/SNCF factors on a French or undetected locale, EPA ones in miles on a US locale, world-average ones otherwise (200 gCO2/km by car, 8.7 g per smartphone charge). Force a set with `CLAUDE_CARBON_LOCALE` (`fr`, `us`, `world`, or any locale string). The factors live in `data/factors.json` under `equivalences`.
+The car equivalent in reports and cards follows your locale, since a km by car emits up to ~1.7x more in one country than in another: ADEME's 142 gCO2e/km on a French or undetected locale, EPA's 393 gCO2e/mile on a US locale, a 200 gCO2/km world average otherwise. Force a set with `CLAUDE_CARBON_LOCALE` (`fr`, `us`, `world`, or any locale string). The factors live in `data/factors.json` under `equivalences`.
+
+`/carbon-report` also gives this calendar year's total as a share of 2 tCO2e, the 2050 per-person target for a whole footprint (Carbone 4, *Faire sa part ?*, 2019). It is there for scale: the 2 t covers everything a person emits in a year, AI included. Sources and caveats: [METHODOLOGY.md](METHODOLOGY.md#annual-budget-line).
 
 Factors are editable in `data/factors.json`. See [METHODOLOGY.md](METHODOLOGY.md) for the full scientific basis, formula, and equivalences.
 

@@ -16,8 +16,12 @@ export type AnswerCo2Entry = {
   co2: AnswerCo2 | null;
 };
 
+// usd: the API-price cost (data/prices.json) of the same requests as grams. Absent once
+// one of them could not be priced (no price list read, or a total kept from code that
+// counted no cost): a part of the cost is never shown as the whole.
 export type SessionTotal = {
   grams: number;
+  usd?: number;
   turns: number;
 };
 

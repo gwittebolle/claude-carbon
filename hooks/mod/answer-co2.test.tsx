@@ -14,6 +14,22 @@ const FACTORS = JSON.stringify({
   exclude_models: [],
 });
 
+// The parts of data/prices.json the tests' models read.
+const PRICES = JSON.stringify({
+  models: {
+    fable: { input: 10, output: 50 },
+    opus: { input: 4, output: 20 },
+    sonnet: { input: 2, output: 10 },
+    haiku: { input: 0.1, output: 0.5 },
+  },
+  model_overrides: {
+    "claude-opus-5-5": { input: 4, output: 20, cache_read_multiplier: 0.05 },
+  },
+  cache_write_multiplier: 1.25,
+  cache_write_multiplier_1h: 2.0,
+  cache_read_multiplier: 0.1,
+});
+
 type Step = {
   model: string;
   input?: number;
@@ -35,6 +51,8 @@ type World = {
   // Values under the v1 key, which counted background subagents in the answer
   legacyHistory?: number[];
   welcomed?: boolean;
+  // data/prices.json as the mod reads it; null: the file cannot be read
+  prices?: string | null;
 };
 
 const storedHistory = (values: number[], welcomed: boolean) => ({
@@ -84,7 +102,11 @@ function world(on: any, options: World = {}) {
     processes.push([...e.argv]);
     return { deny: "not expected" };
   });
-  on("fs.read", () => ({ value: FACTORS }));
+  on("fs.read", ($: any, e: any) => {
+    if (!String(e.path).endsWith("/data/prices.json")) return { value: FACTORS };
+    const prices = options.prices === undefined ? PRICES : options.prices;
+    return prices === null ? { deny: "not found" } : { value: prices };
+  });
   on("settings.read", () => ({
     value: {
       ...(options.statusLine
@@ -241,13 +263,14 @@ async function durationLine(
 const plain = (text: string | undefined) => text?.replaceAll(NBSP, " ");
 
 // 1 000 input, 100 000 cache reads, 2 000 output on Opus: (78 000 + 624 000 + 3 304 000) / 1e6 = 4.006 g
+// and (4 000 + 20 000 + 40 000) / 1e6 = $0.064 at Opus 5.5's prices (reads at 0.05x)
 const ORDINARY: Step = {
   model: "claude-opus-5-5",
   input: 1000,
   cacheRead: 100000,
   output: 2000,
 };
-// 2 000 input and 6 000 output on Opus: 0.156 + 9.912 = 10.068 g
+// 2 000 input and 6 000 output on Opus: 0.156 + 9.912 = 10.068 g, $0.128
 const HEAVY: Step = { model: "claude-opus-5-5", input: 2000, output: 6000 };
 // 50 answers of 1 g: enough history for an answer to stand out
 const ONE_GRAM_HISTORY = Array.from({ length: 50 }, () => 1);
@@ -262,7 +285,7 @@ describe("terminal", () => {
     expect(drawn).toContain("✻ Baked for 38s");
     expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("warning");
-    expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
+    expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $");
   });
 
   test("an unusual answer shows its ratio to the median and its subagents", async ($: any, on: any) => {
@@ -320,7 +343,7 @@ describe("terminal", () => {
     expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("médiane");
     // 4.006 + 9.912 = 13.918 g in the session
-    expect(plain(statuses.at(-1))).toBe("14 gCO₂ cette session");
+    expect(plain(statuses.at(-1))).toBe("Cette session : 14 gCO₂ · 0,18 $");
   });
 
   test("requests after an answer ended never land on the next answer", async ($: any, on: any) => {
@@ -339,7 +362,7 @@ describe("terminal", () => {
     expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("sous-agent");
     // 4.006 + 9.912 + 4.006 = 17.924 g in the session
-    expect(plain(statuses.at(-1))).toBe("18 gCO₂ cette session");
+    expect(plain(statuses.at(-1))).toBe("Cette session : 18 gCO₂ · 0,25 $");
   });
 
   test("a foreground subagent sent to the background leaves the answers after it", async ($: any, on: any) => {
@@ -369,7 +392,7 @@ describe("terminal", () => {
     expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("sous-agent");
     // 5.658 + 9.912 + 4.006 + 9.912 = 29.488 g in the session
-    expect(plain(statuses.at(-1))).toBe("29 gCO₂ cette session");
+    expect(plain(statuses.at(-1))).toBe("Cette session : 29 gCO₂ · 0,37 $");
     // 5.658 and 4.006 for the median, with no background request in them
     expect(storedValues()).toEqual([5.658, 4.006]);
   });
@@ -389,7 +412,7 @@ describe("terminal", () => {
     );
     expect(await durationLine($, 21000)).toContain("4,0 gCO₂");
     // 4.006 + 4.006 + 9.912 = 17.924 g in the session
-    expect(plain(statuses.at(-1))).toBe("18 gCO₂ cette session");
+    expect(plain(statuses.at(-1))).toBe("Cette session : 18 gCO₂ · 0,25 $");
     expect(storedValues()).toEqual([4.006, 4.006]);
   });
 
@@ -409,7 +432,7 @@ describe("terminal", () => {
     const drawn = await durationLine($, 38000);
     expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("sous-agent");
-    expect(plain(statuses.at(-1))).toBe("14 gCO₂ cette session");
+    expect(plain(statuses.at(-1))).toBe("Cette session : 14 gCO₂ · 0,18 $");
   });
 
   test("a foreground subagent still running in the next answer stays out of it", async ($: any, on: any) => {
@@ -432,7 +455,7 @@ describe("terminal", () => {
     expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("sous-agent");
     // 4.006 + 4.006 + 9.912 + 1.652 = 19.576 g in the session
-    expect(plain(statuses.at(-1))).toBe("20 gCO₂ cette session");
+    expect(plain(statuses.at(-1))).toBe("Cette session : 20 gCO₂ · 0,25 $");
   });
 
   test("a subagent of a foreground subagent counts in its parent's answer", async ($: any, on: any) => {
@@ -649,7 +672,7 @@ describe("terminal", () => {
       engineSteps(on);
       await startSession($);
       await runTurn($, [ORDINARY], 38000);
-      expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
+      expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $");
     },
   );
 
@@ -668,7 +691,7 @@ describe("terminal", () => {
       expect(await durationLine($, 38000)).not.toContain("CO₂");
     }
     await runTurn($, [ORDINARY], 20000);
-    expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
+    expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $");
   });
 });
 
@@ -706,16 +729,21 @@ describe("desktop", () => {
     await startSession($);
     await runTurn($, [ORDINARY], 38000);
     expect(plain(statuses.at(-1))).toBe(
-      "4,0 gCO₂ cette session · dernière réponse 4,0 gCO₂",
+      "Cette session : 4,0 gCO₂ · 0,06 $",
     );
   });
 
-  // The surface already heads the entry with the plugin's name.
+  // The surface already heads the entry with the plugin's name, and the entry gives
+  // the session alone: no last answer's figure.
   const expectNoPluginName = (statuses: Array<string | undefined>) => {
-    for (const text of statuses) expect(text).not.toContain("claude-carbon");
+    for (const text of statuses) {
+      expect(text).not.toContain("claude-carbon");
+      expect(text).not.toContain("dernière réponse");
+      expect(text).not.toContain("last answer");
+    }
   };
 
-  test("an ordinary answer puts its figure in the pinned entry", async ($: any, on: any) => {
+  test("an ordinary answer shows the session total in the pinned entry", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["desktop"],
       history: ONE_GRAM_HISTORY,
@@ -726,11 +754,11 @@ describe("desktop", () => {
     expectNoPluginName(statuses);
     expect(result.text).toBe("done");
     expect(plain(statuses.at(-1))).toBe(
-      "4,0 gCO₂ cette session · dernière réponse 4,0 gCO₂",
+      "Cette session : 4,0 gCO₂ · 0,06 $",
     );
   });
 
-  test("the entry follows the last answer", async ($: any, on: any) => {
+  test("the entry adds up the answers, CO2 and cost", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["desktop"],
       history: ONE_GRAM_HISTORY,
@@ -741,11 +769,11 @@ describe("desktop", () => {
     await runTurn($, [ORDINARY], 21000);
     expectNoPluginName(statuses);
     expect(plain(statuses.at(-1))).toBe(
-      "8,0 gCO₂ cette session · dernière réponse 4,0 gCO₂",
+      "Cette session : 8,0 gCO₂ · 0,13 $",
     );
   });
 
-  test("an unusual answer: ratio under the answer, plain figure in the entry", async ($: any, on: any) => {
+  test("an unusual answer: ratio under the answer, session total in the entry", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["desktop"],
       history: ONE_GRAM_HISTORY,
@@ -756,11 +784,11 @@ describe("desktop", () => {
     expectNoPluginName(statuses);
     expect(plain(result.text)).toBe("10 gCO₂ · 10× votre médiane");
     expect(plain(statuses.at(-1))).toBe(
-      "10 gCO₂ cette session · dernière réponse 10 gCO₂",
+      "Cette session : 10 gCO₂ · 0,13 $",
     );
   });
 
-  test("an excluded last answer drops the tail", async ($: any, on: any) => {
+  test("an excluded answer adds nothing to the entry", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["desktop"],
       history: ONE_GRAM_HISTORY,
@@ -774,10 +802,10 @@ describe("desktop", () => {
       12000,
     );
     expectNoPluginName(statuses);
-    expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
+    expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $");
   });
 
-  test("a background subagent counts in the total, not in the last answer", async ($: any, on: any) => {
+  test("a background subagent counts in the entry", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["desktop"],
       history: ONE_GRAM_HISTORY,
@@ -791,13 +819,13 @@ describe("desktop", () => {
       async () => spawn($, "bg-1", true),
     );
     expectNoPluginName(statuses);
-    // 4.006 + 9.912 = 13.918 g in the session, 4.006 g in the answer
+    // 4.006 + 9.912 = 13.918 g and $0.064 + $0.12 in the session
     expect(plain(statuses.at(-1))).toBe(
-      "14 gCO₂ cette session · dernière réponse 4,0 gCO₂",
+      "Cette session : 14 gCO₂ · 0,18 $",
     );
   });
 
-  test("a terminal attached keeps the short entry", async ($: any, on: any) => {
+  test("a terminal attached shows the same entry", async ($: any, on: any) => {
     const { statuses } = world(on, {
       surfaces: ["terminal", "desktop"],
       history: ONE_GRAM_HISTORY,
@@ -806,11 +834,11 @@ describe("desktop", () => {
     await startSession($);
     await runTurn($, [ORDINARY], 38000);
     expectNoPluginName(statuses);
-    expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
+    expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $");
   });
 
   test(
-    "showPerTurn off: no tail on Desktop",
+    "showPerTurn off: the entry stays the same on Desktop",
     { options: { showPerTurn: false } },
     async ($: any, on: any) => {
       const { statuses } = world(on, { surfaces: ["desktop"] });
@@ -818,7 +846,7 @@ describe("desktop", () => {
       await startSession($);
       await runTurn($, [ORDINARY], 38000);
       expectNoPluginName(statuses);
-      expect(plain(statuses.at(-1))).toBe("4,0 gCO₂ cette session");
+      expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $");
     },
   );
 
@@ -831,10 +859,105 @@ describe("desktop", () => {
       await startSession($);
       await runTurn($, [ORDINARY], 38000);
       expect(plain(statuses.at(-1))).toBe(
-        "4,0 gCO₂ cette session · dernière réponse 4,0 gCO₂",
+        "Cette session : 4,0 gCO₂ · 0,06 $",
       );
     },
   );
+
+  test("in English, the dollar sign goes first", async ($: any, on: any) => {
+    const { statuses } = world(on, {
+      surfaces: ["desktop"],
+      lang: "en_US.UTF-8",
+    });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("This session: 4.0 gCO₂ · $0.06");
+  });
+
+  test("the entry spaces its French colon and its unit with no-break spaces", async ($: any, on: any) => {
+    const { statuses } = world(on, { surfaces: ["desktop"] });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(statuses.at(-1)).toBe(
+      `Cette session${NBSP}: 4,0${NBSP}gCO₂ · 0,06${NBSP}$`,
+    );
+  });
+
+  test("a session under a cent says so", async ($: any, on: any) => {
+    const { statuses } = world(on, { surfaces: ["desktop"] });
+    engineSteps(on);
+    await startSession($);
+    // 4 000 output on Haiku 5.5: 1.652 g, $0.002
+    await runTurn($, [{ model: "claude-haiku-5-5", output: 4000 }], 9000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 1,7 gCO₂ · < 0,01 $");
+  });
+
+  test("no price list: the entry shows the CO2 alone", async ($: any, on: any) => {
+    const { statuses } = world(on, { surfaces: ["desktop"], prices: null });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂");
+  });
+
+  test("a price list that is not JSON: the CO2 alone", async ($: any, on: any) => {
+    const { statuses } = world(on, { surfaces: ["desktop"], prices: "{" });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂");
+  });
+
+  test("a price list read only after a reload: the CO2 alone, never a part of the cost", async ($: any, on: any) => {
+    const options: World = { surfaces: ["desktop"], prices: null };
+    const { statuses } = world(on, options);
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [HEAVY], 90000);
+    // A reload raises session.start again and keeps $.state.
+    options.prices = undefined;
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 14 gCO₂");
+  });
+
+  test("a total kept from code that counted no cost: the CO2 alone", async ($: any, on: any) => {
+    const { statuses } = world(on, { surfaces: ["desktop"] });
+    engineSteps(on);
+    // The session value as the earlier code wrote it, before a reload: no usd.
+    const held = { value: { grams: 10.068, turns: 1 } as unknown, version: 1 };
+    on("state.get", ($inner: any, e: any, next: any) =>
+      e.key === "session" ? { value: { ...held } } : next(e),
+    );
+    on("state.set", ($inner: any, e: any, next: any) => {
+      if (e.key !== "session") return next(e);
+      if (e.ifVersion !== undefined && e.ifVersion !== held.version) {
+        return { value: { isSet: false, version: held.version } };
+      }
+      held.value = JSON.parse(JSON.stringify(e.value));
+      held.version += 1;
+      return { value: { isSet: true, version: held.version } };
+    });
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 14 gCO₂");
+  });
+
+  test("/clear starts the cost over with the CO2", async ($: any, on: any) => {
+    const { statuses } = world(on, { surfaces: ["desktop"] });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [HEAVY], 90000);
+    await $.session.end({
+      reason: "clear",
+      sessionId: "s1",
+      resume: { sessionId: "s1" },
+    });
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $");
+  });
 });
 
 const FR_TOAST = "Le CO₂ s'affiche maintenant pour chaque réponse.";
