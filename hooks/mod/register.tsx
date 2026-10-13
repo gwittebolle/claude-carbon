@@ -91,6 +91,7 @@ import {
   mascotCells,
   mascotSvg,
   NEUTRAL,
+  IDLE_STEP_MS,
   stepMs,
   stripeCells,
   stripesSvg,
@@ -281,7 +282,8 @@ async function isPaneOpen($: EngineInterface): Promise<boolean> {
 async function currentClass($: EngineInterface): Promise<number | null> {
   const total = await read($, session);
   const m = sessionMedian(pastSessions(pane.rows ?? [], pane.sessionId));
-  return m === null ? null : classOf(total.grams, m);
+  // Grey, as drawn, until this session counts something
+  return m === null || !(total.grams > 0) ? null : classOf(total.grams, m);
 }
 
 function isBlocks(value: unknown): value is PaneBlocks {
@@ -300,18 +302,16 @@ function stopWalk() {
   pane.walkRun += 1;
 }
 
-// One step of the terminal's molecule while a turn runs and the pane is open: a blit of
-// the next frame, no redraw, then the next step at the pace of the current colour. A
-// blit the surface refuses (the pane in a hidden tab) is left be. Each await may see the
-// walk stopped or restarted: the step then ends without drawing.
+// One step of the terminal's molecule while the pane is open: a blit of the next frame,
+// no redraw, then the next step, at the pace of the current colour while a turn runs and
+// a slow breath at rest. A blit the surface refuses (the pane in a hidden tab) is left be.
+// Each await may see the walk stopped or restarted: the step then ends without drawing.
 async function walkStep($: EngineInterface, run: number) {
   const isCurrent = () => run === pane.walkRun;
   try {
     const surfaces = await $.session.surfaces();
-    const goOn =
-      surfaces.includes("terminal") &&
-      (await read($, working)) &&
-      (await isPaneOpen($));
+    const goOn = surfaces.includes("terminal") && (await isPaneOpen($));
+    const isWorking = await read($, working);
     if (!isCurrent()) return;
     if (!goOn) {
       stopWalk();
@@ -330,7 +330,8 @@ async function walkStep($: EngineInterface, run: number) {
       })
       .catch(() => undefined);
     if (!isCurrent()) return;
-    pane.walkTimer = $.clock.after(stepMs(cls ?? NEUTRAL_CLASS), () => {
+    const pace = isWorking ? stepMs(cls ?? NEUTRAL_CLASS) : IDLE_STEP_MS;
+    pane.walkTimer = $.clock.after(pace, () => {
       void walkStep($, run);
     });
   } catch {
@@ -342,7 +343,7 @@ function ensureWalk($: EngineInterface) {
   if (pane.walkTimer !== null) return;
   pane.walkRun += 1;
   const run = pane.walkRun;
-  pane.walkTimer = $.clock.after(stepMs(NEUTRAL_CLASS), () => {
+  pane.walkTimer = $.clock.after(IDLE_STEP_MS, () => {
     void walkStep($, run);
   });
 }
@@ -578,8 +579,7 @@ export const register: Register = (on, options) => {
   on("turn.complete", async ($, e, next) => {
     if (e.agentId !== undefined) return next(e);
     // Before anything that may return early: a module reloaded during the turn has no
-    // open answer, and the molecule must still stop.
-    stopWalk();
+    // open answer, and the molecule must still slow down (its next step reads `working`).
     // No history file yet (an update installed in this very session): the Stop hook
     // writes one after this answer, and the pane's next drawing reads it again.
     if (pane.rows === null) pane.rows = undefined;
@@ -675,8 +675,10 @@ export const register: Register = (on, options) => {
   });
 
   // /carbon-panel opens the pane, or closes it when it is open. Opened without the keyboard:
-  // the pane has nothing to type into, and Escape must still interrupt a turn.
-  on("command.run", { command: COMMAND }, async ($) => {
+  // the pane has nothing to type into, and Escape must still interrupt a turn. The
+  // command is also a skill of the plugin (skills/carbon-panel), so the desktop app lists
+  // it: its plugin spelling is caught here too, and its text never reaches the model.
+  on("command.run", { command: [COMMAND, `claude-carbon:${COMMAND}`] }, async ($) => {
     try {
       if (await isPaneOpen($)) {
         stopWalk();
@@ -698,7 +700,7 @@ export const register: Register = (on, options) => {
       });
       if (!opened.isPlaced) {
         $.ui.toast(paneUnplaced(lang), { timeoutMs: 8000 });
-      } else if (await read($, working)) {
+      } else {
         ensureWalk($);
       }
     } catch {
@@ -1030,14 +1032,15 @@ export const register: Register = (on, options) => {
           {noHistory}
           {empty}
           {hasStripes && (
-            <Box flexDirection="column">
+            // The desktop app does not space an Svg from its siblings: margins say it
+            <Box flexDirection="column" marginTop={1} rowGap={1}>
               {stripesDrawing}
               <Text dimColor>{dates}</Text>
               <Text dimColor>{`${stripesCaption(w.step, bm, lang)} · ${legendText(lang)}`}</Text>
             </Box>
           )}
           {hasTotals && totals !== null && (
-            <Box flexDirection="column">
+            <Box flexDirection="column" marginTop={1}>
               <Text bold>{periodHeadline(totals.grams, lang)}</Text>
               {changeText}
               {secondary.map((line) => (
@@ -1049,7 +1052,7 @@ export const register: Register = (on, options) => {
                 <Box flexDirection="column" marginTop={1}>
                   {listed.map((p) => (
                     <Text key={`project-${p.project}`}>
-                      {projectBarLine(p.project, p.share, lang)}
+                      {projectBarLine(p.project, p.grams, p.share, lang)}
                     </Text>
                   ))}
                   {rest.length > 0 && (

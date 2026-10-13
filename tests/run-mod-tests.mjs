@@ -654,7 +654,7 @@ const svg = mascotSvg({ color: PALETTE[6], walking: true, step: 172, title: "t" 
 check("svg no script", /<script|on[a-z]+=/i.test(svg), false);
 check("svg walks", svg.includes("@keyframes") && svg.includes("344ms"), true);
 check("svg reduced motion", svg.includes("prefers-reduced-motion"), true);
-check("svg standing", mascotSvg({ color: NEUTRAL, walking: false, step: 300, title: "t" }).includes("@keyframes"), false);
+check("svg at rest breathes slowly", mascotSvg({ color: NEUTRAL, walking: false, step: 300, title: "t" }).includes("2400ms"), true);
 check("svg size", svg.length < 131072, true);
 const stripesDoc = stripesSvg(
   Array.from({ length: 400 }, (_, i) => ({ color: PALETTE[i % 8], title: `<${i}> & "x"` })),
@@ -730,6 +730,7 @@ const rows = [
   const w30 = windowOf({ range: "30d" }, rows, now);
   const b30 = bars(rows, w30);
   check("30 days, 30 stripes", b30.length, 30);
+  check("a younger history starts at its first session", bars(rows.slice(1), windowOf({ range: "30d" }, rows.slice(1), now)).length, 13);
   check("30 days keep the 3 recent sessions", b30.reduce((s, b) => s + b.sessions, 0), 3);
   check("an empty day is 0 g", b30.filter((b) => b.grams === 0).length, 27);
   const w90 = windowOf({ range: "90d" }, rows, now);
@@ -757,7 +758,8 @@ const rows = [
 }
 // The same length of time before, for the comparison; none for the whole history
 {
-  const r = [row("a", now - 2 * day, 30, { usd: 1 }), row("b", now - 10 * day, 20), row("c", now - 9 * day, 10, { usd: 2 })];
+  // Oldest first, as the history file reads
+  const r = [row("b", now - 10 * day, 20), row("c", now - 9 * day, 10, { usd: 2 }), row("a", now - 2 * day, 30, { usd: 1 })];
   const w = windowOf({ range: "7d" }, r, now);
   const prev = previousTotal(r, w, { range: "7d" });
   check("previous window", prev.grams, 30);
@@ -807,7 +809,8 @@ check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams
   check("DST week starts at the day's first instant", new Date(w.at(-1).start).getHours(), 0);
   const days = bars(dst, windowOf({ range: "30d" }, dst, at));
   check("DST days keep every session", days.reduce((s, b) => s + b.grams, 0), 30);
-  check("DST days, 30 stripes", days.length, 30);
+  // From the first session (6 Sep) to the day of `at` (20 Sep)
+  check("DST days from the first session", days.length, 15);
   if (tz === undefined) delete process.env.TZ;
   else process.env.TZ = tz;
 }
@@ -838,7 +841,7 @@ for (const lang of ["fr", "en"]) {
   pane.push(equivalenceText(240000, carEquivalence(factorsDoc, lang === "fr" ? "fr" : "us"), lang));
   pane.push(customizeLabel(true, lang), customizeLabel(false, lang));
   for (const b of ["compare", "cost", "equivalence", "projects"]) pane.push(blockLabel(b, lang));
-  pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 0.07, lang), projectBarLine("", 0.001, lang));
+  pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 6000, 0.07, lang), projectBarLine("", 50, 0.001, lang));
   pane.push(apiValueText(27608, lang), apiValueText(3, lang));
   pane.push(waitingText(lang), legendText(lang), fromLabel(lang), toLabel(lang), monthLabel("2026-05", lang));
   pane.push(otherProjectsLine(4, 900, 0.01, lang), topProjectsText([{ project: "a", share: 0.4 }], lang));
@@ -869,7 +872,7 @@ check("caption en", plainText(stripesCaption("day", null, "en")), "one stripe pe
 check("headline", plainText(periodHeadline(901200, "fr")), "901,2 kgCO₂ sur la période");
 check("month label", monthLabel("2026-05", "fr"), "mai 2026");
 check("date with year", plainText(dateLabel(now, "day", "fr", true)), "12 oct. 2026");
-check("project bar", plainText(projectBarLine("carbonara", 0.41, "fr")), "███████ 41 % carbonara");
+check("project bar", plainText(projectBarLine("carbonara", 103500, 0.41, "fr")), "███████ 41 % carbonara · 103,5 kgCO₂");
 check("stripe title week", plainText(stripeTitle(now, "week", 1234, 3, "fr")), "semaine du 12 oct. · 1,2 kgCO₂ · 3 sessions");
 
 console.log(`${checks - failures}/${checks} checks passed`);

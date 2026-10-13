@@ -86,6 +86,9 @@ export function classOf(grams: number, median: number): number {
   return Math.min(7, Math.max(0, cls));
 }
 
+// At rest the molecule still breathes: a slow bob, one frame every 1.2 s
+export const IDLE_STEP_MS = 1200;
+
 // One step of the walk: 460 ms for the bluest, 124 ms for the reddest.
 export function stepMs(cls: number): number {
   return 460 - Math.min(7, Math.max(0, cls)) * 48;
@@ -165,9 +168,9 @@ function escapeXml(text: string): string {
     .replaceAll('"', "&quot;");
 }
 
-// The molecule alone, 200 x 140 user units. Walking, it alternates its two frames at
-// `step` ms; standing, it shows frame A. No script: a CSS animation, still under
-// reduced motion.
+// The molecule alone. Walking, it alternates its two frames at `step` ms; at rest it
+// bobs slowly, IDLE_STEP_MS a frame. No script: a CSS animation, still under reduced
+// motion.
 export function mascotSvg(opts: {
   color: string;
   walking: boolean;
@@ -176,15 +179,14 @@ export function mascotSvg(opts: {
 }): string {
   const w = SPRITE_WIDTH * 10;
   const h = SPRITE_HEIGHT * 10;
-  const period = opts.step * 2;
-  const style = opts.walking
-    ? `.b{opacity:0}` +
-      `@keyframes fa{0%{opacity:1}50%{opacity:0}100%{opacity:0}}` +
-      `@keyframes fb{0%{opacity:0}50%{opacity:1}100%{opacity:1}}` +
-      `.a{animation:fa ${period}ms steps(1,end) infinite}` +
-      `.b{animation:fb ${period}ms steps(1,end) infinite}` +
-      `@media (prefers-reduced-motion: reduce){.a,.b{animation:none}.a{opacity:1}.b{opacity:0}}`
-    : `.b{opacity:0}`;
+  const period = (opts.walking ? opts.step : IDLE_STEP_MS) * 2;
+  const style =
+    `.b{opacity:0}` +
+    `@keyframes fa{0%{opacity:1}50%{opacity:0}100%{opacity:0}}` +
+    `@keyframes fb{0%{opacity:0}50%{opacity:1}100%{opacity:1}}` +
+    `.a{animation:fa ${period}ms steps(1,end) infinite}` +
+    `.b{animation:fb ${period}ms steps(1,end) infinite}` +
+    `@media (prefers-reduced-motion: reduce){.a,.b{animation:none}.a{opacity:1}.b{opacity:0}}`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges">` +
     `<title>${escapeXml(opts.title)}</title><style>${style}</style>` +

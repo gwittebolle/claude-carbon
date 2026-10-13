@@ -244,8 +244,16 @@ export function windowOf(
   }
   const days = RANGE_DAYS[view.range];
   const step: Step = days <= 45 ? "day" : "week";
-  // The current day or week is the last of `days` days, as a calendar reads it
-  return { start: startOf(step, now - (days - 1) * DAY_MS), end: now, step };
+  // The current day or week is the last of `days` days, as a calendar reads it. A
+  // history younger than the range starts the stripes at its first session: before it
+  // there is no data, not a pause.
+  const first = rows[0]?.at;
+  const from = startOf(step, now - (days - 1) * DAY_MS);
+  return {
+    start: first === undefined ? from : Math.max(from, startOf(step, first)),
+    end: now,
+    step,
+  };
 }
 
 function sumOf(rows: readonly SessionRow[]): PeriodTotal {

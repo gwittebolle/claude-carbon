@@ -19,7 +19,10 @@ with and without a truncated last line.
 
 ### feat: /carbon-panel opens a pane with a CO2 molecule and the warming stripes of your sessions (1.11.0)
 
-The mod registers `/carbon-panel`, which opens a pane, or closes it when it is open. At
+The mod registers `/carbon-panel`, which opens a pane, or closes it when it is open.
+The command is also a skill (`skills/carbon-panel`, linked by the installers), so
+the desktop app lists it; the mod catches both spellings before the skill's text
+reaches the model, and that text only answers where the mod does not run. At
 the top, a pixel CO2 molecule (`hooks/mod/lib/mascot.ts`) coloured by this
 session's CO2 against the median of past sessions, in eight classes by powers of
 two from dark blue to dark red, grey until 10 past sessions are recorded. It hops

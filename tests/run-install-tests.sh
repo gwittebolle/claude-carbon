@@ -95,7 +95,7 @@ check "cold start: SessionEnd hook"        "$SESSIONEND" "$(hook_commands "$S" S
 # Developer Mode, so there the commands are copied on purpose and configure-settings.sh
 # refreshes the copy on update; assert whichever form this platform is meant to produce.
 MISSING=""
-for c in carbon-report carbon-card carbon-update carbon-badge carbon-pr; do
+for c in carbon-report carbon-card carbon-update carbon-badge carbon-pr carbon-panel; do
   if cc_is_windows; then
     cmp -s "${REPO_DIR}/skills/${c}/SKILL.md" "${CFG}/commands/${c}.md" 2>/dev/null || MISSING="${MISSING}${c} "
   else

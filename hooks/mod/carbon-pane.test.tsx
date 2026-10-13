@@ -242,12 +242,12 @@ describe("the /carbon-panel pane", () => {
     expect(mascot.props.rows).toBe(4);
     const stripes = await ui.find({ key: "stripes" });
     expect(stripes.type).toBe("Raster");
-    // 30 days, one stripe a day, whatever days had sessions
-    expect(stripes.props.columns).toBe(30);
+    // From the first session, 20 days back, to today: 21 days, two columns each
+    expect(stripes.props.columns).toBe(42);
     expect(stripes.props.rows).toBe(2);
     const text = await drawn(ui);
     expect(text).toContain("Cette session : en attente de la première réponse");
-    expect(text).toContain("13 sept. → 12 oct. · une bande par jour · médiane 300 gCO₂ par jour");
+    expect(text).toContain("22 sept. → 12 oct. · une bande par jour · médiane 300 gCO₂ par jour");
     // 20 past sessions; the running one's own row is not counted twice
     expect(text).toContain("6,0 kgCO₂ sur la période");
     expect(text).toContain("20 sessions");
@@ -263,8 +263,8 @@ describe("the /carbon-panel pane", () => {
     const all = JSON.stringify(svgs);
     expect(all).toContain('"type":"Svg"');
     expect(all).not.toContain("<script");
-    // Standing: frame A alone, no animation
-    expect(all).not.toContain("@keyframes");
+    // At rest it breathes: the slow pace, 2 x 1.2 s
+    expect(all).toContain("2400ms");
     await ui.unmount();
   });
 
@@ -304,8 +304,8 @@ describe("the /carbon-panel pane", () => {
     expect((store.get("pane.blocks") as any).projects).toBe(true);
     const text = await drawn(desk);
     expect(text).toContain("1,0 kgCO₂ sur la période");
-    expect(text).toContain("70 % carbonara");
-    expect(text).toContain("30 % studio");
+    expect(text).toContain("70 % carbonara · 700 gCO₂");
+    expect(text).toContain("30 % studio · 300 gCO₂");
     expect(text.indexOf("% carbonara") < text.indexOf("% studio")).toBe(true);
     await desk.unmount();
     const term = await $.ui.mount({ ...PANE, surface: "terminal" });
@@ -469,16 +469,21 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain("1 sept. → 30 sept.");
     await ui.unmount();
   });
-  test("the molecule walks while Claude works, and stops after", async ($: any, on: any) => {
+  test("the molecule walks while Claude works, then breathes slowly", async ($: any, on: any) => {
     const { blits } = world(on);
     await startSession($);
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-    await $.turn.start({ text: "go", turnId: "turn-1" });
-    await clock.advance(3000);
-    expect(blits.length > 3).toBe(true);
+    // At rest, one frame every 1.2 s
+    await clock.advance(6000);
+    expect(blits.length).toBe(5);
     expect(blits[0].key).toBe("mascot");
     expect(blits[0].columns).toBe(13);
+    await $.turn.start({ text: "go", turnId: "turn-1" });
+    const before = blits.length;
+    await clock.advance(3000);
+    // Grey molecule, middle pace: a step every 316 ms once the rest step is done
+    expect(blits.length - before >= 5).toBe(true);
     await $.turn.complete({
       answer: "done",
       durationMs: 3000,
@@ -487,12 +492,11 @@ describe("the /carbon-panel pane", () => {
       reason: "answer",
     });
     const after = blits.length;
-    await clock.advance(5000);
-    expect(blits.length).toBe(after);
+    await clock.advance(6000);
+    expect(blits.length - after <= 6).toBe(true);
     await ui.unmount();
   });
-
-  test("a turn the module lost track of still stops the walk", async ($: any, on: any) => {
+  test("a turn the module lost track of still slows the walk down", async ($: any, on: any) => {
     const { blits } = world(on);
     await startSession($);
     await openPane($);
@@ -506,11 +510,11 @@ describe("the /carbon-panel pane", () => {
       turnId: "turn-unknown",
       reason: "answer",
     });
+    await clock.advance(1300);
     const after = blits.length;
-    await clock.advance(5000);
-    expect(blits.length).toBe(after);
+    await clock.advance(6000);
+    expect(blits.length - after).toBe(5);
   });
-
   test("no walk without the pane open", async ($: any, on: any) => {
     const { blits } = world(on);
     await startSession($);

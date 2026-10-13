@@ -494,11 +494,17 @@ function percent(share: number): string {
 }
 
 
-// A project as a bar, left-aligned so bars compare whatever the font: "███████ 41 % carbonara"
-export function projectBarLine(project: string, share: number, lang: Lang): string {
+// A project as a bar, left-aligned so bars compare whatever the font:
+// "███████ 41 % carbonara · 103,5 kgCO₂"
+export function projectBarLine(
+  project: string,
+  grams: number,
+  share: number,
+  lang: Lang,
+): string {
   const name = project === "" ? (lang === "fr" ? "sans projet" : "no project") : project;
   const bar = "█".repeat(Math.max(1, Math.round(share * 16)));
-  return `${bar} ${percent(share)} ${name}`;
+  return `${bar} ${percent(share)} ${name} · ${formatGrams(grams, lang)}`;
 }
 
 // The rest after the projects listed

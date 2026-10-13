@@ -155,7 +155,7 @@ fi
 # copy on every run so an update still reaches the commands.
 COMMANDS_DIR="${CONFIG_DIR}/commands"
 mkdir -p "$COMMANDS_DIR"
-for SKILL_NAME in carbon-report carbon-card carbon-update carbon-badge carbon-pr; do
+for SKILL_NAME in carbon-report carbon-card carbon-update carbon-badge carbon-pr carbon-panel; do
   SKILL_SRC="${INSTALL_DIR}/skills/${SKILL_NAME}/SKILL.md"
   SKILL_LNK="${COMMANDS_DIR}/${SKILL_NAME}.md"
   if [ -L "$SKILL_LNK" ]; then
