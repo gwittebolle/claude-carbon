@@ -52,16 +52,39 @@ fi
 # breakdown (cache reads, subagents), so it sits on the same time base as the cost next
 # to it. It lags by at most one turn.
 #
-# Fallback: the context-window estimate, used until the Stop hook has written a row (first
-# turn of a session, or DB absent). That figure is a SNAPSHOT of the current context, not a
-# session total, and it drops back every time the context is compacted. On a long agentic
-# session it understates the real footprint by orders of magnitude, which is exactly why
-# the DB is preferred.
+# No row yet: the first turn, whose Stop hook is still writing it as the status line
+# draws, and nothing redraws the status line after it. The transcript is short then, so
+# the status line makes the hook's own computation on it (cc_session_usage) and shows the
+# figure the database and the mod will show. Without it, the context-window estimate
+# counted cache reads at the full input factor: 6 g for an answer of 4.3 g.
+#
+# Last fallback, the context-window estimate (no database, no transcript): a SNAPSHOT of
+# the current context, not a session total, and it drops back every time the context is
+# compacted. On a long agentic session it understates the real footprint by orders of
+# magnitude, which is exactly why the DB is preferred.
 CO2_G=""
 if [ -n "$SESSION_ID" ] && [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>&1; then
   SESSION_ID_SQL="${SESSION_ID//$CC_SQ/$CC_SQ$CC_SQ}"
   CO2_G="$(sqlite3 -cmd ".timeout 300" "$DB_PATH" "SELECT printf('%.0f', co2_grams) FROM sessions WHERE session_id='${SESSION_ID_SQL}' AND COALESCE(excluded, 0) = 0 AND co2_grams > 0;" 2>/dev/null || true)"
   case "$CO2_G" in ''|*[!0-9]*) CO2_G="" ;; esac
+  TRANSCRIPT_PATH=""
+  if [ -z "$CO2_G" ] && [ "$FACTOR_IN" != "0" ]; then
+    TRANSCRIPT_PATH="$(cc_path "$(echo "$INPUT" | jq -r '.transcript_path // ""')")"
+  fi
+  if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+    SUB_FILES=()
+    SUB_DIR="$(dirname "$TRANSCRIPT_PATH")/${SESSION_ID}/subagents"
+    if [ -d "$SUB_DIR" ]; then
+      for SUB_FILE in "$SUB_DIR"/*.jsonl; do
+        [ -f "$SUB_FILE" ] && SUB_FILES+=("$SUB_FILE")
+      done
+    fi
+    if USAGE="$(cc_session_usage "$FACTORS_FILE" "$PRICES_FILE" "$TRANSCRIPT_PATH" ${SUB_FILES[@]+"${SUB_FILES[@]}"})"; then
+      cc_parse_usage "$USAGE"
+      CO2_G="$(printf '%s\n' "$CC_U_CO2" | LC_ALL=C awk '{printf "%.0f", $1}')"
+      case "$CO2_G" in ''|*[!0-9]*) CO2_G="" ;; esac
+    fi
+  fi
 fi
 if [ -z "$CO2_G" ]; then
   CO2_G="$(echo "$INPUT_TOKENS $FACTOR_IN $OUTPUT_TOKENS $FACTOR_OUT" | LC_ALL=C awk '{printf "%.0f", ($1 * $2 + $3 * $4) / 1000000}')"

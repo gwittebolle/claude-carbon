@@ -15,6 +15,16 @@ it. The README's `/carbon-pr` note now speaks of the session's last folder.
 `tests/run-per-model-tests.sh` covers a session that changes folder mid-way,
 with and without a truncated last line.
 
+### fix: the status line's first turn shows the session's CO2, not a context estimate
+
+On a session's first turn the status line draws before the Stop hook has written
+the session's row, and nothing redraws it after. It fell back to the context
+window, all input at the full input factor, cache reads included: 6 g for an
+answer the database and the mod both put at 4.3 g. With no row yet, the status
+line now runs the Stop hook's own computation (`cc_session_usage`) on the
+transcript, short at that point, subagents included; the context-window estimate
+stays as the last fallback, with no database or no transcript.
+
 ### docs: the README's molecules pull the pane's faces
 
 The banner's eight molecules walk as before and now wear the faces the
