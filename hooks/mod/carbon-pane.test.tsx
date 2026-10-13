@@ -242,22 +242,17 @@ describe("the /carbon-panel pane", () => {
     expect(mascot.props.rows).toBe(4);
     const stripes = await ui.find({ key: "stripes" });
     expect(stripes.type).toBe("Raster");
-    // 20 past sessions in 30 days, two columns each in 58; the running one has no
-    // total yet
-    expect(stripes.props.columns).toBe(40);
+    // 30 days, one stripe a day, whatever days had sessions
+    expect(stripes.props.columns).toBe(30);
     expect(stripes.props.rows).toBe(2);
     const text = await drawn(ui);
-    expect(text).toContain("Cette session : < 0,1 gCO₂");
-    expect(text).toContain(
-      "30 derniers jours · 20 sessions · médiane 300 gCO₂",
-    );
-    // The running session's own row in the file is not a past session
-    expect(text).not.toContain("21 sessions");
-    // The range's first and last stripe on one line
-    expect(text).toContain("22 sept. → 11 oct.");
+    expect(text).toContain("Cette session : en attente de la première réponse");
+    expect(text).toContain("13 sept. → 12 oct. · une bande par jour · médiane 300 gCO₂ par jour");
+    // 20 past sessions; the running one's own row is not counted twice
+    expect(text).toContain("6,0 kgCO₂ sur la période");
+    expect(text).toContain("20 sessions");
     await ui.unmount();
   });
-
   test("the desktop app draws SVGs and no cells", async ($: any, on: any) => {
     world(on);
     await startSession($);
@@ -278,18 +273,17 @@ describe("the /carbon-panel pane", () => {
     await startSession($);
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
-    const text = await drawn(ui);
-    expect(text).toContain("Période");
-    expect(text).toContain("Une bande par");
     const range = await ui.find({ key: "range-30d" });
     expect(range.props.hotkey).toBeUndefined();
     expect(range.props.variant).toBe("primary");
+    // The month lists show only for a custom range
+    expect(await ui.find({ key: "from" })).toBeUndefined();
+    expect(await drawn(ui)).toContain("bleu : sous la médiane");
     await ui.unmount();
     const term = await $.ui.mount({ ...PANE, surface: "terminal" });
     expect((await term.find({ key: "range-30d" })).props.hotkey).toBe("2");
     await term.unmount();
   });
-
   test("the pane sums the period and names the heaviest projects", async ($: any, on: any) => {
     const lines = [
       ["a", 3, 600, "carbonara"],
@@ -304,15 +298,15 @@ describe("the /carbon-panel pane", () => {
     await openPane($);
     const desk = await $.ui.mount({ ...PANE, surface: "desktop" });
     // Projects are off until the person turns them on
-    expect(await drawn(desk)).not.toContain("carbonara ·");
+    expect(await drawn(desk)).not.toContain("% carbonara");
     await desk.press({ key: "customize" });
     await desk.press({ key: "block-projects" });
     expect((store.get("pane.blocks") as any).projects).toBe(true);
     const text = await drawn(desk);
-    expect(text).toContain("Sur la période : 1,0 kgCO₂ · 3 sessions");
-    expect(text).toContain("carbonara · 700 gCO₂ · 70 %");
-    expect(text).toContain("studio · 300 gCO₂ · 30 %");
-    expect(text.indexOf("carbonara ·") < text.indexOf("studio ·")).toBe(true);
+    expect(text).toContain("1,0 kgCO₂ sur la période");
+    expect(text).toContain("70 % carbonara");
+    expect(text).toContain("30 % studio");
+    expect(text.indexOf("% carbonara") < text.indexOf("% studio")).toBe(true);
     await desk.unmount();
     const term = await $.ui.mount({ ...PANE, surface: "terminal" });
     expect(await drawn(term)).toContain("surtout carbonara 70 %, studio 30 %");
@@ -416,13 +410,12 @@ describe("the /carbon-panel pane", () => {
     const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
     await ui.press({ key: "range-90d" });
     const text = await drawn(ui);
-    expect(text).toContain("25 sessions · médiane 400 gCO₂");
+    expect(text).toContain("21,0 kgCO₂ sur la période");
+    expect(text).toContain("25 sessions");
+    expect(text).toContain("une bande par semaine");
     expect(text).not.toContain("méthode");
-    // 25 stripes in 58 columns: two each
-    expect((await ui.find({ key: "stripes" })).props.columns).toBe(50);
     await ui.unmount();
   });
-
   test("the comparison, the API cost and the car equivalence under the total", async ($: any, on: any) => {
     // 300 g with $3 in the last 30 days, 200 g in the 30 days before
     const line = (id: string, days: number, g: number, usd: number) =>
@@ -434,10 +427,12 @@ describe("the /carbon-panel pane", () => {
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     const text = await drawn(ui);
-    expect(text).toContain("Sur la période : 300 gCO₂ · 2 sessions");
+    expect(text).toContain("300 gCO₂ sur la période");
     expect(text).toContain("+50 % par rapport aux 30 jours d'avant");
-    expect(text).toContain("3,00 $ au prix API");
-    expect(text).toContain("≈ 2 km en voiture (142 g/km, ADEME 2025)");
+    expect(text).toContain("2 sessions · 3,00 $ au prix API · ≈ 2 km en voiture (142 g/km, ADEME 2025)");
+    // A rise is drawn in the error colour
+    const rise = await ui.find({ type: "Text", text: /par rapport aux 30 jours/ });
+    expect(rise.props.color).toBe("error");
     // Each one can be turned off
     await ui.press({ key: "customize" });
     await ui.press({ key: "block-cost" });
@@ -445,21 +440,32 @@ describe("the /carbon-panel pane", () => {
     await ui.unmount();
   });
 
-  test("the range and step buttons change the view and keep it for next time", async ($: any, on: any) => {
-    const { store } = world(on);
+  test("the range buttons and the custom months change the view and keep it", async ($: any, on: any) => {
+    const { store } = world(on, { history: historyText(200) });
     await startSession($);
     await openPane($);
-    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-    await ui.press({ key: "step-week" });
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     await ui.press({ key: "range-90d" });
-    expect(store.get("pane.view")).toEqual({ range: "90d", step: "week" });
+    expect(store.get("pane.view")).toEqual({ range: "90d" });
+    expect(await drawn(ui)).toContain("une bande par semaine");
+    await ui.press({ key: "range-all" });
+    // 200 days of history: by week, from the first session's week
+    expect(await drawn(ui)).toContain("une bande par semaine");
+    await ui.press({ key: "range-custom" });
+    const view = store.get("pane.view") as any;
+    expect(view).toEqual({ range: "custom", from: "2026-08", to: "2026-10" });
+    await ui.select({ key: "from", value: "2026-05" });
+    expect(store.get("pane.view")).toEqual({ range: "custom", from: "2026-05", to: "2026-10" });
+    // A start after the end moves the end with it
+    await ui.select({ key: "from", value: "2026-10" });
+    await ui.select({ key: "to", value: "2026-09" });
+    expect(store.get("pane.view")).toEqual({ range: "custom", from: "2026-09", to: "2026-09" });
     const text = await drawn(ui);
-    expect(text).toContain("90 derniers jours · ");
-    expect(text).toContain("semaines");
-    expect(text).toContain("par semaine");
+    expect(text).toContain("Du");
+    expect(text).toContain("une bande par jour");
+    expect(text).toContain("1 sept. → 30 sept.");
     await ui.unmount();
   });
-
   test("the molecule walks while Claude works, and stops after", async ($: any, on: any) => {
     const { blits } = world(on);
     await startSession($);
@@ -525,7 +531,7 @@ describe("the /carbon-panel pane", () => {
     expect(toasts).toEqual([]);
   });
 
-  test("thousands of sessions stay within the desktop app's Svg limit", async ($: any, on: any) => {
+  test("the whole history stays within the desktop app's Svg limit", async ($: any, on: any) => {
     world(on, { history: historyText(3000) });
     await startSession($);
     await openPane($);
@@ -542,12 +548,13 @@ describe("the /carbon-panel pane", () => {
     walk(tree);
     expect(sources.length).toBe(2);
     expect(sources.every((s) => s.length <= 131072)).toBe(true);
-    expect((await drawn(ui)).includes("180 sessions les plus récentes sur 3000")).toBe(true);
+    // About eight years, one stripe a month, with the years written out
+    expect(await drawn(ui)).toContain("une bande par mois");
     await ui.unmount();
   });
-
   test("a terminal Raster never goes past 512 columns", async ($: any, on: any) => {
-    world(on, { history: historyText(1000) });
+    // Some 55 years of daily sessions: 660 months
+    world(on, { history: historyText(20000) });
     await startSession($);
     await openPane($);
     const ui = await $.ui.mount({
@@ -559,7 +566,6 @@ describe("the /carbon-panel pane", () => {
     expect((await ui.find({ key: "stripes" })).props.columns).toBe(512);
     await ui.unmount();
   });
-
   test("a first welcome comes alone: the hint waits for the next session", async ($: any, on: any) => {
     const { toasts } = world(on, { welcomed: false, hinted: false });
     await startSession($);
@@ -573,7 +579,9 @@ describe("the /carbon-panel pane", () => {
     await startSession($);
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-    await ui.press({ key: "step-month" });
+    await ui.press({ key: "range-all" });
+    await ui.press({ key: "customize" });
+    await ui.press({ key: "block-projects" });
     await $.turn.start({ text: "go", turnId: "turn-1" });
     await clock.advance(2000);
     await ui.unmount();

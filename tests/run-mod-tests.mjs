@@ -50,7 +50,6 @@ import {
   currentLine,
   dateLabel,
   emptyRangeText,
-  historyLine,
   mascotAlt,
   cardButtonLabel,
   cardDraftBusy,
@@ -64,19 +63,23 @@ import {
   showLabel,
   noHistoryText,
   otherProjectsLine,
-  projectLine,
   topProjectsText,
-  totalLine,
-  periodLabel,
-  stripePerLabel,
   paneHint,
   paneTitle,
   paneUnplaced,
   rangeLabel,
-  stepLabel,
   stripesAlt,
   stripeTitle,
-  uncolouredText,
+  changePercent,
+  periodHeadline,
+  sessionsCount,
+  projectBarLine,
+  waitingText,
+  legendText,
+  fromLabel,
+  toLabel,
+  monthLabel,
+  stripesCaption,
 } from "../hooks/mod/lib/format.ts";
 import { lineEntry, BIND_WINDOW_MS } from "../hooks/mod/lib/lines.ts";
 import {
@@ -96,18 +99,20 @@ import {
   stripeWords,
 } from "../hooks/mod/lib/mascot.ts";
 import {
+  availableMonths,
   barMedian,
   bars,
-  historyPath,
   folderName,
+  historyPath,
   isView,
-  periodTotal,
-  previousTotal,
+  monthKey,
   parseHistory,
   pastSessions,
+  periodTotal,
+  previousTotal,
   RANGES,
   sessionMedian,
-  STEPS,
+  windowOf,
 } from "../hooks/mod/lib/sessions.ts";
 import { carEquivalence, equivalenceSet } from "../hooks/mod/lib/equiv.ts";
 
@@ -706,34 +711,59 @@ check("no project field", parseHistory("a\t10\t5\t2\n")[0].project, "");
 check("folder name", folderName("/Users/g/code/claude-carbon/"), "claude-carbon");
 check("folder name Windows", folderName("C:\\Users\\g\\site"), "site");
 
-// Stripes by session, week and month, local time
+// Windows and stripes: one stripe per day, week or month across the whole period
 const now = new Date(2026, 9, 12, 12).getTime(); // Monday 12 Oct 2026
 const day = 86_400_000;
+const row = (id, at, grams, extra = {}) => ({ id, at, grams, version: 2, project: "", usd: null, ...extra });
 const rows = [
-  { id: "s1", at: new Date(2026, 8, 30, 10).getTime(), grams: 10 }, // Wed 30 Sep
-  { id: "s2", at: new Date(2026, 9, 1, 10).getTime(), grams: 20 }, // Thu 1 Oct
-  { id: "s3", at: new Date(2026, 9, 11, 23).getTime(), grams: 40 }, // Sun 11 Oct
-  { id: "old", at: now - 400 * day, grams: 1000 },
+  row("old", now - 400 * day, 1000),
+  row("s1", new Date(2026, 8, 30, 10).getTime(), 10), // Wed 30 Sep
+  row("s2", new Date(2026, 9, 1, 10).getTime(), 20), // Thu 1 Oct
+  row("s3", new Date(2026, 9, 11, 23).getTime(), 40), // Sun 11 Oct
 ];
-check("sessions in 30 days", bars(rows, { range: "30d", step: "session" }, now).length, 3);
-check("sessions in all", bars(rows, { range: "all", step: "session" }, now).length, 4);
-const weeks = bars(rows, { range: "30d", step: "week" }, now);
-check("weeks: 28 Sep, 5 Oct (empty), 12 Oct (empty)", weeks.map((b) => b.grams).join(","), "30,40,0");
-check("week starts on Monday", new Date(weeks[0].start).getDay(), 1);
-const months = bars(rows, { range: "90d", step: "month" }, now);
-check("months: Sep, Oct", months.map((b) => b.grams).join(","), "10,60");
-check("month starts on the 1st", new Date(months[1].start).getDate(), 1);
-check("empty range", bars(rows, { range: "7d", step: "week" }, now - 30 * day).length, 0);
+{
+  const w7 = windowOf({ range: "7d" }, rows, now);
+  check("7 days by day", w7.step, "day");
+  check("7 days, 7 stripes", bars(rows, w7).length, 7);
+  check("7 days start at midnight", new Date(w7.start).getHours(), 0);
+  const w30 = windowOf({ range: "30d" }, rows, now);
+  const b30 = bars(rows, w30);
+  check("30 days, 30 stripes", b30.length, 30);
+  check("30 days keep the 3 recent sessions", b30.reduce((s, b) => s + b.sessions, 0), 3);
+  check("an empty day is 0 g", b30.filter((b) => b.grams === 0).length, 27);
+  const w90 = windowOf({ range: "90d" }, rows, now);
+  check("90 days by week", w90.step, "week");
+  check("weeks start on Monday", new Date(bars(rows, w90)[0].start).getDay(), 1);
+  check("12 months by week", windowOf({ range: "1y" }, rows, now).step, "week");
+  const wAll = windowOf({ range: "all" }, rows, now);
+  check("400 days of history by week", wAll.step, "week");
+  check("over 400 days by month", windowOf({ range: "all" }, [row("older", now - 500 * day, 1), ...rows], now).step, "month");
+  check("all starts at the first session's week", wAll.start <= now - 400 * day && now - 400 * day - wAll.start < 7 * day, true);
+  check("all keeps every session", bars(rows, wAll).reduce((s, b) => s + b.sessions, 0), 4);
+  const wShort = windowOf({ range: "all" }, rows.slice(1), now);
+  check("a short history by day", wShort.step, "day");
+  const custom = windowOf({ range: "custom", from: "2026-09", to: "2026-09" }, rows, now);
+  check("a custom month by day", custom.step, "day");
+  check("a custom month starts on the 1st", new Date(custom.start).getDate(), 1);
+  check("a custom month, 30 stripes", bars(rows, custom).length, 30);
+  check("a custom month sums its sessions", periodTotal(rows, custom).grams, 10);
+  const longCustom = windowOf({ range: "custom", from: "2025-01", to: "2026-10" }, rows, now);
+  check("a custom range over a year by month", longCustom.step, "month");
+  check("a custom range ends now at the latest", longCustom.end, now);
+  check("months to pick", availableMonths(rows, now).at(-1), "2026-10");
+  check("months from the first session", availableMonths(rows, now).length, 14);
+  check("month key", monthKey(new Date(2026, 4, 3).getTime()), "2026-05");
+}
 // The same length of time before, for the comparison; none for the whole history
 {
-  const p = (id, at, grams, usd) => ({ id, at, grams, version: 2, project: "", usd });
-  const r = [p("a", now - 2 * day, 30, 1), p("b", now - 10 * day, 20, null), p("c", now - 9 * day, 10, 2)];
-  const prev = previousTotal(r, { range: "7d", step: "session" }, now);
+  const r = [row("a", now - 2 * day, 30, { usd: 1 }), row("b", now - 10 * day, 20), row("c", now - 9 * day, 10, { usd: 2 })];
+  const w = windowOf({ range: "7d" }, r, now);
+  const prev = previousTotal(r, w, { range: "7d" });
   check("previous window", prev.grams, 30);
   check("previous cost, priced rows only", prev.usd, 2);
-  check("no previous for all", previousTotal(r, { range: "all", step: "session" }, now), null);
-  check("total cost", periodTotal(r, { range: "7d", step: "session" }, now).usd, 1);
-  check("no cost known", periodTotal([p("x", now - day, 5, null)], { range: "7d", step: "session" }, now).usd, null);
+  check("no previous for all", previousTotal(r, windowOf({ range: "all" }, r, now), { range: "all" }), null);
+  check("total cost", periodTotal(r, w).usd, 1);
+  check("no cost known", periodTotal([row("x", now - day, 5)], w).usd, null);
 }
 // The car equivalence, the reports' set and row
 const factorsDoc = JSON.parse(readFileSync(join(REPO, "data/factors.json"), "utf8"));
@@ -749,15 +779,16 @@ check("car unknown set", carEquivalence(factorsDoc, "xx"), null);
 check("car no file", carEquivalence(null, "fr"), null);
 check("compare up", compareText(150, 100, "30d", "fr").replaceAll(NBSP, " "), "+50 % par rapport aux 30 jours d'avant");
 check("compare down en", compareText(80, 100, "1y", "en").replaceAll(NBSP, " "), "-20 % vs the 12 months before");
+check("compare custom", compareText(80, 100, "custom", "fr").replaceAll(NBSP, " "), "-20 % par rapport à la période d'avant");
 check("compare nothing before", compareText(80, 0, "30d", "fr"), null);
 check("compare all", compareText(80, 100, "all", "fr"), null);
+check("change percent", changePercent(150, 100), 50);
 check("equivalence text", equivalenceText(240000, carEquivalence(factorsDoc, "fr"), "fr").replaceAll(NBSP, " "), "≈ 1 690 km en voiture (142 g/km, ADEME 2025)");
-check("bar median needs 3 full bars", barMedian(weeks), null);
+check("cost grouped", costText(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $ au prix API");
+check("cost grouped en", costText(27608.16, "en"), "$27,608 at API prices");
+check("cost small", costText(12.3, "fr").replaceAll(NBSP, " "), "12,30 $ au prix API");
+check("bar median needs 3 full bars", barMedian([{ grams: 1 }, { grams: 0 }, { grams: 3 }]), null);
 check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams: 5 }]), 3);
-// Whole periods: a 30-day range seen by month starts on the 1st of its first month
-const firstMonth = bars(rows, { range: "30d", step: "month" }, now)[0];
-check("range starts at a whole month", new Date(firstMonth.start).getDate(), 1);
-check("whole first month keeps its sessions", firstMonth.grams, 10);
 // Where midnight is skipped for summer time (Santiago, Sunday 6 Sep 2026), no session
 // is lost and the weeks still reach the current one
 {
@@ -766,57 +797,51 @@ check("whole first month keeps its sessions", firstMonth.grams, 10);
   const sun = new Date(2026, 8, 6, 12).getTime();
   const tue = new Date(2026, 8, 8, 12).getTime();
   const at = new Date(2026, 8, 20, 12).getTime();
-  const w = bars(
-    [
-      { id: "a", at: sun, grams: 10 },
-      { id: "b", at: tue, grams: 20 },
-    ],
-    { range: "all", step: "week" },
-    at,
-  );
+  const dst = [row("a", sun, 10), row("b", tue, 20)];
+  const w = bars(dst, windowOf({ range: "90d" }, dst, at));
   check("DST weeks keep every session", w.reduce((s, b) => s + b.grams, 0), 30);
   check("DST weeks reach the current week", w.at(-1).start <= at && at - w.at(-1).start < 7 * day, true);
   check("DST week starts at the day's first instant", new Date(w.at(-1).start).getHours(), 0);
+  const days = bars(dst, windowOf({ range: "30d" }, dst, at));
+  check("DST days keep every session", days.reduce((s, b) => s + b.grams, 0), 30);
+  check("DST days, 30 stripes", days.length, 30);
   if (tz === undefined) delete process.env.TZ;
   else process.env.TZ = tz;
 }
-// The period summed, by project, heaviest first; whole months for a monthly view
+// The period summed, by project, heaviest first
 {
-  const p = (id, at, grams, project) => ({ id, at, grams, version: 2, project });
-  const sum = periodTotal(
-    [p("a", now - 2 * day, 30, "x"), p("b", now - day, 60, "y"), p("c", now - 400 * day, 999, "z")],
-    { range: "30d", step: "session" },
-    now,
-  );
+  const r = [row("a", now - 2 * day, 30, { project: "x" }), row("b", now - day, 60, { project: "y" }), row("c", now - 400 * day, 999, { project: "z" })];
+  const sum = periodTotal(r, windowOf({ range: "30d" }, r, now));
   check("total grams", sum.grams, 90);
   check("total sessions", sum.sessions, 2);
   check("projects heaviest first", sum.projects.map((q) => q.project).join(","), "y,x");
   check("project share", Math.round(sum.projects[0].share * 100), 67);
-  const monthly = periodTotal(rows, { range: "30d", step: "month" }, now);
-  check("monthly total starts on the 1st", monthly.sessions, 3);
 }
-check("view check", isView({ range: "90d", step: "month" }), true);
-check("view check refuses", isView({ range: "2d", step: "month" }), false);
+check("view check", isView({ range: "90d" }), true);
+check("view check custom", isView({ range: "custom", from: "2026-05", to: "2026-10" }), true);
+check("view check custom backwards", isView({ range: "custom", from: "2026-10", to: "2026-05" }), false);
+check("view check custom no months", isView({ range: "custom" }), false);
+check("view check refuses", isView({ range: "2d" }), false);
 
 // Pane texts, French and English, under the same rules as the rest of the mod
 const pane = [];
 for (const lang of ["fr", "en"]) {
   pane.push(paneTitle(lang), commandDescription(lang), paneHint(lang), paneUnplaced(lang));
   pane.push(currentLine(52, 140, lang), currentLine(800, 140, lang), currentLine(52, null, lang));
-  pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang), uncolouredText(lang));
+  pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang));
   pane.push(mascotAlt(lang), stripesAlt(lang));
-  pane.push(periodLabel(lang), stripePerLabel(lang), cardButtonLabel(lang), cardDraftBusy(lang), cardReadyText(lang), cardFillFailed(lang));
+  pane.push(cardButtonLabel(lang), cardDraftBusy(lang), cardReadyText(lang), cardFillFailed(lang));
   pane.push(compareText(120, 100, "30d", lang), compareText(80, 100, "1y", lang), costText(12.3, lang), showLabel(lang));
   pane.push(equivalenceText(240000, carEquivalence(factorsDoc, lang === "fr" ? "fr" : "us"), lang));
   pane.push(customizeLabel(true, lang), customizeLabel(false, lang));
   for (const b of ["compare", "cost", "equivalence", "projects"]) pane.push(blockLabel(b, lang));
-  pane.push(totalLine(84900, 91, lang), projectLine("site", 6000, 0.07, lang), projectLine("", 50, 0.001, lang));
+  pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 0.07, lang), projectBarLine("", 0.001, lang));
+  pane.push(waitingText(lang), legendText(lang), fromLabel(lang), toLabel(lang), monthLabel("2026-05", lang));
   pane.push(otherProjectsLine(4, 900, 0.01, lang), topProjectsText([{ project: "a", share: 0.4 }], lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
-  for (const s of STEPS) {
-    pane.push(stepLabel(s, lang));
-    pane.push(historyLine("90d", s, 12, 12, 140, lang), historyLine("all", s, 200, 60, null, lang));
-    pane.push(dateLabel(now, s, lang), stripeTitle(now, s, 1234, 3, lang), stripeTitle(now, s, 0, 0, lang));
+  for (const s of ["day", "week", "month"]) {
+    pane.push(stripesCaption(s, 1234, lang), stripesCaption(s, null, lang));
+    pane.push(dateLabel(now, s, lang), dateLabel(now, s, lang, true), stripeTitle(now, s, 1234, 3, lang), stripeTitle(now, s, 0, 0, lang));
   }
 }
 for (const text of pane) {
@@ -829,15 +854,18 @@ for (const text of pane) {
 }
 // French puts a no-break space before : ; ! and ?, never a plain one
 for (const lang of ["fr"]) {
-  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), totalLine(900, 3, lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang)];
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), legendText(lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang)];
   for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
 const plainText = (s) => s.replaceAll(NBSP, " ");
 check("current line", plainText(currentLine(52, 140, "fr")), "Cette session : 52 gCO₂ · 0,37× votre médiane");
 check("current line high", plainText(currentLine(1400, 140, "en")), "This session: 1.4 kgCO₂ · 10× your median");
-check("history line", plainText(historyLine("30d", "session", 42, 42, 143, "fr")), "30 derniers jours · 42 sessions · médiane 143 gCO₂");
-check("history line truncated", plainText(historyLine("all", "month", 14, 6, 30000, "fr")), "Depuis le début · 6 mois les plus récents sur 14 · médiane 30,0 kgCO₂ par mois");
-check("history line weeks en", plainText(historyLine("1y", "week", 52, 52, 1200, "en")), "Last 12 months · 52 weeks · median 1.2 kgCO₂ a week");
+check("caption", plainText(stripesCaption("week", 1200, "fr")), "une bande par semaine · médiane 1,2 kgCO₂ par semaine");
+check("caption en", plainText(stripesCaption("day", null, "en")), "one stripe per day");
+check("headline", plainText(periodHeadline(901200, "fr")), "901,2 kgCO₂ sur la période");
+check("month label", monthLabel("2026-05", "fr"), "mai 2026");
+check("date with year", plainText(dateLabel(now, "day", "fr", true)), "12 oct. 2026");
+check("project bar", plainText(projectBarLine("carbonara", 0.41, "fr")), "███████ 41 % carbonara");
 check("stripe title week", plainText(stripeTitle(now, "week", 1234, 3, "fr")), "semaine du 12 oct. · 1,2 kgCO₂ · 3 sessions");
 
 console.log(`${checks - failures}/${checks} checks passed`);

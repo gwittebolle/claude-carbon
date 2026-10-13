@@ -21,13 +21,16 @@ export type SessionRow = {
 // The current methodology: what the running session is measured with
 export const CURRENT_VERSION = 2;
 
-export type Range = "7d" | "30d" | "90d" | "1y" | "all";
-export type Step = "session" | "week" | "month";
-export type View = { range: Range; step: Step };
+export type Range = "7d" | "30d" | "90d" | "1y" | "all" | "custom";
+// One stripe per day, week or month: picked from the period's length, so the stripes
+// always cover the whole period.
+export type Step = "day" | "week" | "month";
+// A custom range runs from the start of month `from` to the end of month `to`
+// ("2026-05"), local time.
+export type View = { range: Range; from?: string; to?: string };
 
-export const RANGES: readonly Range[] = ["7d", "30d", "90d", "1y", "all"];
-export const STEPS: readonly Step[] = ["session", "week", "month"];
-export const DEFAULT_VIEW: View = { range: "30d", step: "session" };
+export const RANGES: readonly Range[] = ["7d", "30d", "90d", "1y", "all", "custom"];
+export const DEFAULT_VIEW: View = { range: "30d" };
 export const HISTORY_FILE = "sessions-history.tsv";
 // Below this many past sessions the molecule has no median to be coloured against.
 export const MIN_SESSIONS = 10;
@@ -35,20 +38,25 @@ export const MIN_SESSIONS = 10;
 export const MIN_STRIPES = 3;
 
 const DAY_MS = 86_400_000;
-const RANGE_DAYS: Record<Exclude<Range, "all">, number> = {
+const RANGE_DAYS: Record<"7d" | "30d" | "90d" | "1y", number> = {
   "7d": 7,
   "30d": 30,
   "90d": 90,
   "1y": 365,
 };
+const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export function isView(value: unknown): value is View {
   const v = value as Partial<View> | null | undefined;
+  if (typeof v !== "object" || v === null || !RANGES.includes(v.range as Range))
+    return false;
+  if (v.range !== "custom") return true;
   return (
-    typeof v === "object" &&
-    v !== null &&
-    RANGES.includes(v.range as Range) &&
-    STEPS.includes(v.step as Step)
+    typeof v.from === "string" &&
+    MONTH_KEY.test(v.from) &&
+    typeof v.to === "string" &&
+    MONTH_KEY.test(v.to) &&
+    v.from <= v.to
   );
 }
 
@@ -151,14 +159,93 @@ export type PeriodTotal = {
   projects: ProjectTotal[];
 };
 
-// Where the view's range starts: whole weeks or months for those steps.
-function viewStart(view: View, now: number): number {
-  const from = rangeStart(view.range, now);
-  return view.step === "session" || !Number.isFinite(from)
-    ? from
-    : view.step === "week"
-      ? weekStart(from)
-      : monthStart(from);
+export type Bar = {
+  // Start of the period, ms since the epoch, local time
+  start: number;
+  grams: number;
+  sessions: number;
+};
+
+// Days, weeks and months are built from the date's parts, never by moving an hour:
+// where midnight is skipped for summer time, the period still starts at its first
+// instant.
+function dayStart(ms: number): number {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+// Monday 00:00, local time
+function weekStart(ms: number): number {
+  const d = new Date(ms);
+  const offset = (d.getDay() + 6) % 7;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset).getTime();
+}
+
+function monthStart(ms: number): number {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+}
+
+function startOf(step: Step, ms: number): number {
+  return step === "day" ? dayStart(ms) : step === "week" ? weekStart(ms) : monthStart(ms);
+}
+
+function nextPeriod(start: number, step: Step): number {
+  const d = new Date(start);
+  return step === "day"
+    ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()
+    : step === "week"
+      ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7).getTime()
+      : new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+}
+
+// "2026-05" for a time, local
+export function monthKey(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthOf(key: string): number {
+  const [y, m] = key.split("-").map(Number);
+  return new Date(y ?? 1970, (m ?? 1) - 1, 1).getTime();
+}
+
+// The months a custom range can pick from: the first session's to the current one
+export function availableMonths(rows: readonly SessionRow[], now: number): string[] {
+  const first = rows[0]?.at ?? now;
+  const out: string[] = [];
+  for (let s = monthStart(first); s <= now; s = nextPeriod(s, "month"))
+    out.push(monthKey(s));
+  return out;
+}
+
+export type Window = { start: number; end: number; step: Step };
+
+// The period a view covers and its stripe: a day for up to 45 days, a week for up to
+// 400, a month beyond. The presets end now; the whole history starts at the first
+// session's period; a custom range covers its months whole, up to now.
+export function windowOf(
+  view: View,
+  rows: readonly SessionRow[],
+  now: number,
+): Window {
+  const stepFor = (span: number): Step =>
+    span <= 45 * DAY_MS ? "day" : span <= 400 * DAY_MS ? "week" : "month";
+  if (view.range === "custom" && view.from !== undefined && view.to !== undefined) {
+    const from = monthOf(view.from);
+    const end = Math.min(now, nextPeriod(monthOf(view.to), "month") - 1);
+    const step = stepFor(end - from);
+    return { start: startOf(step, from), end, step };
+  }
+  if (view.range === "all" || view.range === "custom") {
+    const first = rows[0]?.at ?? now;
+    const step = stepFor(now - first);
+    return { start: startOf(step, first), end: now, step };
+  }
+  const days = RANGE_DAYS[view.range];
+  const step: Step = days <= 45 ? "day" : "week";
+  // The current day or week is the last of `days` days, as a calendar reads it
+  return { start: startOf(step, now - (days - 1) * DAY_MS), end: now, step };
 }
 
 function sumOf(rows: readonly SessionRow[]): PeriodTotal {
@@ -174,91 +261,37 @@ function sumOf(rows: readonly SessionRow[]): PeriodTotal {
   return { grams, sessions: rows.length, usd, projects };
 }
 
-// What the stripes cover, summed: the range of the view (whole weeks or months for
-// those steps), as the reports sum it.
-export function periodTotal(
-  rows: readonly SessionRow[],
-  view: View,
-  now: number,
-): PeriodTotal {
-  const start = viewStart(view, now);
-  return sumOf(rows.filter((r) => r.at >= start && r.at <= now));
+// What the stripes cover, summed, as the reports sum it.
+export function periodTotal(rows: readonly SessionRow[], w: Window): PeriodTotal {
+  return sumOf(rows.filter((r) => r.at >= w.start && r.at <= w.end));
 }
 
 // The same length of time just before, for the comparison; null for the whole history.
 export function previousTotal(
   rows: readonly SessionRow[],
+  w: Window,
   view: View,
-  now: number,
 ): PeriodTotal | null {
-  const start = viewStart(view, now);
-  if (!Number.isFinite(start)) return null;
-  const before = start - (now - start);
-  return sumOf(rows.filter((r) => r.at >= before && r.at < start));
+  if (view.range === "all") return null;
+  const before = w.start - (w.end - w.start);
+  return sumOf(rows.filter((r) => r.at >= before && r.at < w.start));
 }
 
-export type Bar = {
-  // Start of the period (or of the session), ms since the epoch, local time
-  start: number;
-  grams: number;
-  sessions: number;
-};
-
-// Monday 00:00, local time. Built from the date's parts, never by moving an hour: where
-// midnight is skipped for summer time, the day still starts at its first instant.
-function weekStart(ms: number): number {
-  const d = new Date(ms);
-  const offset = (d.getDay() + 6) % 7;
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset).getTime();
-}
-
-function monthStart(ms: number): number {
-  const d = new Date(ms);
-  return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-}
-
-function nextPeriod(start: number, step: "week" | "month"): number {
-  const d = new Date(start);
-  return step === "week"
-    ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7).getTime()
-    : new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
-}
-
-export function rangeStart(range: Range, now: number): number {
-  return range === "all" ? -Infinity : now - RANGE_DAYS[range] * DAY_MS;
-}
-
-// The stripes of a view: one bar per session, or one per week or month with the total
-// of its sessions. Weeks and months are whole: the range starts at the start of the
-// period it falls in. Periods are continuous from the first one with a session to the
-// one holding `now`, empty ones included (0 g), so a quiet week shows as a gap.
-export function bars(
-  rows: readonly SessionRow[],
-  view: View,
-  now: number,
-): Bar[] {
-  const from = rangeStart(view.range, now);
-  if (view.step === "session")
-    return rows
-      .filter((r) => r.at >= from && r.at <= now)
-      .map((r) => ({ start: r.at, grams: r.grams, sessions: 1 }));
-  const step = view.step;
-  const startOf = step === "week" ? weekStart : monthStart;
-  const whole = Number.isFinite(from) ? startOf(from) : from;
-  const inRange = rows.filter((r) => r.at >= whole && r.at <= now);
+// One stripe per period of the window, empty ones included (0 g): a quiet day or week
+// shows as a gap, and the stripes always run from the window's start to its end.
+export function bars(rows: readonly SessionRow[], w: Window): Bar[] {
   const totals = new Map<number, Bar>();
-  for (const r of inRange) {
-    const start = startOf(r.at);
+  for (const r of rows) {
+    if (r.at < w.start || r.at > w.end) continue;
+    const start = startOf(w.step, r.at);
     const bar = totals.get(start) ?? { start, grams: 0, sessions: 0 };
     bar.grams += r.grams;
     bar.sessions += 1;
     totals.set(start, bar);
   }
-  if (totals.size === 0) return [];
-  const first = Math.min(...totals.keys());
-  const last = startOf(now);
   const out: Bar[] = [];
-  for (let s = first; s <= last; s = nextPeriod(s, step))
+  const last = startOf(w.step, w.end);
+  for (let s = w.start; s <= last; s = nextPeriod(s, w.step))
     out.push(totals.get(s) ?? { start: s, grams: 0, sessions: 0 });
   return out;
 }

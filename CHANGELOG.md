@@ -27,14 +27,15 @@ one pixel up and down while a main-loop turn runs, one step every 460 ms for
 the bluest down to 124 ms for the reddest: a small 13 x 4 cell molecule blitted
 into a `Raster` in the terminal, a CSS animation inside an `Svg` in the desktop
 app, still under reduced motion. Below it, warming
-stripes of past sessions, the running one included with its live total: one
-stripe per session, week (from Monday) or month, over 7, 30 or 90 days, 12 months
-or everything; by session coloured against the molecule's own median, by week or
-month against the median of the periods shown with sessions in them (uncoloured
-under three), the one still filling left out of it; at most
-180 stripes in the desktop app's side pane and 512 in the terminal, the most recent. Range and
-step are buttons; the choice is kept in
-`$.store` for the next session. The pane opens without the keyboard, so typing
+stripes of past sessions, the running one included with its live total, covering
+exactly the period picked: 7 or 30 days by day, 3 or 12 months by week (from
+Monday), everything or a custom range of months by day, week or month after its
+length (`windowOf` in `hooks/mod/lib/sessions.ts`), empty periods included as
+gaps. They are coloured against the median of the periods shown with sessions in
+them (uncoloured under three), the one still filling left out of it; at most 180
+stripes in the desktop app's side pane and 512 in the terminal, the most recent.
+The range is a row of buttons, the custom months two `Select` lists; the choice is
+kept in `$.store` for the next session. The pane opens without the keyboard, so typing
 and Escape stay with the prompt. Under the stripes, the period's total, then
 the blocks the person chooses under "Customize", kept in `$.store`: the change
 against the same length of time before, the API-price cost, the car equivalence

@@ -252,32 +252,15 @@ export function emptyRangeText(lang: Lang): string {
     : "No session in this period.";
 }
 
-export function uncolouredText(lang: Lang): string {
-  return lang === "fr"
-    ? "trop peu de périodes pour colorer"
-    : "too few periods to colour";
-}
 
 const RANGE_LABELS: Record<string, [string, string]> = {
   "7d": ["7 j", "7 d"],
   "30d": ["30 j", "30 d"],
-  "90d": ["90 j", "90 d"],
-  "1y": ["1 an", "1 y"],
+  "90d": ["3 mois", "3 months"],
+  "1y": ["12 mois", "12 months"],
   all: ["Tout", "All"],
+  custom: ["Personnalisée", "Custom"],
 };
-const STEP_LABELS: Record<string, [string, string]> = {
-  session: ["session", "session"],
-  week: ["semaine", "week"],
-  month: ["mois", "month"],
-};
-const RANGE_TEXT: Record<string, [string, string]> = {
-  "7d": ["7 derniers jours", "Last 7 days"],
-  "30d": ["30 derniers jours", "Last 30 days"],
-  "90d": ["90 derniers jours", "Last 90 days"],
-  "1y": ["12 derniers mois", "Last 12 months"],
-  all: ["Depuis le début", "Since the start"],
-};
-
 function pick(pair: [string, string] | undefined, lang: Lang): string {
   return pair === undefined ? "" : lang === "fr" ? pair[0] : pair[1];
 }
@@ -286,9 +269,6 @@ export function rangeLabel(range: string, lang: Lang): string {
   return pick(RANGE_LABELS[range], lang);
 }
 
-export function stepLabel(step: string, lang: Lang): string {
-  return pick(STEP_LABELS[step], lang);
-}
 
 function countOf(n: number, step: string, lang: Lang): string {
   const fr = lang === "fr";
@@ -297,51 +277,81 @@ function countOf(n: number, step: string, lang: Lang): string {
   return `${n} session${n > 1 ? "s" : ""}`;
 }
 
-// Above the stripes: the range, how many stripes (the most recent `shown` of `total`
-// when the pane is too narrow for all), and the median they are coloured against.
-export function historyLine(
-  range: string,
-  step: string,
-  total: number,
-  shown: number,
-  stripeMedian: number | null,
-  lang: Lang,
-): string {
+// Under the stripes: what one stripe is, and the median their colours measure against
+const PER: Record<string, [string, string]> = {
+  day: ["jour", "day"],
+  week: ["semaine", "week"],
+  month: ["mois", "month"],
+};
+export function stripesCaption(step: string, stripeMedian: number | null, lang: Lang): string {
   const fr = lang === "fr";
-  const parts = [pick(RANGE_TEXT[range], lang)];
-  const latest = fr
-    ? `${countOf(shown, step, lang)} les plus ${step === "month" ? "récents" : "récentes"} sur ${total}`
-    : `the latest ${countOf(shown, step, lang)} of ${total}`;
-  parts.push(shown < total ? latest : countOf(total, step, lang));
-  if (stripeMedian !== null) {
-    const per =
-      step === "week"
-        ? fr
-          ? " par semaine"
-          : " a week"
-        : step === "month"
-          ? fr
-            ? " par mois"
-            : " a month"
-          : "";
-    parts.push(
-      `${fr ? "médiane" : "median"} ${formatGrams(stripeMedian, lang)}${per}`,
-    );
-  }
-  return parts.join(" · ");
+  const unit = pick(PER[step], lang);
+  const one = fr ? `une bande par ${unit}` : `one stripe per ${unit}`;
+  if (stripeMedian === null) return one;
+  const per = fr ? ` par ${unit}` : ` a ${unit}`;
+  return `${one} · ${fr ? "médiane" : "median"} ${formatGrams(stripeMedian, lang)}${per}`;
 }
+
+// The period's figure, the pane's main one
+export function periodHeadline(grams: number, lang: Lang): string {
+  return lang === "fr"
+    ? `${formatGrams(grams, lang)} sur la période`
+    : `${formatGrams(grams, lang)} over the period`;
+}
+
+export function sessionsCount(n: number, lang: Lang): string {
+  return countOf(n, "session", lang);
+}
+
+// A month for the custom range's lists: "mai 2026", "May 2026"
+export function monthLabel(key: string, lang: Lang): string {
+  const [y, m] = key.split("-").map(Number);
+  const names = lang === "fr" ? MONTHS_FULL_FR : MONTHS_FULL_EN;
+  return `${names[(m ?? 1) - 1] ?? ""} ${y ?? ""}`;
+}
+
+export function fromLabel(lang: Lang): string {
+  return lang === "fr" ? "Du" : "From";
+}
+
+export function toLabel(lang: Lang): string {
+  return lang === "fr" ? "au" : "to";
+}
+
+export function waitingText(lang: Lang): string {
+  return lang === "fr"
+    ? `Cette session${NBSP}: en attente de la première réponse`
+    : "This session: waiting for the first answer";
+}
+
+// The colour scale, under the stripes: what the extreme colours mean
+export function legendText(lang: Lang): string {
+  return lang === "fr"
+    ? `bleu${NBSP}: sous la médiane · rouge${NBSP}: au-dessus (÷8 à ×8)`
+    : "blue: below the median · red: above it (÷8 to ×8)";
+}
+
+const MONTHS_FULL_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const MONTHS_FULL_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 const MONTHS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-// A day ("22 août", "Aug 22"), or a month for monthly stripes ("août 2026", "Aug 2026").
-export function dateLabel(ms: number, step: string, lang: Lang): string {
+// A day ("22 août", "Aug 22", with the year when asked), or a month for monthly
+// stripes ("août 2026", "Aug 2026").
+export function dateLabel(
+  ms: number,
+  step: string,
+  lang: Lang,
+  withYear = false,
+): string {
   const d = new Date(ms);
   const month = (lang === "fr" ? MONTHS_FR : MONTHS_EN)[d.getMonth()] ?? "";
   if (step === "month") return `${month}${NBSP}${d.getFullYear()}`;
+  const year = withYear ? `${NBSP}${d.getFullYear()}` : "";
   return lang === "fr"
-    ? `${d.getDate()}${NBSP}${month}`
-    : `${month}${NBSP}${d.getDate()}`;
+    ? `${d.getDate()}${NBSP}${month}${year}`
+    : `${month}${NBSP}${d.getDate()}${withYear ? `,${NBSP}${d.getFullYear()}` : ""}`;
 }
 
 // A stripe's tooltip in the desktop app.
@@ -358,7 +368,7 @@ export function stripeTitle(
       ? `${fr ? "semaine du" : "week of"} ${dateLabel(start, "session", lang)}`
       : dateLabel(start, step, lang);
   const amount = grams > 0 ? formatGrams(grams, lang) : fr ? "aucune session" : "no session";
-  return step === "session" || sessions === 0
+  return sessions === 0
     ? `${when} · ${amount}`
     : `${when} · ${amount} · ${countOf(sessions, "session", lang)}`;
 }
@@ -370,7 +380,13 @@ const BEFORE: Record<string, [string, string]> = {
   "30d": ["aux 30 jours d'avant", "the 30 days before"],
   "90d": ["aux 90 jours d'avant", "the 90 days before"],
   "1y": ["aux 12 mois d'avant", "the 12 months before"],
+  custom: ["à la période d'avant", "the period before"],
 };
+
+// The change against the period before, in whole percent; null when there is none
+export function changePercent(grams: number, previous: number): number | null {
+  return previous > 0 ? Math.round(((grams - previous) / previous) * 100) : null;
+}
 export function compareText(
   grams: number,
   previous: number,
@@ -378,8 +394,8 @@ export function compareText(
   lang: Lang,
 ): string | null {
   const before = BEFORE[range];
-  if (before === undefined || !(previous > 0)) return null;
-  const change = Math.round(((grams - previous) / previous) * 100);
+  const change = changePercent(grams, previous);
+  if (before === undefined || change === null) return null;
   const sign = change > 0 ? "+" : change < 0 ? "-" : "";
   const amount = `${sign}${Math.abs(change)}${NBSP}%`;
   return lang === "fr"
@@ -389,9 +405,14 @@ export function compareText(
 
 // "12,34 $ au prix API", "$12.34 at API prices"
 export function costText(usd: number, lang: Lang): string {
-  return lang === "fr"
-    ? `${formatUsd(usd, lang)} au prix API`
-    : `${formatUsd(usd, lang)} at API prices`;
+  // Whole dollars from a thousand up, grouped: "27 608 $", "$27,608"
+  const money =
+    usd >= 1000
+      ? lang === "fr"
+        ? `${thousands(usd, lang)}${NBSP}$`
+        : `$${thousands(usd, lang)}`
+      : formatUsd(usd, lang);
+  return lang === "fr" ? `${money} au prix API` : `${money} at API prices`;
 }
 
 function thousands(n: number, lang: Lang): string {
@@ -456,26 +477,18 @@ export function cardDraftBusy(lang: Lang): string {
     : "The prompt already holds a draft: clear it to prepare the card.";
 }
 
-// The stripes' range summed: "Sur la période : 84,9 kgCO₂ · 91 sessions"
-export function totalLine(grams: number, sessions: number, lang: Lang): string {
-  const head = lang === "fr" ? `Sur la période${NBSP}:` : "Over the period:";
-  return `${head} ${formatGrams(grams, lang)} · ${sessions} session${sessions > 1 ? "s" : ""}`;
-}
 
 function percent(share: number): string {
   const p = Math.round(share * 100);
   return p < 1 ? `<${NBSP}1${NBSP}%` : `${p}${NBSP}%`;
 }
 
-// One project's line in the desktop pane: "carbonara · 103 kgCO₂ · 41 %"
-export function projectLine(
-  project: string,
-  grams: number,
-  share: number,
-  lang: Lang,
-): string {
+
+// A project as a bar, left-aligned so bars compare whatever the font: "███████ 41 % carbonara"
+export function projectBarLine(project: string, share: number, lang: Lang): string {
   const name = project === "" ? (lang === "fr" ? "sans projet" : "no project") : project;
-  return `${name} · ${formatGrams(grams, lang)} · ${percent(share)}`;
+  const bar = "█".repeat(Math.max(1, Math.round(share * 16)));
+  return `${bar} ${percent(share)} ${name}`;
 }
 
 // The rest after the projects listed
@@ -499,14 +512,7 @@ export function topProjectsText(
   return `${head} ${list}`;
 }
 
-// The labels before the two rows of buttons in the desktop app
-export function periodLabel(lang: Lang): string {
-  return lang === "fr" ? "Période" : "Period";
-}
 
-export function stripePerLabel(lang: Lang): string {
-  return lang === "fr" ? "Une bande par" : "One stripe per";
-}
 
 export function mascotAlt(lang: Lang): string {
   return lang === "fr"
