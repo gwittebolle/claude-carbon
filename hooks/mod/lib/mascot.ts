@@ -206,15 +206,14 @@ export type Stripe = {
 };
 
 export const STRIPES_HEIGHT = 72;
-// The band under the stripes where the hovered stripe's label shows
-const LABEL_BAND = 30;
-export const STRIPES_SVG_HEIGHT = STRIPES_HEIGHT + LABEL_BAND;
+// The hovered stripe's label shows over the stripes' foot: no room kept for it
+export const STRIPES_SVG_HEIGHT = STRIPES_HEIGHT;
 
 // One rect per stripe across `width` CSS pixels (the viewBox matches the drawn size, so
 // labels keep their shape), oldest on the left; an empty period is a faint grey. Each
 // stripe carries its label, hidden: on hover the stripe lights up and its label shows
-// under the stripes at once, in a dark box readable on a light or a dark pane. A CSS
-// :hover, no script; the <title> stays for screen readers.
+// at once over the stripes' foot, in a dark box readable on a light or a dark pane. A
+// CSS :hover, no script; the <title> stays for screen readers.
 export function stripesSvg(
   stripes: readonly Stripe[],
   title: string,
@@ -234,8 +233,8 @@ export function stripesSvg(
       const boxX = Math.max(0, Math.min(width - boxW, centre - boxW / 2));
       return (
         `<g class="s"><rect class="b" x="${x.toFixed(2)}" y="0" width="${sw.toFixed(2)}" height="${h}" ${fill}><title>${label}</title></rect>` +
-        `<g class="t"><rect x="${boxX.toFixed(2)}" y="${h + 4}" width="${boxW.toFixed(2)}" height="22" rx="4" fill="#1f2328" stroke="${OUTLINE}" stroke-opacity="0.6"/>` +
-        `<text x="${(boxX + 7).toFixed(2)}" y="${h + 19}" font-size="12" font-family="system-ui,-apple-system,sans-serif" fill="#ffffff">${label}</text></g></g>`
+        `<g class="t"><rect x="${boxX.toFixed(2)}" y="${h - 26}" width="${boxW.toFixed(2)}" height="22" rx="4" fill="#1f2328" stroke="${OUTLINE}" stroke-opacity="0.6"/>` +
+        `<text x="${(boxX + 7).toFixed(2)}" y="${h - 11}" font-size="12" font-family="system-ui,-apple-system,sans-serif" fill="#ffffff">${label}</text></g></g>`
       );
     })
     .join("");

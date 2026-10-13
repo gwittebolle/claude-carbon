@@ -73,7 +73,14 @@ import {
   hasLangVariable,
   isCarbonStatusLine,
   languageSetting,
-  legendText,
+  booksValue,
+  carLabel,
+  carValue,
+  contextText,
+  modelValue,
+  portraitLabel,
+  slotName,
+  slotValue,
   mascotAlt,
   noHistoryText,
   otherProjectsLine,
@@ -1056,10 +1063,36 @@ export const register: Register = (on, options) => {
         if (totals.output !== null && totals.output > 0)
           portrait.push(booksText(totals.output, lang));
       }
+      // The portrait as tiles in the desktop pane, the car with it
+      const portraitTiles: Array<{ label: string; value: string }> = [];
+      if (hasTotals && totals !== null) {
+        if (blocks.portrait) {
+          const main = totals.families[0];
+          if (main !== undefined)
+            portraitTiles.push({ label: portraitLabel("model", lang), value: modelValue(main.family, main.share) });
+          const peak = peakHours(totals.hours);
+          if (peak !== null)
+            portraitTiles.push({ label: slotName(peak.start, lang), value: slotValue(peak.start, peak.share, lang) });
+          if (totals.output !== null && totals.output > 0)
+            portraitTiles.push({ label: portraitLabel("books", lang), value: booksValue(totals.output, lang) });
+        }
+        if (blocks.equivalence && car !== null)
+          portraitTiles.push({ label: carLabel(car, lang), value: carValue(totals.grams, car, lang) });
+      }
       const sessionStats =
         total.turns > 0
           ? sessionStatsText(total.turns, pane.subagents, pane.sessionFamily, lang)
           : null;
+      // The context window's fill and the session's API-price value, as the status line
+      // has them
+      const contextUsed = await $.session
+        .usage()
+        .then((u) => u.context.percent ?? null)
+        .catch(() => null);
+      const sessionMeta = [
+        ...(contextUsed !== null ? [contextText(contextUsed, lang)] : []),
+        ...(total.usd !== undefined && total.usd > 0 ? [costText(total.usd, lang)] : []),
+      ].join(" · ");
       const noHistory = pane.rows === null && <Text dimColor>{noHistoryText(lang)}</Text>;
       const empty =
         pane.rows !== null && !hasTotals && <Text dimColor>{emptyRangeText(lang)}</Text>;
@@ -1073,6 +1106,7 @@ export const register: Register = (on, options) => {
             <Box flexDirection="column" marginLeft={2} flexShrink={1}>
               <Text bold>{sessionText}</Text>
               {sessionStats !== null && <Text dimColor>{sessionStats}</Text>}
+              {sessionMeta !== "" && <Text dimColor>{sessionMeta}</Text>}
               {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
               <Box flexDirection="row" columnGap={2} flexWrap="wrap">
                 {rangeButtons}
@@ -1117,6 +1151,7 @@ export const register: Register = (on, options) => {
             <Box flexDirection="column" marginLeft={2} flexShrink={1}>
               <Text bold>{sessionText}</Text>
               {sessionStats !== null && <Text dimColor>{sessionStats}</Text>}
+              {sessionMeta !== "" && <Text dimColor>{sessionMeta}</Text>}
               {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
             </Box>
           </Box>
@@ -1150,25 +1185,32 @@ export const register: Register = (on, options) => {
           {noHistory}
           {empty}
           {hasStripes && (
-            // The desktop app does not space an Svg from its siblings: margins say it
-            <Box flexDirection="column" marginTop={1} rowGap={1}>
+            // The desktop app does not space an Svg from its siblings: a margin above it,
+            // the dates right under it
+            <Box flexDirection="column" marginTop={1}>
               {stripesDrawing}
               <Text dimColor>{dates}</Text>
-              <Text dimColor>{`${stripesCaption(w.step, bm, lang)} · ${legendText(lang)}`}</Text>
+              <Text dimColor>{stripesCaption(w.step, bm, lang)}</Text>
             </Box>
           )}
-          {portrait.length > 0 && (
-            <Box flexDirection="column" marginTop={1}>
-              {portrait.map((line) => (
-                <Text key={line}>{line}</Text>
+          {portraitTiles.length > 0 && (
+            <Box flexDirection="row" columnGap={1} rowGap={1} flexWrap="wrap" marginTop={1}>
+              {portraitTiles.map((p) => (
+                <Box
+                  key={`portrait-${p.label}`}
+                  borderStyle="round"
+                  paddingX={1}
+                  flexDirection="column"
+                  flexGrow={1}
+                >
+                  <Text dimColor>{p.label}</Text>
+                  <Text bold>{p.value}</Text>
+                </Box>
               ))}
             </Box>
           )}
-          {hasTotals && totals !== null && (blocks.equivalence || listed.length > 0) && (
+          {hasTotals && totals !== null && listed.length > 0 && (
             <Box flexDirection="column" marginTop={1}>
-              {blocks.equivalence && car !== null && (
-                <Text dimColor>{equivalenceText(totals.grams, car, lang)}</Text>
-              )}
               {listed.length > 0 && (
                 <Box flexDirection="column" marginTop={1}>
                   {listed.map((p) => (

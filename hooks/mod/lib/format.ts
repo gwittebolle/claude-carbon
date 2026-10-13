@@ -334,12 +334,6 @@ export function waitingText(lang: Lang): string {
     : "This session: waiting for the first answer";
 }
 
-// The colour scale, under the stripes: what the extreme colours mean
-export function legendText(lang: Lang): string {
-  return lang === "fr"
-    ? `bleu${NBSP}: sous la médiane · rouge${NBSP}: au-dessus (÷8 à ×8)`
-    : "blue: below the median · red: above it (÷8 to ×8)";
-}
 
 
 const MONTHS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
@@ -438,12 +432,23 @@ function hourText(h: number, lang: Lang): string {
   const hour = ((h % 24) + 24) % 24;
   return lang === "fr" ? `${hour}${NBSP}h` : `${String(hour).padStart(2, "0")}:00`;
 }
+// The three hours' name, after their middle hour: "Oiseau de nuit"
+export function slotName(start: number, lang: Lang): string {
+  const middle = (start + 1) % 24;
+  const slot = SLOT_NAMES.find((s) => middle >= s.from && middle < s.to);
+  if (slot === undefined) return lang === "fr" ? "Oiseau de nuit" : "Night owl";
+  return lang === "fr" ? slot.fr : slot.en;
+}
+
+// "22 h – 1 h · 34 %", for a tile under the slot's name
+export function slotValue(start: number, share: number, lang: Lang): string {
+  return `${hourText(start, lang)} – ${hourText((start + 3) % 24, lang)} · ${percent(share)}`;
+}
+
 // Named after the middle of the three hours, with their share of the period's CO2:
 // "Oiseau de nuit, de 22 h à 1 h (34 %)"
 export function peakHoursText(start: number, share: number, lang: Lang): string {
-  const middle = (start + 1) % 24;
-  const slot = SLOT_NAMES.find((s) => middle >= s.from && middle < s.to);
-  const name = slot === undefined ? (lang === "fr" ? "Oiseau de nuit" : "Night owl") : lang === "fr" ? slot.fr : slot.en;
+  const name = slotName(start, lang);
   const end = (start + 3) % 24;
   return lang === "fr"
     ? `${name}, de ${hourText(start, lang)} à ${hourText(end, lang)} (${percent(share)})`
@@ -473,6 +478,43 @@ export function booksText(outputTokens: number, lang: Lang): string {
   return fr
     ? `≈${NBSP}${times} saga${plural ? "s" : ""} Harry Potter écrite${plural ? "s" : ""} par Claude`
     : `≈${NBSP}${times} Harry Potter saga${plural ? "s" : ""} written by Claude`;
+}
+
+// The portrait's tiles in the desktop pane
+export function modelValue(f: string, share: number): string {
+  return `${familyName(f)} · ${percent(share)}`;
+}
+
+export function booksValue(outputTokens: number, lang: Lang): string {
+  return booksText(outputTokens, lang)
+    .replace(lang === "fr" ? / écrites? par Claude$/ : / written by Claude$/, "");
+}
+
+const PORTRAIT_LABELS: Record<string, [string, string]> = {
+  model: ["Modèle principal", "Main model"],
+  books: ["Écrit par Claude", "Written by Claude"],
+};
+export function portraitLabel(kind: string, lang: Lang): string {
+  return pick(PORTRAIT_LABELS[kind], lang);
+}
+
+// The car factor as the pane prints it, the unit spelled out: "142 gCO₂/km, ADEME 2025"
+export function carTag(tag: string): string {
+  return tag.replace(/(\d)\s*g\//, `$1${NBSP}gCO₂/`);
+}
+
+export function carLabel(car: { tag: string }, lang: Lang): string {
+  return lang === "fr" ? `En voiture (${carTag(car.tag)})` : `By car (${carTag(car.tag)})`;
+}
+
+export function carValue(grams: number, car: { divisor: number; unit: string }, lang: Lang): string {
+  return `≈${NBSP}${thousands(grams / car.divisor, lang)}${NBSP}${car.unit}`;
+}
+
+// The context window's fill: "Contexte 42 %"
+export function contextText(percentUsed: number, lang: Lang): string {
+  const p = `${Math.round(percentUsed)}${NBSP}%`;
+  return lang === "fr" ? `Contexte ${p}` : `Context ${p}`;
 }
 
 // The running session, under its line: "12 réponses · 3 sous-agents · Opus"
@@ -566,7 +608,7 @@ export function equivalenceText(
   car: { divisor: number; label: string; tag: string },
   lang: Lang,
 ): string {
-  return `≈${NBSP}${thousands(grams / car.divisor, lang)} ${car.label} (${car.tag})`;
+  return `≈${NBSP}${thousands(grams / car.divisor, lang)} ${car.label} (${carTag(car.tag)})`;
 }
 
 // The blocks a person can show or hide in the pane, under the gear

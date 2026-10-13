@@ -74,7 +74,15 @@ import {
   sessionsCount,
   projectBarLine,
   waitingText,
-  legendText,
+  booksValue,
+  carLabel,
+  carTag,
+  carValue,
+  contextText,
+  modelValue,
+  portraitLabel,
+  slotName,
+  slotValue,
   fromLabel,
   toLabel,
   dateInvalid,
@@ -680,7 +688,7 @@ const stripesDoc = stripesSvg(
   "t",
   720,
 );
-check("stripes svg keeps its shape", stripesDoc.includes('viewBox="0 0 720 102"'), true);
+check("stripes svg keeps its shape", stripesDoc.includes('viewBox="0 0 720 72"'), true);
 check("stripes hover label shown by CSS", stripesDoc.includes(".s:hover .t{opacity:1}"), true);
 check("stripes svg no script", /<script|on[a-z]+=/i.test(stripesDoc), false);
 check("stripes svg size, 180 stripes", stripesDoc.length < 131072, true);
@@ -812,7 +820,7 @@ check("compare custom", compareText(80, 100, "custom", "fr").replaceAll(NBSP, " 
 check("compare nothing before", compareText(80, 0, "30d", "fr"), null);
 check("compare all", compareText(80, 100, "all", "fr"), null);
 check("change percent", changePercent(150, 100), 50);
-check("equivalence text", equivalenceText(240000, carEquivalence(factorsDoc, "fr"), "fr").replaceAll(NBSP, " "), "≈ 1 690 km en voiture (142 g/km, ADEME 2025)");
+check("equivalence text", equivalenceText(240000, carEquivalence(factorsDoc, "fr"), "fr").replaceAll(NBSP, " "), "≈ 1 690 km en voiture (142 gCO₂/km, ADEME 2025)");
 check("cost grouped", costText(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $ au prix API");
 check("cost grouped en", costText(27608.16, "en"), "$27,608 at API prices");
 check("cost small", costText(12.3, "fr").replaceAll(NBSP, " "), "12,30 $ au prix API");
@@ -903,10 +911,10 @@ for (const lang of ["fr", "en"]) {
   pane.push(equivalenceText(240000, carEquivalence(factorsDoc, lang === "fr" ? "fr" : "us"), lang));
   for (const b of ["compare", "cost", "equivalence", "projects"]) pane.push(blockLabel(b, lang));
   pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 6000, 0.07, lang), projectBarLine("", 50, 0.001, lang));
-  pane.push(builtByLabel(lang), forTeamLabel(lang), apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
+  pane.push(carLabel({ tag: "142 g/km, ADEME 2025" }, lang), contextText(42, lang), portraitLabel("model", lang), portraitLabel("books", lang), slotName(22, lang), builtByLabel(lang), forTeamLabel(lang), apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
   for (const k of ["period", "change", "sessions", "cost"]) pane.push(tileLabel(k, lang));
   pane.push(peakHoursText(22, 0.3, lang), peakHoursText(7, 0.3, lang), favoriteModelText("opus", 0.5, lang), booksText(3e6, lang), booksText(5e5, lang), sessionStatsText(3, 2, "fable", lang), blockTitle("usage", lang), blockTitle("session", lang));
-  pane.push(waitingText(lang), legendText(lang), fromLabel(lang), toLabel(lang), datePlaceholder(lang), dateInvalid(lang));
+  pane.push(waitingText(lang), fromLabel(lang), toLabel(lang), datePlaceholder(lang), dateInvalid(lang));
   pane.push(otherProjectsLine(4, 900, 0.01, lang), topProjectsText([{ project: "a", share: 0.4 }], lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
   for (const s of ["day", "week", "month"]) {
@@ -919,12 +927,12 @@ for (const text of pane) {
   check(`pane no plugin name: ${text}`, text.includes("claude-carbon"), false);
   check(`pane no em dash: ${text}`, text.includes("\u2014"), false);
   check(`pane no receipt: ${text}`, text.toLowerCase().includes("receipt"), false);
-  // A factor caption ("142 g/km") is a rate, not a footprint
-  check(`pane unit: ${text}`, / g(?!CO₂|\/)\b/.test(text.replaceAll(NBSP, " ")), false);
+  // Always gCO₂, the car factor's rate included ("142 gCO₂/km")
+  check(`pane unit: ${text}`, / g(?!CO₂)\b/.test(text.replaceAll(NBSP, " ")), false);
 }
 // French puts a no-break space before : ; ! and ?, never a plain one
 for (const lang of ["fr"]) {
-  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), legendText(lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), peakHoursText(22, 0.3, lang), favoriteModelText("opus", 0.5, lang), dateInvalid(lang)];
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), peakHoursText(22, 0.3, lang), favoriteModelText("opus", 0.5, lang), dateInvalid(lang)];
   for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
 check("current line", plainText(currentLine(52, 140, "fr")), "Cette session : 52 gCO₂ · 0,37× votre médiane");
@@ -935,6 +943,15 @@ check("team url fr", teamUrl("fr"), "https://tokenclimate.com/?ref=carbon-panel"
 check("team url en", teamUrl("en"), "https://tokenclimate.com/en?ref=carbon-panel");
 check("author url", AUTHOR_URL, "https://gaetanwittebolle.com/?ref=carbon-panel");
 check("built by", builtByLabel("fr"), "Développé par");
+check("car tag in gCO₂", plainText(carTag("142 g/km, ADEME 2025")), "142 gCO₂/km, ADEME 2025");
+check("car tag in miles", plainText(carTag("393 g/mile, EPA US")), "393 gCO₂/mile, EPA US");
+check("car value", plainText(carValue(238000, { divisor: 142, unit: "km" }, "fr")), "≈ 1 676 km");
+check("model value", plainText(modelValue("opus", 0.83)), "Opus · 83 %");
+check("slot", slotName(8, "fr"), "En journée");
+check("slot value", plainText(slotValue(8, 0.38, "fr")), "8 h – 11 h · 38 %");
+check("books value", plainText(booksValue(SAGA_TOKENS * 24, "fr")), "≈ 24 sagas Harry Potter");
+check("books value en", plainText(booksValue(SAGA_TOKENS * 0.4, "en")), "≈ 40 % of a Harry Potter saga");
+check("context", plainText(contextText(41.6, "fr")), "Contexte 42 %");
 check("for a team", plainText(forTeamLabel("fr")), "Pour une équipe :");
 check("caption", plainText(stripesCaption("week", 1200, "fr")), "une bande par semaine · médiane 1,2 kgCO₂ par semaine");
 check("caption en", plainText(stripesCaption("day", null, "en")), "one stripe per day");

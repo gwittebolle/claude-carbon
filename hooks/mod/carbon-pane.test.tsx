@@ -286,7 +286,8 @@ describe("the /carbon-panel pane", () => {
     await ui.press({ key: "customize" });
     // The month lists show only for a custom range
     expect(await ui.find({ key: "from" })).toBeUndefined();
-    expect(await drawn(ui)).toContain("bleu : sous la médiane");
+    // The stripes' caption stays short: what one stripe is and its median
+    expect(await drawn(ui)).toContain("une bande par jour · médiane 300 gCO₂ par jour");
     await ui.unmount();
     const term = await $.ui.mount({ ...PANE, surface: "terminal" });
     expect((await term.find({ key: "range-30d" })).props.hotkey).toBe("2");
@@ -340,9 +341,10 @@ describe("the /carbon-panel pane", () => {
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     const text = await drawn(ui);
     expect(text).toContain("Mon usage");
-    expect(text).toContain("Modèle principal : Opus (90 %)");
-    expect(text).toContain("Oiseau de nuit, de 21 h à 0 h (90 %)");
-    expect(text).toContain("≈ 3,0 sagas Harry Potter écrites par Claude");
+    // The portrait as tiles: a label over a value
+    expect(text).toContain("Modèle principal\nOpus · 90 %");
+    expect(text).toContain("Oiseau de nuit\n21 h – 0 h · 90 %");
+    expect(text).toContain("Écrit par Claude\n≈ 3,0 sagas Harry Potter");
     // The footer: who made it, and the team version
     const links = JSON.stringify(await ui.drawn());
     expect(text).toContain("Développé par");
@@ -503,7 +505,7 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain(
       "Valeur au prix API : le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.",
     );
-    expect(text).toContain("≈ 2 km en voiture (142 g/km, ADEME 2025)");
+    expect(text).toContain("En voiture (142 gCO₂/km, ADEME 2025)\n≈ 2 km");
     // A rise is drawn in the error colour
     const rise = await ui.find({ type: "Text", text: "+50\u00a0%" });
     expect(rise.props.color).toBe("error");
