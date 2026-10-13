@@ -34,8 +34,12 @@ import type { Factors } from "./lib/co2.ts";
 import { costUsd, parsePrices } from "./lib/cost.ts";
 import type { Prices } from "./lib/cost.ts";
 import {
-  apiValueText,
   answerLine,
+  apiValueNote,
+  changeValue,
+  formatGrams,
+  moneyValue,
+  tileLabel,
   blockLabel,
   buildAnswerCo2,
   cardButtonLabel,
@@ -925,7 +929,7 @@ export const register: Register = (on, options) => {
       if (hasTotals && totals !== null) {
         secondary.push(sessionsCount(totals.sessions, lang));
         if (blocks.cost && totals.usd !== null && totals.usd > 0)
-          secondary.push(isTerminal ? costText(totals.usd, lang) : apiValueText(totals.usd, lang));
+          secondary.push(costText(totals.usd, lang));
         if (blocks.equivalence && car !== null)
           secondary.push(equivalenceText(totals.grams, car, lang));
       }
@@ -967,6 +971,21 @@ export const register: Register = (on, options) => {
               onPress={() => setBlocks({ ...blocks, [block]: !blocks[block] })}
             />
           ))}
+        </Box>
+      );
+      // A tile of the desktop pane: a dim label over a bold figure, in a rounded frame
+      const tile = (kind: string, value: string, color?: "success" | "error") => (
+        <Box
+          key={`tile-${kind}`}
+          borderStyle="round"
+          paddingX={1}
+          flexDirection="column"
+          flexGrow={1}
+        >
+          <Text dimColor>{tileLabel(kind, lang)}</Text>
+          <Text bold {...(color !== undefined ? { color } : {})}>
+            {value}
+          </Text>
         </Box>
       );
       const noHistory = pane.rows === null && <Text dimColor>{noHistoryText(lang)}</Text>;
@@ -1024,11 +1043,27 @@ export const register: Register = (on, options) => {
             </Box>
           </Box>
           <Box flexDirection="column" rowGap={1}>
-            <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+            <Box flexDirection="row" columnGap={1} rowGap={1} flexWrap="wrap">
               {rangeButtons}
             </Box>
             {customRange}
           </Box>
+          {hasTotals && totals !== null && (
+            // The period's figures as tiles, the pane's main reading
+            <Box flexDirection="column" rowGap={1}>
+              <Box flexDirection="row" columnGap={1} rowGap={1} flexWrap="wrap">
+                {tile("period", formatGrams(totals.grams, lang))}
+                {blocks.compare && delta !== null && previous !== null && change !== null &&
+                  tile("change", changeValue(delta), delta > 0 ? "error" : delta < 0 ? "success" : undefined)}
+                {tile("sessions", String(totals.sessions))}
+                {blocks.cost && totals.usd !== null && totals.usd > 0 &&
+                  tile("cost", moneyValue(totals.usd, lang))}
+              </Box>
+              {blocks.cost && totals.usd !== null && totals.usd > 0 && (
+                <Text dimColor>{apiValueNote(lang)}</Text>
+              )}
+            </Box>
+          )}
           {noHistory}
           {empty}
           {hasStripes && (
@@ -1039,15 +1074,11 @@ export const register: Register = (on, options) => {
               <Text dimColor>{`${stripesCaption(w.step, bm, lang)} · ${legendText(lang)}`}</Text>
             </Box>
           )}
-          {hasTotals && totals !== null && (
+          {hasTotals && totals !== null && (blocks.equivalence || listed.length > 0) && (
             <Box flexDirection="column" marginTop={1}>
-              <Text bold>{periodHeadline(totals.grams, lang)}</Text>
-              {changeText}
-              {secondary.map((line) => (
-                <Text key={line} dimColor>
-                  {line}
-                </Text>
-              ))}
+              {blocks.equivalence && car !== null && (
+                <Text dimColor>{equivalenceText(totals.grams, car, lang)}</Text>
+              )}
               {listed.length > 0 && (
                 <Box flexDirection="column" marginTop={1}>
                   {listed.map((p) => (

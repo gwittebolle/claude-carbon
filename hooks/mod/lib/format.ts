@@ -403,14 +403,34 @@ export function compareText(
     : `${amount} vs ${before[1]}`;
 }
 
-// The period's API-price value, said so that it holds whoever pays: a subscription,
-// an API key, extra usage, or sessions of several kinds. Which session was billed how
-// is not recorded, so the line never says what the person paid.
-export function apiValueText(usd: number, lang: Lang): string {
-  const money = costText(usd, lang).replace(lang === "fr" ? " au prix API" : " at API prices", "");
+// The tiles at the top of the desktop pane: a label over a figure
+const TILE_LABELS: Record<string, [string, string]> = {
+  period: ["Sur la période", "Over the period"],
+  change: ["Par rapport à avant", "Against before"],
+  sessions: ["Sessions", "Sessions"],
+  cost: ["Valeur au prix API", "API-price value"],
+};
+export function tileLabel(kind: string, lang: Lang): string {
+  return pick(TILE_LABELS[kind], lang);
+}
+
+// "+29 %", "-18 %"
+export function changeValue(change: number): string {
+  const sign = change > 0 ? "+" : change < 0 ? "-" : "";
+  return `${sign}${Math.abs(change)}${NBSP}%`;
+}
+
+// "27 616 $", "$27,616", "12,30 $"
+export function moneyValue(usd: number, lang: Lang): string {
+  return costText(usd, lang).replace(lang === "fr" ? " au prix API" : " at API prices", "");
+}
+
+// Under the value tile, so it holds whoever pays: a subscription, an API key, extra
+// usage, or sessions of several kinds. Which session was billed how is not recorded.
+export function apiValueNote(lang: Lang): string {
   return lang === "fr"
-    ? `Valeur au prix API${NBSP}: ${money} (le prix de cet usage facturé à l'API${NBSP}; un abonnement Pro ou Max en couvre tout ou partie)`
-    : `API-price value: ${money} (what this usage costs billed through the API; a Pro or Max subscription covers some or all of it)`;
+    ? `Valeur au prix API${NBSP}: le prix de cet usage facturé à l'API${NBSP}; un abonnement Pro ou Max en couvre tout ou partie.`
+    : "API-price value: what this usage costs billed through the API; a Pro or Max subscription covers some or all of it.";
 }
 
 // "12,34 $ au prix API", "$12.34 at API prices"

@@ -39,8 +39,9 @@ them (uncoloured under three), the one still filling left out of it; at most 180
 stripes in the desktop app's side pane and 512 in the terminal, the most recent.
 The range is a row of buttons, the custom months two `Select` lists; the choice is
 kept in `$.store` for the next session. The pane opens without the keyboard, so typing
-and Escape stay with the prompt. Under the stripes, the period's total, then
-the blocks the person chooses under "Customize", kept in `$.store`: the change
+and Escape stay with the prompt. The period's figures (CO2, change, sessions,
+API-price value) are tiles under the range buttons in the desktop app, a line
+under the stripes in the terminal; then the blocks the person chooses under "Customize", kept in `$.store`: the change
 against the same length of time before, the API-price value (worded so it holds
 whoever pays: a Pro or Max subscription covers some or all of it), the car
 equivalence

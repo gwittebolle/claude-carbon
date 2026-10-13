@@ -303,7 +303,7 @@ describe("the /carbon-panel pane", () => {
     await desk.press({ key: "block-projects" });
     expect((store.get("pane.blocks") as any).projects).toBe(true);
     const text = await drawn(desk);
-    expect(text).toContain("1,0 kgCO₂ sur la période");
+    expect(text).toContain("Sur la période\n1,0 kgCO₂");
     expect(text).toContain("70 % carbonara · 700 gCO₂");
     expect(text).toContain("30 % studio · 300 gCO₂");
     expect(text.indexOf("% carbonara") < text.indexOf("% studio")).toBe(true);
@@ -427,14 +427,17 @@ describe("the /carbon-panel pane", () => {
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     const text = await drawn(ui);
-    expect(text).toContain("300 gCO₂ sur la période");
-    expect(text).toContain("+50 % par rapport aux 30 jours d'avant");
-    // One line each in the side pane; the value never says who paid it
+    // The tiles: the period, its change, its sessions, its API-price value
     expect(text).toContain(
-      "2 sessions\nValeur au prix API : 3,00 $ (le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie)\n≈ 2 km en voiture (142 g/km, ADEME 2025)",
+      "Sur la période\n300 gCO₂\nPar rapport à avant\n+50 %\nSessions\n2\nValeur au prix API\n3,00 $",
     );
+    // The value never says who paid it
+    expect(text).toContain(
+      "Valeur au prix API : le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.",
+    );
+    expect(text).toContain("≈ 2 km en voiture (142 g/km, ADEME 2025)");
     // A rise is drawn in the error colour
-    const rise = await ui.find({ type: "Text", text: /par rapport aux 30 jours/ });
+    const rise = await ui.find({ type: "Text", text: "+50\u00a0%" });
     expect(rise.props.color).toBe("error");
     // Each one can be turned off
     await ui.press({ key: "customize" });
