@@ -74,6 +74,7 @@ import {
   stripesAlt,
   stripesCaption,
   stripeTitle,
+  subscriptionValueText,
   toLabel,
   topProjectsText,
   waitingText,
@@ -156,6 +157,8 @@ const VIEW_KEY = "pane.view";
 const BLOCKS_KEY = "pane.blocks";
 // The one-time "/carbon-panel" hint, for someone welcomed before the pane existed
 const HINT_KEY = "pane.hinted";
+// Seen once on this machine: the account reports subscription windows
+const SUBSCRIPTION_KEY = "account.subscription";
 // The middle of the palette, for a walk with no colour to set its pace
 const NEUTRAL_CLASS = 3;
 // The most stripes drawn, the most recent kept: in the desktop app few enough to stay
@@ -241,6 +244,8 @@ const pane: {
   cardReadyUntil: number;
   // The row of block switches is open
   customizing: boolean;
+  // The account is on a Claude subscription (Pro or Max): the cost is a value, not a bill
+  isSubscription: boolean;
 } = {
   historyFile: null,
   sessionId: null,
@@ -251,6 +256,7 @@ const pane: {
   project: "",
   cardReadyUntil: 0,
   customizing: false,
+  isSubscription: false,
 };
 
 async function loadPaneHistory($: EngineInterface) {
@@ -448,6 +454,7 @@ export const register: Register = (on, options) => {
       if (isView(kept)) {
         await $.state.set({ plugin: "claude-carbon", key: "view" }, kept);
       }
+      pane.isSubscription = (await $.store.get(SUBSCRIPTION_KEY)) === true;
       const keptBlocks = await $.store.get(BLOCKS_KEY);
       if (isBlocks(keptBlocks)) {
         await $.state.set({ plugin: "claude-carbon", key: "blocks" }, keptBlocks);
@@ -578,6 +585,21 @@ export const register: Register = (on, options) => {
     // Before anything that may return early: a module reloaded during the turn has no
     // open answer, and the molecule must still stop.
     stopWalk();
+    // A subscription shows in its rate-limit windows (five hours, seven days), which an
+    // API key never reports: the pane then calls the cost a value the person does not pay.
+    try {
+      const usage = await $.session.usage();
+      const hasWindows = usage.rateLimits.some(
+        (r) => r.kind === "five_hour" || r.kind === "seven_day",
+      );
+      // No window at all says nothing (no reading yet): only a reading changes it
+      if (usage.rateLimits.length > 0 && hasWindows !== pane.isSubscription) {
+        pane.isSubscription = hasWindows;
+        await $.store.set(SUBSCRIPTION_KEY, hasWindows);
+      }
+    } catch {
+      // No reading: the cost keeps its plain wording.
+    }
     // No history file yet (an update installed in this very session): the Stop hook
     // writes one after this answer, and the pane's next drawing reads it again.
     if (pane.rows === null) pane.rows = undefined;
@@ -921,7 +943,11 @@ export const register: Register = (on, options) => {
       if (hasTotals && totals !== null) {
         secondary.push(sessionsCount(totals.sessions, lang));
         if (blocks.cost && totals.usd !== null && totals.usd > 0)
-          secondary.push(costText(totals.usd, lang));
+          secondary.push(
+            pane.isSubscription
+              ? subscriptionValueText(totals.usd, lang)
+              : costText(totals.usd, lang),
+          );
         if (blocks.equivalence && car !== null)
           secondary.push(equivalenceText(totals.grams, car, lang));
       }
@@ -1038,7 +1064,11 @@ export const register: Register = (on, options) => {
             <Box flexDirection="column">
               <Text bold>{periodHeadline(totals.grams, lang)}</Text>
               {changeText}
-              <Text dimColor>{secondary.join(" · ")}</Text>
+              {secondary.map((line) => (
+                <Text key={line} dimColor>
+                  {line}
+                </Text>
+              ))}
               {listed.length > 0 && (
                 <Box flexDirection="column" marginTop={1}>
                   {listed.map((p) => (

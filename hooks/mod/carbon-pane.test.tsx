@@ -51,6 +51,8 @@ type World = {
   commandTaken?: boolean;
   // What the prompt box holds
   draft?: string;
+  // The rate-limit windows the session reports (a subscription has some)
+  rateLimits?: Array<{ kind: string; percentUsed: number }>;
 };
 
 const PANE = {
@@ -152,6 +154,13 @@ function world(on: any, options: World = {}) {
   const fills: any[] = [];
   const submits: string[] = [];
   on("prompt.read", () => ({ value: { text: options.draft ?? "", cursor: 0 } }));
+  on("session.usage", () => ({
+    value: {
+      startedAt: NOW,
+      context: {},
+      rateLimits: options.rateLimits ?? [],
+    },
+  }));
   on("prompt.fill", ($: any, e: any) => {
     fills.push({ ...e });
     return { isFilled: true };
@@ -313,6 +322,40 @@ describe("the /carbon-panel pane", () => {
     await term.unmount();
   });
 
+  test("on a subscription the cost reads as a value the person does not pay", async ($: any, on: any) => {
+    const line = (id: string, days: number, g: number, usd: number) =>
+      `${id}\t${Math.floor((NOW - days * DAY) / 1000)}\t${g}\t2\tsite\t${usd}`;
+    const { store } = world(on, {
+      history: [line("a", 3, 200, 2), line("b", 2, 100, 1)].join("\n"),
+      rateLimits: [{ kind: "five_hour", percentUsed: 12 }],
+    });
+    await startSession($);
+    await $.turn.start({ text: "go", turnId: "turn-1" });
+    await $.turn.complete({ answer: "ok", durationMs: 10, isAborted: false, turnId: "turn-1", reason: "answer" });
+    expect(store.get("account.subscription")).toBe(true);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    expect(await drawn(ui)).toContain(
+      "Valeur au prix API : 3,00 $, couverte par votre abonnement (vous ne la payez pas)",
+    );
+    await ui.unmount();
+  });
+
+  test("without subscription windows the cost keeps its plain wording", async ($: any, on: any) => {
+    const line = (id: string, days: number, g: number, usd: number) =>
+      `${id}\t${Math.floor((NOW - days * DAY) / 1000)}\t${g}\t2\tsite\t${usd}`;
+    world(on, { history: [line("a", 3, 200, 2)].join("\n") });
+    await startSession($);
+    await $.turn.start({ text: "go", turnId: "turn-1" });
+    await $.turn.complete({ answer: "ok", durationMs: 10, isAborted: false, turnId: "turn-1", reason: "answer" });
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    const text = await drawn(ui);
+    expect(text).toContain("2,00 $ au prix API");
+    expect(text).not.toContain("abonnement");
+    await ui.unmount();
+  });
+
   test("the card button puts /carbon-card in the prompt and never sends it", async ($: any, on: any) => {
     const { fills, submits } = world(on);
     await startSession($);
@@ -429,7 +472,8 @@ describe("the /carbon-panel pane", () => {
     const text = await drawn(ui);
     expect(text).toContain("300 gCO₂ sur la période");
     expect(text).toContain("+50 % par rapport aux 30 jours d'avant");
-    expect(text).toContain("2 sessions · 3,00 $ au prix API · ≈ 2 km en voiture (142 g/km, ADEME 2025)");
+    // One line each in the side pane
+    expect(text).toContain("2 sessions\n3,00 $ au prix API\n≈ 2 km en voiture (142 g/km, ADEME 2025)");
     // A rise is drawn in the error colour
     const rise = await ui.find({ type: "Text", text: /par rapport aux 30 jours/ });
     expect(rise.props.color).toBe("error");

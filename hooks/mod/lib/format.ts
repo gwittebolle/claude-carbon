@@ -403,6 +403,15 @@ export function compareText(
     : `${amount} vs ${before[1]}`;
 }
 
+// The API-price value for someone on a Claude subscription, who does not pay it:
+// "Valeur au prix API : 27 608 $, couverte par votre abonnement"
+export function subscriptionValueText(usd: number, lang: Lang): string {
+  const money = costText(usd, lang).replace(lang === "fr" ? " au prix API" : " at API prices", "");
+  return lang === "fr"
+    ? `Valeur au prix API${NBSP}: ${money}, couverte par votre abonnement (vous ne la payez pas)`
+    : `API-price value: ${money}, covered by your subscription (you don't pay it)`;
+}
+
 // "12,34 $ au prix API", "$12.34 at API prices"
 export function costText(usd: number, lang: Lang): string {
   // Whole dollars from a thousand up, grouped: "27 608 $", "$27,608"
