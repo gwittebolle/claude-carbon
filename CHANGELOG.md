@@ -32,7 +32,7 @@ stripe per session, week (from Monday) or month, over 7, 30 or 90 days, 12 month
 or everything; by session coloured against the molecule's own median, by week or
 month against the median of the periods shown with sessions in them (uncoloured
 under three), the one still filling left out of it; at most
-600 stripes in the desktop app and 512 in the terminal, the most recent. Range and
+180 stripes in the desktop app's side pane and 512 in the terminal, the most recent. Range and
 step are buttons; the choice is kept in
 `$.store` for the next session. The pane opens without the keyboard, so typing
 and Escape stay with the prompt.

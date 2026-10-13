@@ -266,9 +266,9 @@ const RANGE_LABELS: Record<string, [string, string]> = {
   all: ["Tout", "All"],
 };
 const STEP_LABELS: Record<string, [string, string]> = {
-  session: ["Sessions", "Sessions"],
-  week: ["Semaines", "Weeks"],
-  month: ["Mois", "Months"],
+  session: ["session", "session"],
+  week: ["semaine", "week"],
+  month: ["mois", "month"],
 };
 const RANGE_TEXT: Record<string, [string, string]> = {
   "7d": ["7 derniers jours", "Last 7 days"],
@@ -371,9 +371,21 @@ export function methodSwitchText(at: number, lang: Lang): string {
     : `${day}: the calculation method changed; each side is coloured against its own median`;
 }
 
-// After the stripes' line when the divider shows
-export function methodSwitchNote(lang: Lang): string {
-  return lang === "fr" ? "┃ changement de méthode" : "┃ method change";
+// Under the stripes, beside their dates, when the divider shows
+export function methodSwitchNote(at: number, lang: Lang): string {
+  const day = dateLabel(at, "session", lang);
+  return lang === "fr"
+    ? `┃ changement de méthode le ${day}`
+    : `┃ method changed on ${day}`;
+}
+
+// The labels before the two rows of buttons in the desktop app
+export function periodLabel(lang: Lang): string {
+  return lang === "fr" ? "Période" : "Period";
+}
+
+export function stripePerLabel(lang: Lang): string {
+  return lang === "fr" ? "Une bande par" : "One stripe per";
 }
 
 export function mascotAlt(lang: Lang): string {

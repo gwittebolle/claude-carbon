@@ -245,6 +245,23 @@ describe("the /carbon-panel pane", () => {
     await ui.unmount();
   });
 
+  test("the desktop side pane stacks the controls, with no key badges", async ($: any, on: any) => {
+    world(on);
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    const text = await drawn(ui);
+    expect(text).toContain("Période");
+    expect(text).toContain("Une bande par");
+    const range = await ui.find({ key: "range-30d" });
+    expect(range.props.hotkey).toBeUndefined();
+    expect(range.props.variant).toBe("primary");
+    await ui.unmount();
+    const term = await $.ui.mount({ ...PANE, surface: "terminal" });
+    expect((await term.find({ key: "range-30d" })).props.hotkey).toBe("2");
+    await term.unmount();
+  });
+
   test("on the desktop the molecule walks in its SVG while Claude works", async ($: any, on: any) => {
     world(on);
     await startSession($);
@@ -403,7 +420,7 @@ describe("the /carbon-panel pane", () => {
     walk(tree);
     expect(sources.length).toBe(2);
     expect(sources.every((s) => s.length <= 131072)).toBe(true);
-    expect((await drawn(ui)).includes("600 sessions les plus récentes sur 3000")).toBe(true);
+    expect((await drawn(ui)).includes("180 sessions les plus récentes sur 3000")).toBe(true);
     await ui.unmount();
   });
 

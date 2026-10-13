@@ -55,6 +55,8 @@ import {
   methodSwitchNote,
   methodSwitchText,
   noHistoryText,
+  periodLabel,
+  stripePerLabel,
   paneHint,
   paneTitle,
   paneUnplaced,
@@ -753,7 +755,7 @@ for (const lang of ["fr", "en"]) {
   pane.push(currentLine(52, 140, lang), currentLine(800, 140, lang), currentLine(52, null, lang));
   pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang), uncolouredText(lang));
   pane.push(mascotAlt(lang), stripesAlt(lang));
-  pane.push(methodSwitchText(now, lang), methodSwitchNote(lang));
+  pane.push(methodSwitchText(now, lang), methodSwitchNote(now, lang), periodLabel(lang), stripePerLabel(lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
   for (const s of STEPS) {
     pane.push(stepLabel(s, lang));

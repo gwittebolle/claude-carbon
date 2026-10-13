@@ -42,6 +42,8 @@ import {
   isCarbonStatusLine,
   methodSwitchNote,
   methodSwitchText,
+  periodLabel,
+  stripePerLabel,
   languageSetting,
   mascotAlt,
   noHistoryText,
@@ -119,9 +121,10 @@ const VIEW_KEY = "pane.view";
 const HINT_KEY = "pane.hinted";
 // The middle of the palette, for a walk with no colour to set its pace
 const NEUTRAL_CLASS = 3;
-// The most stripes drawn: the desktop app's Svg takes 131072 characters at most, and a
-// terminal Raster 512 columns. The most recent are kept.
-const DESKTOP_MAX_STRIPES = 600;
+// The most stripes drawn, the most recent kept: in the desktop app few enough to stay
+// readable in a side pane (and far under the Svg's 131072 characters), in a terminal
+// what the line holds, up to a Raster's 512 columns.
+const DESKTOP_MAX_STRIPES = 180;
 const RASTER_MAX_COLUMNS = 512;
 
 // v2: the values of v1 counted background subagents in the answer that started them.
@@ -739,8 +742,8 @@ export const register: Register = (on, options) => {
             title: mascotAlt(lang),
           })}
           alt={mascotAlt(lang)}
-          width={80}
-          height={64}
+          width={112}
+          height={90}
           isInteractive
         />
       );
@@ -760,71 +763,102 @@ export const register: Register = (on, options) => {
           ? noHistoryText(lang)
           : hasStripes
             ? historyLine(view.range, view.step, barCount, shown.length, bm, lang) +
-              (bm === null ? ` · ${uncolouredText(lang)}` : "") +
-              (hasDivider && switchAt !== undefined ? ` · ${methodSwitchNote(lang)}` : "")
+              (bm === null ? ` · ${uncolouredText(lang)}` : "")
             : emptyRangeText(lang);
-      const span =
+      const dates =
         first === undefined || last === undefined
           ? ""
           : first.start === last.start
             ? dateLabel(first.start, view.step, lang)
             : `${dateLabel(first.start, view.step, lang)} → ${dateLabel(last.start, view.step, lang)}`;
+      // Under the stripes: their dates, and where the method changed when it shows
+      const span =
+        hasDivider && switchAt !== undefined
+          ? `${dates} · ${methodSwitchNote(switchAt, lang)}`
+          : dates;
       // In a terminal each stripe widens to fill the line: three months read as three
       // wide bands, not three cells.
       const stripeWidth = Math.max(1, Math.min(8, Math.floor(room / Math.max(1, stripes.length))));
-      const buttons = (
-        <Box flexDirection="row" columnGap={2} flexWrap="wrap">
-          {RANGES.map((range, i) => (
-            <Button
-              key={`range-${range}`}
-              label={rangeLabel(range, lang)}
-              hotkey={String(i + 1)}
-              {...choice(view.range === range)}
-              onPress={() => setView({ ...view, range })}
-            />
-          ))}
-          <Text dimColor>·</Text>
-          {STEPS.map((step) => (
-            <Button
-              key={`step-${step}`}
-              label={stepLabel(step, lang)}
-              {...choice(view.step === step)}
-              onPress={() => setView({ ...view, step })}
-            />
-          ))}
-        </Box>
+      const rangeButtons = RANGES.map((range, i) => (
+        <Button
+          key={`range-${range}`}
+          label={rangeLabel(range, lang)}
+          // A terminal shows the digit before a plain label; the desktop app would draw
+          // a key badge on every button, so it gets none.
+          {...(isTerminal ? { hotkey: String(i + 1) } : {})}
+          {...choice(view.range === range)}
+          onPress={() => setView({ ...view, range })}
+        />
+      ));
+      const stepButtons = STEPS.map((step) => (
+        <Button
+          key={`step-${step}`}
+          label={stepLabel(step, lang)}
+          {...choice(view.step === step)}
+          onPress={() => setView({ ...view, step })}
+        />
+      ));
+      const stripesDrawing = isTerminal ? (
+        <ui.Raster
+          key="stripes"
+          columns={stripeColumns(stripes, stripeWidth)}
+          rows={2}
+          cells={stripeCells(stripes, 2, stripeWidth)}
+        />
+      ) : (
+        <ui.Svg
+          source={stripesSvg(stripes, stripesAlt(lang))}
+          alt={stripesAlt(lang)}
+          width={Math.min(720, Math.max(200, e.props.bodyColumns * 8))}
+          height={72}
+          isInteractive
+        />
       );
-      return (
+      const head = sm === null ? colorNote(past.length, lang) : summary;
+      // The terminal packs everything beside a small molecule, for a short block above the
+      // prompt; the desktop app's side pane stacks it, one control group per line.
+      return isTerminal ? (
         <Box flexDirection="column">
           <Box flexDirection="row">
             {mascot}
             <Box flexDirection="column" marginLeft={2} flexShrink={1}>
               <Text bold>{currentLine(total.grams, sm, lang)}</Text>
-              <Text dimColor={!hasStripes}>
-                {sm === null ? colorNote(past.length, lang) : summary}
-              </Text>
-              {buttons}
+              <Text dimColor={!hasStripes}>{head}</Text>
+              <Box flexDirection="row" columnGap={2} flexWrap="wrap">
+                {rangeButtons}
+                <Text dimColor>·</Text>
+                {stepButtons}
+              </Box>
             </Box>
           </Box>
           {sm === null && <Text dimColor={!hasStripes}>{summary}</Text>}
-          {hasStripes &&
-            (isTerminal ? (
-              <ui.Raster
-                key="stripes"
-                columns={stripeColumns(stripes, stripeWidth)}
-                rows={2}
-                cells={stripeCells(stripes, 2, stripeWidth)}
-              />
-            ) : (
-              <ui.Svg
-                source={stripesSvg(stripes, stripesAlt(lang))}
-                alt={stripesAlt(lang)}
-                width={Math.min(640, Math.max(160, e.props.bodyColumns * 8))}
-                height={40}
-                isInteractive
-              />
-            ))}
+          {hasStripes && stripesDrawing}
           {hasStripes && <Text dimColor>{span}</Text>}
+        </Box>
+      ) : (
+        <Box flexDirection="column" rowGap={1}>
+          <Box flexDirection="row" alignItems="center">
+            {mascot}
+            <Box flexDirection="column" marginLeft={2} flexShrink={1}>
+              <Text bold>{currentLine(total.grams, sm, lang)}</Text>
+              {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
+            </Box>
+          </Box>
+          <Box flexDirection="column">
+            <Box flexDirection="row" columnGap={1} flexWrap="wrap" alignItems="center">
+              <Text dimColor>{periodLabel(lang)}</Text>
+              {rangeButtons}
+            </Box>
+            <Box flexDirection="row" columnGap={1} flexWrap="wrap" alignItems="center">
+              <Text dimColor>{stripePerLabel(lang)}</Text>
+              {stepButtons}
+            </Box>
+          </Box>
+          <Box flexDirection="column">
+            <Text dimColor={!hasStripes}>{summary}</Text>
+            {hasStripes && stripesDrawing}
+            {hasStripes && <Text dimColor>{span}</Text>}
+          </Box>
         </Box>
       );
     } catch {
