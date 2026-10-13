@@ -84,6 +84,8 @@ import {
   stripesCaption,
   apiValueNote,
   AUTHOR_URL,
+  builtByLabel,
+  forTeamLabel,
   teamUrl,
   blockTitle,
   booksText,
@@ -670,11 +672,19 @@ check("svg walks", svg.includes("@keyframes") && svg.includes("344ms"), true);
 check("svg reduced motion", svg.includes("prefers-reduced-motion"), true);
 check("svg at rest breathes slowly", mascotSvg({ color: NEUTRAL, walking: false, step: 300, title: "t" }).includes("2400ms"), true);
 check("svg size", svg.length < 131072, true);
+// The desktop pane draws at most 180 stripes, each with its hover label
 const stripesDoc = stripesSvg(
-  Array.from({ length: 400 }, (_, i) => ({ color: PALETTE[i % 8], title: `<${i}> & "x"` })),
+  Array.from({ length: 180 }, (_, i) => ({
+    color: i % 9 === 0 ? null : PALETTE[i % 8],
+    title: `<${i}> & "x" semaine du 12 oct. · 1 234,5 kgCO₂ · 12 sessions`,
+  })),
   "t",
+  720,
 );
-check("stripes svg size, 400 stripes", stripesDoc.length < 131072, true);
+check("stripes svg keeps its shape", stripesDoc.includes('viewBox="0 0 720 102"'), true);
+check("stripes hover label shown by CSS", stripesDoc.includes(".s:hover .t{opacity:1}"), true);
+check("stripes svg no script", /<script|on[a-z]+=/i.test(stripesDoc), false);
+check("stripes svg size, 180 stripes", stripesDoc.length < 131072, true);
 check("stripes svg escapes titles", stripesDoc.includes("&lt;3&gt; &amp; &quot;x&quot;"), true);
 
 // The history file
@@ -895,7 +905,7 @@ for (const lang of ["fr", "en"]) {
   pane.push(customizeLabel(true, lang), customizeLabel(false, lang));
   for (const b of ["compare", "cost", "equivalence", "projects"]) pane.push(blockLabel(b, lang));
   pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 6000, 0.07, lang), projectBarLine("", 50, 0.001, lang));
-  pane.push(apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
+  pane.push(builtByLabel(lang), forTeamLabel(lang), apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
   for (const k of ["period", "change", "sessions", "cost"]) pane.push(tileLabel(k, lang));
   pane.push(peakHoursText(22, 0.3, lang), peakHoursText(7, 0.3, lang), favoriteModelText("opus", 0.5, lang), booksText(3e6, lang), booksText(5e5, lang), sessionStatsText(3, 2, "fable", lang), blockTitle("usage", lang), blockTitle("session", lang));
   pane.push(waitingText(lang), legendText(lang), fromLabel(lang), toLabel(lang), datePlaceholder(lang), dateInvalid(lang));
@@ -926,6 +936,8 @@ check("pane title", paneTitle("fr"), "claude-carbon");
 check("team url fr", teamUrl("fr"), "https://tokenclimate.com/?ref=carbon-panel");
 check("team url en", teamUrl("en"), "https://tokenclimate.com/en?ref=carbon-panel");
 check("author url", AUTHOR_URL, "https://gaetanwittebolle.com/?ref=carbon-panel");
+check("built by", builtByLabel("fr"), "Développé par");
+check("for a team", plainText(forTeamLabel("fr")), "Pour une équipe :");
 check("caption", plainText(stripesCaption("week", 1200, "fr")), "une bande par semaine · médiane 1,2 kgCO₂ par semaine");
 check("caption en", plainText(stripesCaption("day", null, "en")), "one stripe per day");
 check("headline", plainText(periodHeadline(901200, "fr")), "901,2 kgCO₂ sur la période");

@@ -500,6 +500,13 @@ export function teamUrl(lang: Lang): string {
     : "https://tokenclimate.com/en?ref=carbon-panel";
 }
 
+export function builtByLabel(lang: Lang): string {
+  return lang === "fr" ? "Développé par" : "Built by";
+}
+export function forTeamLabel(lang: Lang): string {
+  return lang === "fr" ? `Pour une équipe${NBSP}:` : "For a team:";
+}
+
 export function blockTitle(kind: "session" | "usage", lang: Lang): string {
   if (kind === "session") return lang === "fr" ? "Cette session" : "This session";
   return lang === "fr" ? "Mon usage" : "My usage";

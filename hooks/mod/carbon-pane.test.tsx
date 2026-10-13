@@ -337,6 +337,8 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain("≈ 3,0 sagas Harry Potter écrites par Claude");
     // The footer: who made it, and the team version
     const links = JSON.stringify(await ui.drawn());
+    expect(text).toContain("Développé par");
+    expect(text).toContain("Pour une équipe :");
     expect(links).toContain("https://gaetanwittebolle.com/?ref=carbon-panel");
     expect(links).toContain("https://tokenclimate.com/?ref=carbon-panel");
     // The foot is the pane's last element, held at the bottom

@@ -36,6 +36,8 @@ import { costUsd, parsePrices } from "./lib/cost.ts";
 import type { Prices } from "./lib/cost.ts";
 import {
   answerLine,
+  builtByLabel,
+  forTeamLabel,
   AUTHOR_URL,
   datePlaceholder,
   dateInvalid,
@@ -108,6 +110,7 @@ import {
   IDLE_STEP_MS,
   stepMs,
   stripeCells,
+  STRIPES_SVG_HEIGHT,
   stripesSvg,
 } from "./lib/mascot.ts";
 import type { Stripe } from "./lib/mascot.ts";
@@ -945,6 +948,8 @@ export const register: Register = (on, options) => {
       // In a terminal each stripe widens to fill the line: three months read as three
       // wide bands, not three cells.
       const stripeWidth = Math.max(1, Math.min(8, Math.floor(room / Math.max(1, stripes.length))));
+      // The desktop drawing's width in CSS pixels, from the pane's columns
+      const stripesWidth = Math.min(720, Math.max(200, e.props.bodyColumns * 8));
       const stripesDrawing = isTerminal ? (
         <ui.Raster
           key="stripes"
@@ -954,10 +959,10 @@ export const register: Register = (on, options) => {
         />
       ) : (
         <ui.Svg
-          source={stripesSvg(stripes, stripesAlt(lang))}
+          source={stripesSvg(stripes, stripesAlt(lang), stripesWidth)}
           alt={stripesAlt(lang)}
-          width={Math.min(720, Math.max(200, e.props.bodyColumns * 8))}
-          height={72}
+          width={stripesWidth}
+          height={STRIPES_SVG_HEIGHT}
           isInteractive
         />
       );
@@ -1187,10 +1192,15 @@ export const register: Register = (on, options) => {
           </Box>
         </Box>
           {/* Mods set no font size: the foot stays small by saying little */}
-          <Box flexDirection="row" columnGap={1} flexWrap="wrap" marginTop={1}>
-            <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />
-            <Text dimColor>·</Text>
-            <ui.Link href={teamUrl(lang)} label="TokenClimate" />
+          <Box flexDirection="column" marginTop={1}>
+            <Box flexDirection="row" columnGap={1}>
+              <Text dimColor>{builtByLabel(lang)}</Text>
+              <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />
+            </Box>
+            <Box flexDirection="row" columnGap={1}>
+              <Text dimColor>{forTeamLabel(lang)}</Text>
+              <ui.Link href={teamUrl(lang)} label="TokenClimate" />
+            </Box>
           </Box>
         </Box>
       );
