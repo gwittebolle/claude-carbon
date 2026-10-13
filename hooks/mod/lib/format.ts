@@ -379,6 +379,18 @@ export function methodSwitchNote(at: number, lang: Lang): string {
     : `┃ method changed on ${day}`;
 }
 
+// The button that puts /carbon-card in the prompt, for the person to send
+export function cardButtonLabel(lang: Lang): string {
+  return lang === "fr" ? "Préparer ma carte" : "Prepare my card";
+}
+
+// When the prompt already holds a draft, the button leaves it alone and says why
+export function cardDraftBusy(lang: Lang): string {
+  return lang === "fr"
+    ? `Le prompt contient déjà un brouillon${NBSP}: videz-le pour préparer la carte.`
+    : "The prompt already holds a draft: clear it to prepare the card.";
+}
+
 // The labels before the two rows of buttons in the desktop app
 export function periodLabel(lang: Lang): string {
   return lang === "fr" ? "Période" : "Period";

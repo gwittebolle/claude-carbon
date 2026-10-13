@@ -36,6 +36,8 @@ type World = {
   hinted?: boolean;
   // Another extension already took /carbon-panel
   commandTaken?: boolean;
+  // What the prompt box holds
+  draft?: string;
 };
 
 const PANE = {
@@ -134,6 +136,17 @@ function world(on: any, options: World = {}) {
       isPlaced: true,
     })),
   }));
+  const fills: any[] = [];
+  const submits: string[] = [];
+  on("prompt.read", () => ({ value: { text: options.draft ?? "", cursor: 0 } }));
+  on("prompt.fill", ($: any, e: any) => {
+    fills.push({ ...e });
+    return { isFilled: true };
+  });
+  on("prompt.submit", ($: any, e: any) => {
+    submits.push(e.text);
+    return { text: e.text };
+  });
   on("ui.blit", ($: any, e: any) => {
     blits.push(e);
     return { value: {} };
@@ -161,6 +174,8 @@ function world(on: any, options: World = {}) {
     fetches,
     processes,
     store,
+    fills,
+    submits,
   };
 }
 
@@ -260,6 +275,34 @@ describe("the /carbon-panel pane", () => {
     const term = await $.ui.mount({ ...PANE, surface: "terminal" });
     expect((await term.find({ key: "range-30d" })).props.hotkey).toBe("2");
     await term.unmount();
+  });
+
+  test("the card button puts /carbon-card in the prompt and never sends it", async ($: any, on: any) => {
+    const { fills, submits } = world(on);
+    await startSession($);
+    await openPane($);
+    for (const surface of ["terminal", "desktop"] as const) {
+      const ui = await $.ui.mount({ ...PANE, surface });
+      await ui.press({ key: "card" });
+      await clock.settle();
+      await ui.unmount();
+    }
+    expect(fills.map((f) => f.text)).toEqual(["/carbon-card", "/carbon-card"]);
+    expect(submits).toEqual([]);
+  });
+
+  test("the card button leaves a draft alone", async ($: any, on: any) => {
+    const { fills, toasts } = world(on, { draft: "half a thought" });
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+    await ui.press({ key: "card" });
+    await clock.settle();
+    await ui.unmount();
+    expect(fills).toEqual([]);
+    expect(toasts.map((t) => t.replaceAll(NBSP, " "))).toEqual([
+      "Le prompt contient déjà un brouillon : videz-le pour préparer la carte.",
+    ]);
   });
 
   test("on the desktop the molecule walks in its SVG while Claude works", async ($: any, on: any) => {

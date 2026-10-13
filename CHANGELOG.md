@@ -35,7 +35,9 @@ under three), the one still filling left out of it; at most
 180 stripes in the desktop app's side pane and 512 in the terminal, the most recent. Range and
 step are buttons; the choice is kept in
 `$.store` for the next session. The pane opens without the keyboard, so typing
-and Escape stay with the prompt.
+and Escape stay with the prompt. A "Prepare my card" button puts `/carbon-card` in
+an empty prompt (`$.prompt.fill`) and never sends it; a draft in progress is left
+alone.
 
 The history comes from `sessions-history.tsv`, which the Stop hook now writes next
 to `carbon.db` after each answer, and the SessionStart hook at the start of each

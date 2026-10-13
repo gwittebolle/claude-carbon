@@ -40,6 +40,8 @@ import {
   hasLangVariable,
   historyLine,
   isCarbonStatusLine,
+  cardButtonLabel,
+  cardDraftBusy,
   methodSwitchNote,
   methodSwitchText,
   periodLabel,
@@ -798,6 +800,26 @@ export const register: Register = (on, options) => {
           onPress={() => setView({ ...view, step })}
         />
       ));
+      // Puts /carbon-card in an empty prompt, never sends it: the card is a skill, a
+      // model turn the person starts themselves. A draft in progress is left alone.
+      const prepareCard = () => {
+        void (async () => {
+          const box = await $.prompt.read();
+          if (box.text.trim() !== "") {
+            $.ui.toast(cardDraftBusy(lang), { timeoutMs: 6000 });
+            return;
+          }
+          await $.prompt.fill({ text: "/carbon-card" });
+        })().catch(() => undefined);
+      };
+      const cardButton = (
+        <Button
+          key="card"
+          label={cardButtonLabel(lang)}
+          {...(isTerminal ? { hotkey: "c", plain: true as const } : {})}
+          onPress={prepareCard}
+        />
+      );
       const stripesDrawing = isTerminal ? (
         <ui.Raster
           key="stripes"
@@ -828,6 +850,8 @@ export const register: Register = (on, options) => {
                 {rangeButtons}
                 <Text dimColor>·</Text>
                 {stepButtons}
+                <Text dimColor>·</Text>
+                {cardButton}
               </Box>
             </Box>
           </Box>
@@ -844,7 +868,7 @@ export const register: Register = (on, options) => {
               {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
             </Box>
           </Box>
-          <Box flexDirection="column">
+          <Box flexDirection="column" rowGap={1}>
             <Box flexDirection="row" columnGap={1} flexWrap="wrap" alignItems="center">
               <Text dimColor>{periodLabel(lang)}</Text>
               {rangeButtons}
@@ -859,6 +883,7 @@ export const register: Register = (on, options) => {
             {hasStripes && stripesDrawing}
             {hasStripes && <Text dimColor>{span}</Text>}
           </Box>
+          <Box flexDirection="row">{cardButton}</Box>
         </Box>
       );
     } catch {

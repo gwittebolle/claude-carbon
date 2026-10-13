@@ -52,6 +52,8 @@ import {
   emptyRangeText,
   historyLine,
   mascotAlt,
+  cardButtonLabel,
+  cardDraftBusy,
   methodSwitchNote,
   methodSwitchText,
   noHistoryText,
@@ -755,7 +757,7 @@ for (const lang of ["fr", "en"]) {
   pane.push(currentLine(52, 140, lang), currentLine(800, 140, lang), currentLine(52, null, lang));
   pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang), uncolouredText(lang));
   pane.push(mascotAlt(lang), stripesAlt(lang));
-  pane.push(methodSwitchText(now, lang), methodSwitchNote(now, lang), periodLabel(lang), stripePerLabel(lang));
+  pane.push(methodSwitchText(now, lang), methodSwitchNote(now, lang), periodLabel(lang), stripePerLabel(lang), cardButtonLabel(lang), cardDraftBusy(lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
   for (const s of STEPS) {
     pane.push(stepLabel(s, lang));
@@ -772,7 +774,7 @@ for (const text of pane) {
 }
 // French puts a no-break space before : ; ! and ?, never a plain one
 for (const lang of ["fr"]) {
-  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), methodSwitchText(now, lang)];
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), methodSwitchText(now, lang), cardDraftBusy(lang)];
   for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
 const plainText = (s) => s.replaceAll(NBSP, " ");
