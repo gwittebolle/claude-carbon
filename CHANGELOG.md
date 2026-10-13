@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-13
+
+### fix: backfill names a session's project after its last folder, as the live hook does
+
+A session opened in a parent folder that moves into a sub-project was named
+after the sub-project by the Stop hook, which reads the cwd of the latest turn,
+and after the parent folder by `backfill.sh`, which read the transcript's first
+cwd. A row rebuilt by backfill could therefore move from `my-app` to the parent
+folder. Backfill now takes the transcript's last cwd, through the same path
+conversion as the hook on Windows, so both paths give the same project.
+`tests/run-per-model-tests.sh` covers a session that changes folder mid-way.
+
 ## 2026-10-12
 
 ### docs: a pixel CO2 molecule as the README mascot
