@@ -65,7 +65,6 @@ import {
   compareText,
   costText,
   currentLine,
-  customizeLabel,
   dateLabel,
   detectLang,
   emptyRangeText,
@@ -180,6 +179,8 @@ const HINT_KEY = "pane.hinted";
 
 // The middle of the palette, for a walk with no colour to set its pace
 const NEUTRAL_CLASS = 3;
+// The pane's settings control: a gear (U+2699, text presentation)
+const GEAR = "\u2699";
 // The most stripes drawn, the most recent kept: in the desktop app few enough to stay
 // readable in a side pane (and far under the Svg's 131072 characters), in a terminal
 // what the line holds, up to a Raster's 512 columns.
@@ -1005,8 +1006,11 @@ export const register: Register = (on, options) => {
       const customizeButton = (
         <Button
           key="customize"
-          label={customizeLabel(pane.customizing, lang)}
-          {...(isTerminal ? { hotkey: "o", plain: true as const, dimColor: true } : {})}
+          // A gear, a control by itself: the block switches of "Mon usage"
+          label={GEAR}
+          plain
+          {...(isTerminal ? { hotkey: "o" } : {})}
+          {...(pane.customizing ? {} : { dimColor: true })}
           onPress={() => {
             pane.customizing = !pane.customizing;
             $.ui.invalidate("ui.render");
@@ -1014,7 +1018,7 @@ export const register: Register = (on, options) => {
         />
       );
       const options = pane.customizing && (
-        <Box flexDirection="row" columnGap={1} flexWrap="wrap" alignItems="center">
+        <Box flexDirection="row" columnGap={1} rowGap={1} flexWrap="wrap" alignItems="center">
           <Text dimColor>{showLabel(lang)}</Text>
           {BLOCKS.map((block) => (
             <Button
@@ -1117,7 +1121,11 @@ export const register: Register = (on, options) => {
             </Box>
           </Box>
           <Box flexDirection="column" rowGap={1} marginTop={1}>
-            <Text bold>{blockTitle("usage", lang)}</Text>
+            <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+              <Text bold>{blockTitle("usage", lang)}</Text>
+              {customizeButton}
+            </Box>
+            {options}
             <Box flexDirection="row" columnGap={1} rowGap={1} flexWrap="wrap">
               {rangeButtons}
             </Box>
@@ -1183,12 +1191,8 @@ export const register: Register = (on, options) => {
             </Box>
           )}
           <Box flexDirection="column" rowGap={1}>
-            <Box flexDirection="row" columnGap={1}>
-              {cardButton}
-              {customizeButton}
-            </Box>
+            <Box flexDirection="row">{cardButton}</Box>
             {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
-            {options}
           </Box>
         </Box>
           {/* Mods set no font size: the foot stays small by saying little */}

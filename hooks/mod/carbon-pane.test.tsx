@@ -276,6 +276,14 @@ describe("the /carbon-panel pane", () => {
     const range = await ui.find({ key: "range-30d" });
     expect(range.props.hotkey).toBeUndefined();
     expect(range.props.variant).toBe("primary");
+    // The settings are a gear beside "Mon usage"
+    const gear = await ui.find({ key: "customize" });
+    expect(gear.props.label).toBe("\u2699");
+    expect(gear.props.plain).toBe(true);
+    expect(await ui.find({ key: "block-portrait" })).toBeUndefined();
+    await ui.press({ key: "customize" });
+    expect(await ui.find({ key: "block-portrait" })).toBeDefined();
+    await ui.press({ key: "customize" });
     // The month lists show only for a custom range
     expect(await ui.find({ key: "from" })).toBeUndefined();
     expect(await drawn(ui)).toContain("bleu : sous la médiane");

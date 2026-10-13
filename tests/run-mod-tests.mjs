@@ -58,7 +58,6 @@ import {
   blockLabel,
   compareText,
   costText,
-  customizeLabel,
   equivalenceText,
   showLabel,
   noHistoryText,
@@ -902,7 +901,6 @@ for (const lang of ["fr", "en"]) {
   pane.push(cardButtonLabel(lang), cardDraftBusy(lang), cardReadyText(lang), cardFillFailed(lang));
   pane.push(compareText(120, 100, "30d", lang), compareText(80, 100, "1y", lang), costText(12.3, lang), showLabel(lang));
   pane.push(equivalenceText(240000, carEquivalence(factorsDoc, lang === "fr" ? "fr" : "us"), lang));
-  pane.push(customizeLabel(true, lang), customizeLabel(false, lang));
   for (const b of ["compare", "cost", "equivalence", "projects"]) pane.push(blockLabel(b, lang));
   pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 6000, 0.07, lang), projectBarLine("", 50, 0.001, lang));
   pane.push(builtByLabel(lang), forTeamLabel(lang), apiValueNote(lang), moneyValue(27608, lang), changeValue(29));

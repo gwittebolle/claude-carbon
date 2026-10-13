@@ -569,11 +569,7 @@ export function equivalenceText(
   return `≈${NBSP}${thousands(grams / car.divisor, lang)} ${car.label} (${car.tag})`;
 }
 
-// The blocks a person can show or hide in the pane
-export function customizeLabel(isOpen: boolean, lang: Lang): string {
-  if (lang === "fr") return isOpen ? "Fermer les options" : "Personnaliser";
-  return isOpen ? "Close options" : "Customize";
-}
+// The blocks a person can show or hide in the pane, under the gear
 
 const BLOCK_LABELS: Record<string, [string, string]> = {
   portrait: ["Portrait", "Portrait"],

@@ -47,7 +47,8 @@ The tab is titled "claude-carbon", and two short lines held at the pane's foot
 link to the author's site and to TokenClimate (`?ref=carbon-panel`). The pane opens without the keyboard, so typing
 and Escape stay with the prompt. The period's figures (CO2, change, sessions,
 API-price value) are tiles under the range buttons in the desktop app, a line
-under the stripes in the terminal; then the blocks the person chooses under "Customize", kept in `$.store`: the change
+under the stripes in the terminal; then the blocks the person chooses under the gear beside "My usage", kept in
+`$.store`: the change
 against the same length of time before, the API-price value (worded so it holds
 whoever pays: a Pro or Max subscription covers some or all of it), the car
 equivalence
