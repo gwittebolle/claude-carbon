@@ -80,7 +80,7 @@ import {
   toLabel,
   monthLabel,
   stripesCaption,
-  subscriptionValueText,
+  apiValueText,
 } from "../hooks/mod/lib/format.ts";
 import { lineEntry, BIND_WINDOW_MS } from "../hooks/mod/lib/lines.ts";
 import {
@@ -788,8 +788,8 @@ check("equivalence text", equivalenceText(240000, carEquivalence(factorsDoc, "fr
 check("cost grouped", costText(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $ au prix API");
 check("cost grouped en", costText(27608.16, "en"), "$27,608 at API prices");
 check("cost small", costText(12.3, "fr").replaceAll(NBSP, " "), "12,30 $ au prix API");
-check("subscription value", subscriptionValueText(27608.16, "fr").replaceAll(NBSP, " "), "Valeur au prix API : 27 608 $, couverte par votre abonnement (vous ne la payez pas)");
-check("subscription value en", subscriptionValueText(12.3, "en"), "API-price value: $12.30, covered by your subscription (you don't pay it)");
+check("api value", apiValueText(27608.16, "fr").replaceAll(NBSP, " "), "Valeur au prix API : 27 608 $ (le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie)");
+check("api value en", apiValueText(12.3, "en"), "API-price value: $12.30 (what this usage costs billed through the API; a Pro or Max subscription covers some or all of it)");
 check("bar median needs 3 full bars", barMedian([{ grams: 1 }, { grams: 0 }, { grams: 3 }]), null);
 check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams: 5 }]), 3);
 // Where midnight is skipped for summer time (Santiago, Sunday 6 Sep 2026), no session
@@ -839,7 +839,7 @@ for (const lang of ["fr", "en"]) {
   pane.push(customizeLabel(true, lang), customizeLabel(false, lang));
   for (const b of ["compare", "cost", "equivalence", "projects"]) pane.push(blockLabel(b, lang));
   pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 0.07, lang), projectBarLine("", 0.001, lang));
-  pane.push(subscriptionValueText(27608, lang), subscriptionValueText(3, lang));
+  pane.push(apiValueText(27608, lang), apiValueText(3, lang));
   pane.push(waitingText(lang), legendText(lang), fromLabel(lang), toLabel(lang), monthLabel("2026-05", lang));
   pane.push(otherProjectsLine(4, 900, 0.01, lang), topProjectsText([{ project: "a", share: 0.4 }], lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));

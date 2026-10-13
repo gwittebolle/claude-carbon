@@ -403,13 +403,14 @@ export function compareText(
     : `${amount} vs ${before[1]}`;
 }
 
-// The API-price value for someone on a Claude subscription, who does not pay it:
-// "Valeur au prix API : 27 608 $, couverte par votre abonnement"
-export function subscriptionValueText(usd: number, lang: Lang): string {
+// The period's API-price value, said so that it holds whoever pays: a subscription,
+// an API key, extra usage, or sessions of several kinds. Which session was billed how
+// is not recorded, so the line never says what the person paid.
+export function apiValueText(usd: number, lang: Lang): string {
   const money = costText(usd, lang).replace(lang === "fr" ? " au prix API" : " at API prices", "");
   return lang === "fr"
-    ? `Valeur au prix API${NBSP}: ${money}, couverte par votre abonnement (vous ne la payez pas)`
-    : `API-price value: ${money}, covered by your subscription (you don't pay it)`;
+    ? `Valeur au prix API${NBSP}: ${money} (le prix de cet usage facturé à l'API${NBSP}; un abonnement Pro ou Max en couvre tout ou partie)`
+    : `API-price value: ${money} (what this usage costs billed through the API; a Pro or Max subscription covers some or all of it)`;
 }
 
 // "12,34 $ au prix API", "$12.34 at API prices"

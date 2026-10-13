@@ -38,9 +38,9 @@ The range is a row of buttons, the custom months two `Select` lists; the choice 
 kept in `$.store` for the next session. The pane opens without the keyboard, so typing
 and Escape stay with the prompt. Under the stripes, the period's total, then
 the blocks the person chooses under "Customize", kept in `$.store`: the change
-against the same length of time before, the API-price cost (worded as a value
-the subscription covers when `$.session.usage()` reports five-hour or seven-day
-windows, remembered in `$.store`), the car equivalence
+against the same length of time before, the API-price value (worded so it holds
+whoever pays: a Pro or Max subscription covers some or all of it), the car
+equivalence
 of the reports (`hooks/mod/lib/equiv.ts`), and the split by project (off until
 turned on). A "Prepare my card" button puts `/carbon-card` in
 an empty prompt (`$.prompt.fill`) and never sends it; a draft in progress is left
