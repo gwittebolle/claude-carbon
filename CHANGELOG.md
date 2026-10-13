@@ -78,10 +78,12 @@ note under the tiles: a hover group of the surface (`hover.scope`, a Box drawn
 answers, subagents and model, its context window's fill (`$.session.usage()`)
 and API-price value, and in the desktop app a small molecule per subagent
 (`subagentsSvg`, eight then "+N"), coloured by the CO2 of its own requests, and
-walking, breathing and blinking like the big one. In the terminal the pane shows
-this session alone, a few rows above the prompt: the small molecule, its lines
-beside it, a dot per subagent in its colour; the period, the stripes, the card and
-the links are the desktop app's. The history file now also carries each session's model. A "Get my 2026 card" button (the card covers the
+walking, breathing and blinking like the big one. In a terminal `/carbon-panel`
+opens no pane (in fullscreen rendering it would dock as a whole column for four
+lines): it turns on and off the session in the band above the prompt
+(`AbovePrompt`, drawn over whatever the band already holds, never over a survey),
+the small molecule with its lines beside it and a dot per subagent in its colour.
+The period, the stripes, the card and the links are the desktop app's. The history file now also carries each session's model. A "Get my 2026 card" button (the card covers the
 calendar year so far, whatever range the pane shows) puts `/carbon-card` in
 an empty prompt (`$.prompt.fill`) and never sends it; a draft in progress is left
 alone.

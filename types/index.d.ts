@@ -48,6 +48,8 @@ declare module "claude-code" {
       session: SessionTotal;
       // True from a main-loop turn's start to its end: the molecule walks.
       working: boolean;
+      // True while /carbon-panel shows the molecule in the band above a terminal's prompt
+      band: boolean;
       view: PaneView;
       blocks: PaneBlocks;
     };

@@ -16,7 +16,7 @@
 // network, never changes what Claude does.
 
 import { atom, read, update } from "claude-code";
-import type { EngineInterface, Register } from "claude-code";
+import type { EngineInterface, Register, RenderInputOf } from "claude-code";
 
 import type {
   AnswerCo2Entry,
@@ -161,6 +161,12 @@ const working = atom(
   { plugin: "claude-carbon", key: "working" } as const,
   false,
 );
+// In a terminal, /carbon-panel shows the molecule in the band above the prompt: a docked
+// pane would take a whole column for four lines.
+const band = atom(
+  { plugin: "claude-carbon", key: "band" } as const,
+  false,
+);
 const paneView = atom(
   { plugin: "claude-carbon", key: "view" } as const,
   DEFAULT_VIEW as PaneView,
@@ -286,6 +292,8 @@ const pane: {
   // or end, and until when it reacts to the last answer (ms)
   mood: Mood | null;
   moodSince: number;
+  // The band's site, as its last drawing named it: where the walk blits
+  bandRequestId: string | null;
   lastActive: number;
   reactUntil: number;
 } = {
@@ -302,6 +310,7 @@ const pane: {
   sessionFamily: null,
   mood: null,
   moodSince: 0,
+  bandRequestId: null,
   lastActive: 0,
   reactUntil: 0,
 };
@@ -370,6 +379,79 @@ function terminalMolecule(
   };
 }
 
+// The terminal's whole drawing: this session beside its small molecule, a few rows. In
+// the band above the prompt, or in a pane the desktop app opened on a session the
+// terminal shows too.
+async function terminalSession(
+  $: EngineInterface,
+  e: RenderInputOf<"AbovePrompt", "terminal"> | RenderInputOf<"Pane", "terminal">,
+  lang: Lang,
+) {
+  if (pane.rows === undefined) await loadPaneHistory($);
+  if (pane.sessionId === null) pane.sessionId = await $.session.id().catch(() => null);
+  const total = await read($, session);
+  const now = await $.clock.now();
+  const past = pastSessions(pane.rows ?? [], pane.sessionId);
+  const sm = sessionMedian(past);
+  const { cls, mood, isWorking } = await moleculeNow($, now);
+  const color = colorOf(cls);
+  // A dot per subagent in its molecule's colour, eight then "+N"
+  const agents = [...pane.agents.values()];
+  const dots = agents
+    .slice(0, MAX_AGENT_MOLECULES)
+    .map((grams) => (sm === null || !(grams > 0) ? NEUTRAL : colorOf(classOf(grams, sm))));
+  const more = agents.length - dots.length;
+  // The context window's fill and the session's API-price value, as the status line
+  // has them
+  const contextUsed = await $.session
+    .usage()
+    .then((u) => u.context.percent ?? null)
+    .catch(() => null);
+  const meta = [
+    ...(contextUsed !== null ? [contextText(contextUsed, lang)] : []),
+    ...(total.usd !== undefined && total.usd > 0 ? [costText(total.usd, lang)] : []),
+  ].join(" · ");
+  const ui = $.ui.resolve(e);
+  const { Box, Text } = ui;
+  return (
+    <Box flexDirection="row">
+      <ui.Raster
+        key="mascot"
+        columns={CELL_COLUMNS}
+        rows={CELL_ROWS}
+        cells={mascotCells(terminalMolecule(now, mood, cls, isWorking).frame, color)}
+      />
+      <Box flexDirection="column" marginLeft={2} flexShrink={1}>
+        <Text bold>
+          {total.grams > 0 ? currentLine(total.grams, sm, lang) : waitingText(lang)}
+        </Text>
+        {total.turns > 0 && (
+          <Text dimColor>
+            {sessionStatsText(total.turns, pane.subagents, pane.sessionFamily, lang)}
+          </Text>
+        )}
+        {dots.length > 0 && (
+          <Box flexDirection="row" columnGap={1}>
+            {dots.map((dot, i) => (
+              <Text key={`agent-${i}`} color={dot}>
+                ●
+              </Text>
+            ))}
+            {more > 0 && <Text dimColor>{moreAgentsText(more)}</Text>}
+          </Box>
+        )}
+        {meta !== "" && <Text dimColor>{meta}</Text>}
+        {/* Grey for want of history: the pane says which */}
+        {pane.rows === null ? (
+          <Text dimColor>{noHistoryText(lang)}</Text>
+        ) : (
+          sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
 // The kept choice over the defaults: a block added since it was kept takes its default.
 // Null when nothing usable was kept.
 function keptBlocksOf(value: unknown): PaneBlocks | null {
@@ -401,7 +483,9 @@ async function walkStep($: EngineInterface, run: number) {
   const isCurrent = () => run === pane.walkRun;
   try {
     const surfaces = await $.session.surfaces();
-    const goOn = surfaces.includes("terminal") && (await isPaneOpen($));
+    const isBand = await read($, band);
+    const isPane = await isPaneOpen($);
+    const goOn = surfaces.includes("terminal") && (isBand || isPane);
     const isWorking = await read($, working);
     if (!isCurrent()) return;
     if (!goOn) {
@@ -412,15 +496,15 @@ async function walkStep($: EngineInterface, run: number) {
     const { cls, mood } = await moleculeNow($, now);
     if (!isCurrent()) return;
     const shown = terminalMolecule(now, mood, cls, isWorking);
-    await $.ui
-      .blit({
-        requestId: PANE_ID,
-        key: "mascot",
-        cells: mascotCells(shown.frame, colorOf(cls)),
-        columns: CELL_COLUMNS,
-        rows: CELL_ROWS,
-      })
-      .catch(() => undefined);
+    const cells = mascotCells(shown.frame, colorOf(cls));
+    const sites = [
+      ...(isPane ? [PANE_ID] : []),
+      ...(isBand && pane.bandRequestId !== null ? [pane.bandRequestId] : []),
+    ];
+    for (const requestId of sites)
+      await $.ui
+        .blit({ requestId, key: "mascot", cells, columns: CELL_COLUMNS, rows: CELL_ROWS })
+        .catch(() => undefined);
     if (!isCurrent()) return;
     pane.walkTimer = $.clock.after(Math.max(40, shown.holdMs), () => {
       void walkStep($, run);
@@ -543,7 +627,9 @@ export const register: Register = (on, options) => {
       pane.lastActive = 0;
       pane.reactUntil = 0;
       stopWalk();
+      pane.bandRequestId = null;
       await $.state.set({ plugin: "claude-carbon", key: "working" }, false);
+      await $.state.set({ plugin: "claude-carbon", key: "band" }, false);
       const kept = await $.store.get(VIEW_KEY);
       if (isView(kept)) {
         await $.state.set({ plugin: "claude-carbon", key: "view" }, kept);
@@ -627,7 +713,7 @@ export const register: Register = (on, options) => {
     try {
       pane.lastActive = await $.clock.now();
       await $.state.set({ plugin: "claude-carbon", key: "working" }, true);
-      if (await isPaneOpen($)) ensureWalk($);
+      if ((await read($, band)) || (await isPaneOpen($))) ensureWalk($);
     } catch {
       // The molecule stands still; the turn goes on.
     }
@@ -796,6 +882,21 @@ export const register: Register = (on, options) => {
   // it: its plugin spelling is caught here too, and its text never reaches the model.
   on("command.run", { command: [COMMAND, `claude-carbon:${COMMAND}`] }, async ($) => {
     try {
+      // A terminal shows the molecule in the band above the prompt, on and off: a pane
+      // would dock as a whole column in fullscreen rendering, for four lines.
+      const surfaces = await $.session.surfaces();
+      if (surfaces.includes("terminal")) {
+        const isOn = !(await read($, band));
+        if (isOn) {
+          pane.rows = undefined;
+          await loadPaneHistory($);
+        } else {
+          stopWalk();
+        }
+        await $.state.set({ plugin: "claude-carbon", key: "band" }, isOn);
+        if (isOn) ensureWalk($);
+        return {};
+      }
       if (await isPaneOpen($)) {
         stopWalk();
         await $.ui.close({ id: PANE_ID });
@@ -803,16 +904,11 @@ export const register: Register = (on, options) => {
       }
       pane.rows = undefined;
       await loadPaneHistory($);
-      // Inline above the prompt (the classic renderer, or a narrow terminal): the
-      // molecule's four rows and a spare. Docked beside the transcript (fullscreen
-      // rendering, from 110 columns): a sidebar wide enough for the session's lines.
-      // A size the person gave the pane wins.
+      // The desktop app's side pane
       const opened = await $.ui.open({
         id: PANE_ID,
         title: paneTitle(lang),
         closeOnEscape: true,
-        rows: 5,
-        columns: 48,
       });
       if (!opened.isPlaced) {
         $.ui.toast(paneUnplaced(lang), { timeoutMs: 8000 });
@@ -830,8 +926,31 @@ export const register: Register = (on, options) => {
     return next(e);
   }).catch(($, e, next) => next(e));
 
+  // The band above a terminal's prompt, while /carbon-panel has it on: the session beside
+  // its molecule, over whatever else the band holds. A survey has the band to itself.
+  on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
+    try {
+      if (e.surface !== "terminal" || e.props.hasSurvey || !(await read($, band)))
+        return next(e);
+      pane.bandRequestId = e.requestId;
+      const ours = await terminalSession($, e, lang);
+      const below = await next(e);
+      if (below === null || below === undefined) return ours;
+      const { Box } = $.ui.resolve(e);
+      return (
+        <Box flexDirection="column">
+          {ours}
+          {below}
+        </Box>
+      );
+    } catch {
+      return next(e);
+    }
+  });
+
   on("ui.render", { component: "Pane", requestId: PANE_ID }, async ($, e, next) => {
     try {
+      if (e.surface === "terminal") return await terminalSession($, e, lang);
       if (pane.rows === undefined) await loadPaneHistory($);
       if (pane.sessionId === null)
         pane.sessionId = await $.session.id().catch(() => null);
@@ -870,7 +989,6 @@ export const register: Register = (on, options) => {
       // The stripes measure the periods against each other, the one still filling (today,
       // this week, this month) left out of the median.
       const bm = barMedian(list.slice(0, -1));
-      const isTerminal = e.surface === "terminal";
       // A window longer than the room (years by month) keeps its most recent periods
       const shown = list.slice(-DESKTOP_MAX_STRIPES);
       const stripes: Stripe[] = shown.map((b) => ({
@@ -888,14 +1006,7 @@ export const register: Register = (on, options) => {
 
       const ui = $.ui.resolve(e);
       const { Box, Text, Button } = ui;
-      const mascot = isTerminal ? (
-        <ui.Raster
-          key="mascot"
-          columns={CELL_COLUMNS}
-          rows={CELL_ROWS}
-          cells={mascotCells(terminalMolecule(now, mood, cls, isWorking).frame, color)}
-        />
-      ) : (
+      const mascot = (
         <ui.Svg
           source={mascotSvg({
             color,
@@ -1181,37 +1292,8 @@ export const register: Register = (on, options) => {
           </Box>
         </Box>
       );
-      // The session's subagents in a terminal: a dot each in its molecule's colour
-      const agentDots = shownAgents.length > 0 && (
-        <Box flexDirection="row" columnGap={1}>
-          {shownAgents.map((a, i) => (
-            <Text key={`agent-${i}`} color={a.color}>
-              ●
-            </Text>
-          ))}
-          {moreAgents > 0 && <Text dimColor>{moreAgentsText(moreAgents)}</Text>}
-        </Box>
-      );
 
-      // The terminal shows this session alone, beside its small molecule: a few rows above
-      // the prompt. The period, the stripes and the links are the desktop's.
-      return isTerminal ? (
-        <Box flexDirection="row">
-          {mascot}
-          <Box flexDirection="column" marginLeft={2} flexShrink={1}>
-            <Text bold>{sessionText}</Text>
-            {sessionStats !== null && <Text dimColor>{sessionStats}</Text>}
-            {agentDots}
-            {sessionMeta !== "" && <Text dimColor>{sessionMeta}</Text>}
-            {/* Grey for want of history: the pane says which */}
-            {pane.rows === null ? (
-              <Text dimColor>{noHistoryText(lang)}</Text>
-            ) : (
-              sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>
-            )}
-          </Box>
-        </Box>
-      ) : (
+      return (
         // The whole height of the side pane, the links held at its foot whatever shows
         // above them. A percentage does not reach the desktop's layout: the height is
         // the rows the surface gives the pane's body.

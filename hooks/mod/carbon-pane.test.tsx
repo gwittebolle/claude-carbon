@@ -51,6 +51,8 @@ type World = {
   commandTaken?: boolean;
   // What the prompt box holds
   draft?: string;
+  // The surfaces the session draws on: the desktop app unless a test says a terminal
+  surfaces?: string[];
 };
 
 const PANE = {
@@ -64,6 +66,23 @@ const PANE = {
     bodyColumns: 60,
     placement: "inline",
     scroll: { offset: 0, bodyRows: 20 },
+    view: {},
+  },
+} as const;
+
+// The band above a terminal's prompt, where /carbon-panel shows the molecule there
+const BAND = {
+  plugin: PLUGIN,
+  component: "AbovePrompt",
+  surface: "terminal",
+  requestId: "band",
+  viewport: { columns: 100, rows: 30 },
+  props: {
+    hasSurvey: false,
+    isWorking: false,
+    maxRows: 12,
+    bodyColumns: 95,
+    scroll: { offset: 0, bodyRows: 12 },
     view: {},
   },
 } as const;
@@ -118,7 +137,12 @@ function world(on: any, options: World = {}) {
     return { deny: "not expected" };
   });
   on("settings.read", () => ({ value: {} }));
-  on("session.surfaces", () => ({ value: ["terminal"] }));
+  on("session.surfaces", () => ({ value: options.surfaces ?? ["desktop"] }));
+  // The engine's own band: an empty Box, nothing of its own above the prompt
+  on("ui.render", { component: "AbovePrompt" }, ($: any, e: any) => {
+    const { Box } = $.ui.resolve(e);
+    return <Box key="engine-band" />;
+  });
   on("session.id", () => ({ value: SESSION_ID }));
   on("command.register", ($: any, e: any) => {
     if (options.commandTaken) return { deny: "taken" };
@@ -225,29 +249,55 @@ describe("the /carbon-panel pane", () => {
     expect(registered[0].immediate).toBe(true);
     await openPane($);
     expect(opened).toEqual([
-      { id: "carbon", title: "claude-carbon", closeOnEscape: true, rows: 5, columns: 48 },
+      { id: "carbon", title: "claude-carbon", closeOnEscape: true },
     ]);
     await openPane($);
     expect(closed).toEqual(["carbon"]);
   });
 
-  test("the terminal shows this session alone, beside its small molecule", async ($: any, on: any) => {
-    world(on);
+  test("in a terminal /carbon-panel shows the session in the band above the prompt", async ($: any, on: any) => {
+    const { opened } = world(on, { surfaces: ["terminal"] });
     await startSession($);
+    const ui = await $.ui.mount(BAND);
+    // Off until asked: the band is the engine's
+    expect(await ui.find({ key: "mascot" })).toBeUndefined();
     await openPane($);
-    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+    // No pane: it would dock as a whole column in fullscreen rendering
+    expect(opened).toEqual([]);
+    await ui.redraw();
     const mascot = await ui.find({ key: "mascot" });
     expect(mascot.type).toBe("Raster");
     expect(mascot.props.columns).toBe(13);
     expect(mascot.props.rows).toBe(4);
     const text = await drawn(ui);
     expect(text).toContain("Cette session : en attente de la première réponse");
+    // Over what the band already held
+    expect(await ui.find({ key: "engine-band" })).toBeDefined();
     // Nothing of the period: no stripes, no figures, no buttons, no links
-    expect(await ui.find({ key: "stripes" })).toBeUndefined();
     expect(await ui.find({ type: "Button" })).toBeUndefined();
     expect(await ui.find({ type: "Link" })).toBeUndefined();
     expect(text).not.toContain("sur la période");
-    expect(text).not.toContain("Mon usage");
+    // Again: off
+    await openPane($);
+    await ui.redraw();
+    expect(await ui.find({ key: "mascot" })).toBeUndefined();
+    await ui.unmount();
+  });
+  test("a survey keeps the band", async ($: any, on: any) => {
+    world(on, { surfaces: ["terminal"] });
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true } });
+    expect(await ui.find({ key: "mascot" })).toBeUndefined();
+  });
+  test("a pane the desktop opened shows the session alone in a terminal", async ($: any, on: any) => {
+    world(on);
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+    expect((await ui.find({ key: "mascot" })).type).toBe("Raster");
+    expect(await drawn(ui)).toContain("Cette session : en attente de la première réponse");
+    expect(await ui.find({ type: "Button" })).toBeUndefined();
     await ui.unmount();
   });
   test("the desktop app draws SVGs and no cells", async ($: any, on: any) => {
@@ -593,15 +643,16 @@ describe("the /carbon-panel pane", () => {
     await ui.unmount();
   });
   test("the molecule walks while Claude works, then breathes slowly", async ($: any, on: any) => {
-    const { blits } = world(on);
+    const { blits } = world(on, { surfaces: ["terminal"] });
     await startSession($);
     await openPane($);
-    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+    const ui = await $.ui.mount(BAND);
     // At rest a slow bob, a blit at each hop and each change of face: it looks around
     await clock.advance(6000);
     const atRest = blits.length;
     expect(atRest >= 4 && atRest <= 14).toBe(true);
     expect(blits[0].key).toBe("mascot");
+    expect(blits[0].requestId).toBe("band");
     expect(blits[0].columns).toBe(13);
     expect(new Set(blits.map((b: any) => b.cells)).size > 2).toBe(true);
     await $.turn.start({ text: "go", turnId: "turn-1" });
@@ -624,9 +675,10 @@ describe("the /carbon-panel pane", () => {
     await ui.unmount();
   });
   test("a turn the module lost track of still slows the walk down", async ($: any, on: any) => {
-    const { blits } = world(on);
+    const { blits } = world(on, { surfaces: ["terminal"] });
     await startSession($);
     await openPane($);
+    const ui = await $.ui.mount(BAND);
     await $.turn.start({ text: "go", turnId: "turn-1" });
     await clock.advance(2000);
     // As after a reload: the end of a turn this module never saw start
@@ -642,6 +694,21 @@ describe("the /carbon-panel pane", () => {
     await clock.advance(6000);
     // Walking, six seconds would take some twenty
     expect(blits.length - after <= 14).toBe(true);
+    expect(blits.length > 0).toBe(true);
+    await ui.unmount();
+  });
+  test("the band off, the walk stops", async ($: any, on: any) => {
+    const { blits } = world(on, { surfaces: ["terminal"] });
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount(BAND);
+    await clock.advance(3000);
+    await openPane($);
+    const after = blits.length;
+    await $.turn.start({ text: "go", turnId: "turn-1" });
+    await clock.advance(5000);
+    expect(blits.length).toBe(after);
+    await ui.unmount();
   });
   test("the desktop molecule reacts to an answer, then falls asleep", async ($: any, on: any) => {
     world(on, { history: historyText(40) });
