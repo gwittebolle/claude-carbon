@@ -261,41 +261,47 @@ export const STRIPES_HEIGHT = 72;
 export const STRIPES_SVG_HEIGHT = STRIPES_HEIGHT;
 
 // One rect per stripe across `width` CSS pixels (the viewBox matches the drawn size, so
-// labels keep their shape), oldest on the left; an empty period is a faint grey. Each
-// stripe carries its label, hidden: on hover the stripe lights up and its label shows
-// at once over the stripes' foot, in a dark box readable on a light or a dark pane. A
-// CSS :hover, no script; the <title> stays for screen readers.
+// labels keep their shape), oldest on the left; an empty period is a faint grey. All the
+// stripes come first, then all the labels, hidden, in a layer above them: hovering
+// stripe i lights it up and shows label i at once over the stripes' foot, in a dark box
+// readable on a light or a dark pane, never under the next stripe. A CSS :hover and the
+// sibling selector, no script, and no <title>: the app's own tooltip would show a second
+// label late. The Svg's alt says what the drawing is.
 export function stripesSvg(
   stripes: readonly Stripe[],
-  title: string,
+  _title: string,
   width: number,
 ): string {
   const n = Math.max(1, stripes.length);
   const sw = width / n;
   const h = STRIPES_HEIGHT;
-  const items = stripes
+  const rects = stripes
     .map((s, i) => {
-      const x = i * sw;
       const fill = s.color === null ? `fill="${OUTLINE}" fill-opacity="0.2"` : `fill="${s.color}"`;
-      const label = escapeXml(s.title);
+      return `<rect id="b${i}" class="b" x="${(i * sw).toFixed(2)}" y="0" width="${sw.toFixed(2)}" height="${h}" ${fill}/>`;
+    })
+    .join("");
+  const labels = stripes
+    .map((s, i) => {
       // About 6 px a character at 12 px, kept inside the drawing
       const boxW = Math.min(width, s.title.length * 6 + 14);
-      const centre = x + sw / 2;
+      const centre = i * sw + sw / 2;
       const boxX = Math.max(0, Math.min(width - boxW, centre - boxW / 2));
       return (
-        `<g class="s"><rect class="b" x="${x.toFixed(2)}" y="0" width="${sw.toFixed(2)}" height="${h}" ${fill}><title>${label}</title></rect>` +
-        `<g class="t"><rect x="${boxX.toFixed(2)}" y="${h - 26}" width="${boxW.toFixed(2)}" height="22" rx="4" fill="#1f2328" stroke="${OUTLINE}" stroke-opacity="0.6"/>` +
-        `<text x="${(boxX + 7).toFixed(2)}" y="${h - 11}" font-size="12" font-family="system-ui,-apple-system,sans-serif" fill="#ffffff">${label}</text></g></g>`
+        `<g id="t${i}" class="t"><rect x="${boxX.toFixed(2)}" y="${h - 26}" width="${boxW.toFixed(2)}" height="22" rx="4" fill="#1f2328" stroke="${OUTLINE}" stroke-opacity="0.6"/>` +
+        `<text x="${(boxX + 7).toFixed(2)}" y="${h - 11}" font-size="12" font-family="system-ui,-apple-system,sans-serif" fill="#ffffff">${escapeXml(s.title)}</text></g>`
       );
     })
     .join("");
+  const show = stripes.map((_, i) => `#b${i}:hover~#t${i}`).join(",");
   const style =
     `<style>.t{opacity:0;pointer-events:none}` +
-    `.s:hover .t{opacity:1}` +
-    `.s:hover .b{opacity:.7;stroke:#ffffff;stroke-width:2}</style>`;
+    `.b:hover{opacity:.7;stroke:#ffffff;stroke-width:2}` +
+    (stripes.length > 0 ? `${show}{opacity:1}` : "") +
+    `</style>`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${STRIPES_SVG_HEIGHT}" width="${width}" height="${STRIPES_SVG_HEIGHT}">` +
-    `<title>${escapeXml(title)}</title>${style}${items}</svg>`
+    `${style}${rects}${labels}</svg>`
   );
 }
 

@@ -694,10 +694,12 @@ const stripesDoc = stripesSvg(
   720,
 );
 check("stripes svg keeps its shape", stripesDoc.includes('viewBox="0 0 720 72"'), true);
-check("stripes hover label shown by CSS", stripesDoc.includes(".s:hover .t{opacity:1}"), true);
+check("stripes hover label shown by CSS", stripesDoc.includes("#b3:hover~#t3"), true);
+check("stripes labels drawn above every stripe", stripesDoc.lastIndexOf('class="b"') < stripesDoc.indexOf('class="t"'), true);
+check("stripes: no native tooltip", stripesDoc.includes("<title>"), false);
 check("stripes svg no script", /<script|on[a-z]+=/i.test(stripesDoc), false);
 check("stripes svg size, 180 stripes", stripesDoc.length < 131072, true);
-check("stripes svg escapes titles", stripesDoc.includes("&lt;3&gt; &amp; &quot;x&quot;"), true);
+check("stripes svg escapes labels", stripesDoc.includes("&lt;3&gt; &amp; &quot;x&quot;"), true);
 
 // The history file
 check(
