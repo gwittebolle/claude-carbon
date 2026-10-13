@@ -3,6 +3,8 @@
 // The mod never opens the database. Pure: no Claude Code API, so Node runs it directly
 // (tests/run-mod-tests.mjs).
 
+import { family } from "./co2.ts";
+import type { Family } from "./co2.ts";
 import { median } from "./format.ts";
 
 export type SessionRow = {
@@ -16,6 +18,10 @@ export type SessionRow = {
   project: string;
   // The API-price cost, null when the file does not carry it
   usd: number | null;
+  // The session's dominant model as the hooks record it, "" when unknown
+  model: string;
+  // The tokens the model wrote (output), null when the file does not carry them
+  output: number | null;
 };
 
 // The current methodology: what the running session is measured with
@@ -91,13 +97,13 @@ export function historyPath(env: {
 }
 
 // One line per session: id, start in epoch seconds, grams, methodology version, project,
-// API-price cost, tab-separated. Fields an older hook did not write read as the current
-// version, no project, no cost.
+// API-price cost, model, output tokens, tab-separated. Fields an older hook did not
+// write read as the current version and as unknown.
 // A line that does not read as that is skipped, never guessed.
 export function parseHistory(text: string): SessionRow[] {
   const rows: SessionRow[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const [id, start, grams, version, project, cost] = line.split("\t");
+    const [id, start, grams, version, project, cost, model, output] = line.split("\t");
     if (
       id === undefined ||
       id === "" ||
@@ -115,13 +121,18 @@ export function parseHistory(text: string): SessionRow[] {
       grams: g,
       version: Number.isFinite(v) ? v : CURRENT_VERSION,
       project: project ?? "",
-      usd:
-        cost === undefined || cost === "" || !Number.isFinite(Number(cost))
-          ? null
-          : Number(cost),
+      usd: numberOrNull(cost),
+      model: model ?? "",
+      output: numberOrNull(output),
     });
   }
   return rows.sort((a, b) => a.at - b.at);
+}
+
+function numberOrNull(field: string | undefined): number | null {
+  return field === undefined || field === "" || !Number.isFinite(Number(field))
+    ? null
+    : Number(field);
 }
 
 // The past sessions: the one running now is in the file with a partial total, and the
@@ -157,6 +168,12 @@ export type PeriodTotal = {
   usd: number | null;
   // Heaviest first
   projects: ProjectTotal[];
+  // The model families, heaviest first, by their share of the CO2
+  families: Array<{ family: Family; share: number }>;
+  // The CO2 by local hour of the sessions' start, 0 to 23
+  hours: number[];
+  // The tokens the model wrote, over the sessions that carry them; null when none does
+  output: number | null;
 };
 
 export type Bar = {
@@ -266,7 +283,43 @@ function sumOf(rows: readonly SessionRow[]): PeriodTotal {
   const projects = [...byProject.entries()]
     .map(([project, g]) => ({ project, grams: g, share: grams > 0 ? g / grams : 0 }))
     .sort((a, b) => b.grams - a.grams);
-  return { grams, sessions: rows.length, usd, projects };
+  const byFamily = new Map<Family, number>();
+  for (const r of rows)
+    if (r.model)
+      byFamily.set(family(r.model), (byFamily.get(family(r.model)) ?? 0) + r.grams);
+  const known = [...byFamily.values()].reduce((s, g) => s + g, 0);
+  const families = [...byFamily.entries()]
+    .map(([f, g]) => ({ family: f, share: known > 0 ? g / known : 0 }))
+    .sort((a, b) => b.share - a.share);
+  const hours = Array.from({ length: 24 }, () => 0);
+  for (const r of rows) {
+    const h = new Date(r.at).getHours();
+    hours[h] = (hours[h] ?? 0) + r.grams;
+  }
+  const withOutput = rows.filter((r) => r.output !== null);
+  const output =
+    withOutput.length > 0 ? withOutput.reduce((s, r) => s + (r.output ?? 0), 0) : null;
+  return { grams, sessions: rows.length, usd, projects, families, hours, output };
+}
+
+// The three hours, wrapping past midnight, that hold the most CO2: where the person's
+// day weighs. Of windows that tie, the one centred on the heaviest hour. Null with no CO2.
+export function peakHours(hours: readonly number[]): { start: number; share: number } | null {
+  const total = hours.reduce((s, g) => s + g, 0);
+  if (!(total > 0)) return null;
+  let best = 0;
+  let bestGrams = -1;
+  let bestMiddle = -1;
+  for (let h = 0; h < 24; h++) {
+    const middle = hours[(h + 1) % 24] ?? 0;
+    const g = (hours[h] ?? 0) + middle + (hours[(h + 2) % 24] ?? 0);
+    if (g > bestGrams || (g === bestGrams && middle > bestMiddle)) {
+      best = h;
+      bestGrams = g;
+      bestMiddle = middle;
+    }
+  }
+  return { start: best, share: bestGrams / total };
 }
 
 // What the stripes cover, summed, as the reports sum it.

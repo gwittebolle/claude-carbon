@@ -313,6 +313,55 @@ describe("the /carbon-panel pane", () => {
     await term.unmount();
   });
 
+  test("the portrait reads the period: main model, peak hours, the saga", async ($: any, on: any) => {
+    // Three Opus sessions at 22:00 local, 1.5 M output tokens each, and one Sonnet at 10:00
+    const at = (days: number, hour: number) => {
+      const d = new Date(NOW - days * DAY);
+      d.setHours(hour, 0, 0, 0);
+      return Math.floor(d.getTime() / 1000);
+    };
+    const lines = [
+      `a\t${at(4, 22)}\t300\t2\tsite\t1\tclaude-opus-5-5\t1500000`,
+      `b\t${at(3, 22)}\t300\t2\tsite\t1\tclaude-opus-5-5\t1500000`,
+      `c\t${at(2, 22)}\t300\t2\tsite\t1\tclaude-opus-5-5\t1500000`,
+      `d\t${at(1, 10)}\t100\t2\tsite\t1\tclaude-sonnet-5-5\t36000`,
+    ];
+    world(on, { history: lines.join("\n") });
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    const text = await drawn(ui);
+    expect(text).toContain("Mon usage");
+    expect(text).toContain("Modèle principal : Opus, 90 % de votre CO₂");
+    expect(text).toContain("Oiseau de nuit : 90 % de votre CO₂ entre 21 h et 0 h");
+    expect(text).toContain("Claude vous a écrit ≈ 3,0 fois la saga Harry Potter");
+    // The portrait can be turned off
+    await ui.press({ key: "customize" });
+    await ui.press({ key: "block-portrait" });
+    expect(await drawn(ui)).not.toContain("Modèle principal");
+    await ui.unmount();
+  });
+
+  test("the session block counts its answers and subagents", async ($: any, on: any) => {
+    world(on);
+    on("agent.spawn", ($: any, e: any) => ({ model: "claude-haiku-5-5", agentId: e.description }));
+    await startSession($);
+    await $.turn.start({ text: "go", turnId: "turn-1" });
+    await $.agent.spawn({
+      prompt: "explore",
+      description: "agent-1",
+      subagentType: "Explore",
+      provider: { kind: "engine" },
+      parentModel: "claude-opus-5-5",
+      background: false,
+    });
+    await $.turn.complete({ answer: "ok", durationMs: 10, isAborted: false, turnId: "turn-1", reason: "answer" });
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    expect(await drawn(ui)).toContain("1 réponse · 1 sous-agent");
+    await ui.unmount();
+  });
+
   test("the card button puts /carbon-card in the prompt and never sends it", async ($: any, on: any) => {
     const { fills, submits } = world(on);
     await startSession($);

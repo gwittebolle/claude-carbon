@@ -46,7 +46,11 @@ against the same length of time before, the API-price value (worded so it holds
 whoever pays: a Pro or Max subscription covers some or all of it), the car
 equivalence
 of the reports (`hooks/mod/lib/equiv.ts`), and the split by project (off until
-turned on). A "Prepare my card" button puts `/carbon-card` in
+turned on), and a portrait: the main model family by share of CO2, the three
+hours that hold most of it, and the output tokens against the seven Harry Potter
+books (`SAGA_TOKENS`, sources in METHODOLOGY.md). The session block gives its
+answers, subagents and model. The history file now also carries each session's
+model and output tokens. A "Prepare my card" button puts `/carbon-card` in
 an empty prompt (`$.prompt.fill`) and never sends it; a draft in progress is left
 alone.
 

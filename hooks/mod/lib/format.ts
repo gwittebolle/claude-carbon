@@ -403,6 +403,91 @@ export function compareText(
     : `${amount} vs ${before[1]}`;
 }
 
+// ── The pane's portrait: a human reading of the period, never a judgement ─────
+
+const FAMILY_NAMES: Record<string, string> = {
+  fable: "Fable",
+  opus: "Opus",
+  sonnet: "Sonnet",
+  haiku: "Haiku",
+};
+export function familyName(f: string): string {
+  return FAMILY_NAMES[f] ?? f;
+}
+
+// "Modèle principal : Opus, 55 % de votre CO₂"
+export function favoriteModelText(f: string, share: number, lang: Lang): string {
+  return lang === "fr"
+    ? `Modèle principal${NBSP}: ${familyName(f)}, ${percent(share)} de votre CO₂`
+    : `Main model: ${familyName(f)}, ${percent(share)} of your CO₂`;
+}
+
+const SLOT_NAMES: Array<{ from: number; to: number; fr: string; en: string }> = [
+  { from: 5, to: 9, fr: "Lève-tôt", en: "Early bird" },
+  { from: 9, to: 17, fr: "En journée", en: "Daytime" },
+  { from: 17, to: 22, fr: "Plutôt le soir", en: "Evening person" },
+];
+function hourText(h: number, lang: Lang): string {
+  const hour = ((h % 24) + 24) % 24;
+  return lang === "fr" ? `${hour}${NBSP}h` : `${String(hour).padStart(2, "0")}:00`;
+}
+// Named after the middle of the three hours: "Oiseau de nuit : 34 % de votre CO₂ entre
+// 22 h et 1 h"
+export function peakHoursText(start: number, share: number, lang: Lang): string {
+  const middle = (start + 1) % 24;
+  const slot = SLOT_NAMES.find((s) => middle >= s.from && middle < s.to);
+  const name = slot === undefined ? (lang === "fr" ? "Oiseau de nuit" : "Night owl") : lang === "fr" ? slot.fr : slot.en;
+  const end = (start + 3) % 24;
+  return lang === "fr"
+    ? `${name}${NBSP}: ${percent(share)} de votre CO₂ entre ${hourText(start, lang)} et ${hourText(end, lang)}`
+    : `${name}: ${percent(share)} of your CO₂ between ${hourText(start, lang)} and ${hourText(end, lang)}`;
+}
+
+// The seven Harry Potter books: 1,084,170 words (a widely cited count, not a publisher's
+// figure), at 1.4 tokens a word (estimates for recent Claude tokenizers run 1.3 to 1.5 in
+// English prose). METHODOLOGY.md gives both sources.
+export const SAGA_WORDS = 1_084_170;
+export const TOKENS_PER_WORD = 1.4;
+export const SAGA_TOKENS = SAGA_WORDS * TOKENS_PER_WORD;
+
+// The tokens Claude wrote, against the saga: "Claude vous a écrit ≈ 2,3 fois la saga
+// Harry Potter". Under one saga, a share of it.
+export function booksText(outputTokens: number, lang: Lang): string {
+  const ratio = outputTokens / SAGA_TOKENS;
+  const fr = lang === "fr";
+  if (ratio < 1) {
+    const share = percent(ratio);
+    return fr
+      ? `Claude vous a écrit ≈${NBSP}${share} de la saga Harry Potter`
+      : `Claude wrote you ≈${NBSP}${share} of the Harry Potter saga`;
+  }
+  const times = ratio >= 10 ? String(Math.round(ratio)) : decimal(ratio, 1, lang);
+  return fr
+    ? `Claude vous a écrit ≈${NBSP}${times} fois la saga Harry Potter`
+    : `Claude wrote you ≈${NBSP}${times} times the Harry Potter saga`;
+}
+
+// The running session, under its line: "12 réponses · 3 sous-agents · Opus"
+export function sessionStatsText(
+  answers: number,
+  subagents: number,
+  f: string | null,
+  lang: Lang,
+): string {
+  const fr = lang === "fr";
+  const parts = [
+    fr ? `${answers} réponse${answers > 1 ? "s" : ""}` : `${answers} answer${answers > 1 ? "s" : ""}`,
+    fr ? `${subagents} sous-agent${subagents > 1 ? "s" : ""}` : `${subagents} subagent${subagents > 1 ? "s" : ""}`,
+  ];
+  if (f !== null) parts.push(familyName(f));
+  return parts.join(" · ");
+}
+
+export function blockTitle(kind: "session" | "usage", lang: Lang): string {
+  if (kind === "session") return lang === "fr" ? "Cette session" : "This session";
+  return lang === "fr" ? "Mon usage" : "My usage";
+}
+
 // The tiles at the top of the desktop pane: a label over a figure
 const TILE_LABELS: Record<string, [string, string]> = {
   period: ["Sur la période", "Over the period"],
@@ -467,6 +552,7 @@ export function customizeLabel(isOpen: boolean, lang: Lang): string {
 }
 
 const BLOCK_LABELS: Record<string, [string, string]> = {
+  portrait: ["Portrait", "Portrait"],
   compare: ["Comparaison", "Comparison"],
   cost: ["Coût API", "API cost"],
   equivalence: ["Équivalence", "Equivalence"],

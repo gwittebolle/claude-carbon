@@ -81,6 +81,12 @@ import {
   monthLabel,
   stripesCaption,
   apiValueNote,
+  blockTitle,
+  booksText,
+  favoriteModelText,
+  peakHoursText,
+  SAGA_TOKENS,
+  sessionStatsText,
   changeValue,
   moneyValue,
   tileLabel,
@@ -112,6 +118,7 @@ import {
   monthKey,
   parseHistory,
   pastSessions,
+  peakHours,
   periodTotal,
   previousTotal,
   RANGES,
@@ -793,6 +800,36 @@ check("equivalence text", equivalenceText(240000, carEquivalence(factorsDoc, "fr
 check("cost grouped", costText(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $ au prix API");
 check("cost grouped en", costText(27608.16, "en"), "$27,608 at API prices");
 check("cost small", costText(12.3, "fr").replaceAll(NBSP, " "), "12,30 $ au prix API");
+const plainText = (s) => s.replaceAll(NBSP, " ");
+// The portrait
+check("peak hours wrap past midnight", peakHours([5, 0, ...Array(20).fill(0), 3, 4]).start, 22);
+check("peak hours share", Math.round(peakHours([5, 0, ...Array(20).fill(0), 3, 4]).share * 100), 100);
+check("no peak without CO2", peakHours(Array(24).fill(0)), null);
+check("night owl", plainText(peakHoursText(22, 0.34, "fr")), "Oiseau de nuit : 34 % de votre CO₂ entre 22 h et 1 h");
+check("early bird en", peakHoursText(5, 0.2, "en"), "Early bird: 20\u00a0% of your CO₂ between 05:00 and 08:00");
+check("daytime", plainText(peakHoursText(13, 0.5, "fr")), "En journée : 50 % de votre CO₂ entre 13 h et 16 h");
+check("evening", plainText(peakHoursText(18, 0.5, "fr")), "Plutôt le soir : 50 % de votre CO₂ entre 18 h et 21 h");
+check("main model", plainText(favoriteModelText("opus", 0.55, "fr")), "Modèle principal : Opus, 55 % de votre CO₂");
+check("saga tokens", Math.round(SAGA_TOKENS), 1517838);
+check("books many", plainText(booksText(SAGA_TOKENS * 86.4, "fr")), "Claude vous a écrit ≈ 86 fois la saga Harry Potter");
+check("books few", plainText(booksText(SAGA_TOKENS * 2.34, "en")), "Claude wrote you ≈ 2.3 times the Harry Potter saga");
+check("books share", plainText(booksText(SAGA_TOKENS * 0.4, "fr")), "Claude vous a écrit ≈ 40 % de la saga Harry Potter");
+check("session stats", sessionStatsText(1, 3, "opus", "fr"), "1 réponse · 3 sous-agents · Opus");
+check("session stats en", sessionStatsText(2, 1, null, "en"), "2 answers · 1 subagent");
+{
+  const parsed8 = parseHistory("a\t10\t5\t2\tsite\t0.5\tclaude-opus-5-5\t1234\n")[0];
+  check("model read", parsed8.model, "claude-opus-5-5");
+  check("output read", parsed8.output, 1234);
+  const r = [
+    { id: "a", at: now - day, grams: 30, version: 2, project: "", usd: null, model: "claude-opus-5-5", output: 10 },
+    { id: "b", at: now - day, grams: 10, version: 2, project: "", usd: null, model: "claude-haiku-5-5", output: null },
+    { id: "c", at: now - day, grams: 60, version: 2, project: "", usd: null, model: "", output: 5 },
+  ];
+  const sum = periodTotal(r, windowOf({ range: "7d" }, r, now));
+  check("families by CO2, known models only", sum.families.map((f) => `${f.family}:${f.share}`).join(","), "opus:0.75,haiku:0.25");
+  check("output over the rows that carry it", sum.output, 15);
+  check("hours sum to the total", sum.hours.reduce((s, g) => s + g, 0), 100);
+}
 check("money value", moneyValue(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $");
 check("money value en", moneyValue(12.3, "en"), "$12.30");
 check("change value", changeValue(-18).replaceAll(NBSP, " "), "-18 %");
@@ -849,6 +886,7 @@ for (const lang of ["fr", "en"]) {
   pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 6000, 0.07, lang), projectBarLine("", 50, 0.001, lang));
   pane.push(apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
   for (const k of ["period", "change", "sessions", "cost"]) pane.push(tileLabel(k, lang));
+  pane.push(peakHoursText(22, 0.3, lang), peakHoursText(7, 0.3, lang), favoriteModelText("opus", 0.5, lang), booksText(3e6, lang), booksText(5e5, lang), sessionStatsText(3, 2, "fable", lang), blockTitle("usage", lang), blockTitle("session", lang));
   pane.push(waitingText(lang), legendText(lang), fromLabel(lang), toLabel(lang), monthLabel("2026-05", lang));
   pane.push(otherProjectsLine(4, 900, 0.01, lang), topProjectsText([{ project: "a", share: 0.4 }], lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
@@ -867,10 +905,9 @@ for (const text of pane) {
 }
 // French puts a no-break space before : ; ! and ?, never a plain one
 for (const lang of ["fr"]) {
-  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), legendText(lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang)];
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), legendText(lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), peakHoursText(22, 0.3, lang), favoriteModelText("opus", 0.5, lang)];
   for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
-const plainText = (s) => s.replaceAll(NBSP, " ");
 check("current line", plainText(currentLine(52, 140, "fr")), "Cette session : 52 gCO₂ · 0,37× votre médiane");
 check("current line high", plainText(currentLine(1400, 140, "en")), "This session: 1.4 kgCO₂ · 10× your median");
 check("caption", plainText(stripesCaption("week", 1200, "fr")), "une bande par semaine · médiane 1,2 kgCO₂ par semaine");

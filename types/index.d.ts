@@ -35,6 +35,7 @@ export type PaneView = {
 
 // The blocks the /carbon-panel pane shows under the stripes, besides the total
 export type PaneBlocks = {
+  portrait: boolean;
   compare: boolean;
   cost: boolean;
   equivalence: boolean;

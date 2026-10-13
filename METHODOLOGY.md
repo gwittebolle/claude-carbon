@@ -261,3 +261,12 @@ The PNG cards: the FR card always carries the ADEME factor in km, the EN card fo
 Scope varies across the sets and across rows. The EPA car factor is tailpipe combustion (CO2, CH4, N2O), the world one tailpipe CO2, the ADEME one lifecycle including vehicle manufacture. The three steak factors come from three different LCA traditions and span 4200 to 14900 gCO2e, driven by land-use change and by where the system boundary stops. So the numbers in one row are not comparable across sets, and none is scope-matched against this tool's usage-only compute figure. The equivalences are illustrative.
 
 Refreshed 2026-07-31: earlier releases used 120 g/km (car, close to the EU new-vehicle homologation average, misattributed to ADEME), 0.2 g per Google search (a 2009 blog figure misattributed to the 2023 environmental report), 19 g per email with attachment (ADEME 2011, withdrawn; the current ADEME reference email is ~2.5 g) and 2.4 g/km (TGV, untraceable).
+
+### The Harry Potter saga in the /carbon-panel pane
+
+The pane's portrait compares the tokens Claude wrote over the period (output tokens, which include reasoning; never input or cache reads, which only re-read context) with the seven Harry Potter books. It is a reading aid, not a CO2 figure, and it is approximate twice over:
+
+- **Words.** 1,084,170 words for the seven books, the total most often cited ([wordcounter.net](https://wordcounter.net/blog/tag/harry-potter-word-count)); the per-book counts it gives add up to it. It is not a publisher's figure and the counting method is not documented.
+- **Tokens per word.** 1.4. Anthropic publishes no words-per-token ratio; third-party estimates for recent Claude tokenizers run from 1.3 to 1.5 tokens per word of English prose ([fast.io](https://fast.io/resources/claude-tokenizer-token-counting-guide/)), and code or other languages run higher.
+
+So the saga is taken as 1,084,170 x 1.4 = 1,517,838 tokens (`SAGA_TOKENS` in `hooks/mod/lib/format.ts`), and the pane shows the ratio with "≈".

@@ -26,16 +26,22 @@ import type {
 } from "../../types";
 import {
   co2Grams,
+  family,
   DEFAULT_FACTORS,
   isExcluded,
   parseFactors,
 } from "./lib/co2.ts";
-import type { Factors } from "./lib/co2.ts";
+import type { Factors, Family } from "./lib/co2.ts";
 import { costUsd, parsePrices } from "./lib/cost.ts";
 import type { Prices } from "./lib/cost.ts";
 import {
   answerLine,
   apiValueNote,
+  blockTitle,
+  booksText,
+  favoriteModelText,
+  peakHoursText,
+  sessionStatsText,
   changeValue,
   formatGrams,
   moneyValue,
@@ -113,6 +119,7 @@ import {
   monthKey,
   parseHistory,
   pastSessions,
+  peakHours,
   periodTotal,
   previousTotal,
   RANGES,
@@ -144,12 +151,13 @@ const paneView = atom(
 );
 // What the pane shows under the stripes, besides the total: the person's choice
 const DEFAULT_BLOCKS: PaneBlocks = {
+  portrait: true,
   compare: true,
   cost: true,
   equivalence: true,
   projects: false,
 };
-const BLOCKS = ["compare", "cost", "equivalence", "projects"] as const;
+const BLOCKS = ["portrait", "compare", "cost", "equivalence", "projects"] as const;
 const paneBlocks = atom(
   { plugin: "claude-carbon", key: "blocks" } as const,
   DEFAULT_BLOCKS,
@@ -226,6 +234,9 @@ async function resetSessionState($: EngineInterface) {
   );
   await $.state.set({ plugin: "claude-carbon", key: "answers" }, []);
   $.ui.status(undefined);
+  pane.subagents = 0;
+  pane.sessionFamily = null;
+  pane.sessionOutput = 0;
 }
 
 // The pane. Where the history file is, this session's id (its own row in the file holds
@@ -248,6 +259,11 @@ const pane: {
   cardReadyUntil: number;
   // The row of block switches is open
   customizing: boolean;
+  // The running session as the pane tells it: subagents started, the family of the last
+  // model that answered, the tokens the model wrote
+  subagents: number;
+  sessionFamily: Family | null;
+  sessionOutput: number;
 } = {
   historyFile: null,
   sessionId: null,
@@ -258,6 +274,9 @@ const pane: {
   project: "",
   cardReadyUntil: 0,
   customizing: false,
+  subagents: 0,
+  sessionFamily: null,
+  sessionOutput: 0,
 };
 
 async function loadPaneHistory($: EngineInterface) {
@@ -290,13 +309,21 @@ async function currentClass($: EngineInterface): Promise<number | null> {
   return m === null || !(total.grams > 0) ? null : classOf(total.grams, m);
 }
 
-function isBlocks(value: unknown): value is PaneBlocks {
-  const v = value as Partial<Record<string, unknown>> | null | undefined;
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    BLOCKS.every((block) => typeof v[block] === "boolean")
-  );
+// The kept choice over the defaults: a block added since it was kept takes its default.
+// Null when nothing usable was kept.
+function keptBlocksOf(value: unknown): PaneBlocks | null {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value as Partial<Record<string, unknown>>;
+  const out: PaneBlocks = { ...DEFAULT_BLOCKS };
+  let isAny = false;
+  for (const block of BLOCKS) {
+    const kept = v[block];
+    if (typeof kept === "boolean") {
+      out[block] = kept;
+      isAny = true;
+    }
+  }
+  return isAny ? out : null;
 }
 
 function stopWalk() {
@@ -448,6 +475,9 @@ export const register: Register = (on, options) => {
       });
       pane.sessionId = await $.session.id().catch(() => null);
       pane.project = folderName(e.cwd ?? "");
+      pane.subagents = 0;
+      pane.sessionFamily = null;
+      pane.sessionOutput = 0;
       pane.rows = undefined;
       stopWalk();
       await $.state.set({ plugin: "claude-carbon", key: "working" }, false);
@@ -455,8 +485,8 @@ export const register: Register = (on, options) => {
       if (isView(kept)) {
         await $.state.set({ plugin: "claude-carbon", key: "view" }, kept);
       }
-      const keptBlocks = await $.store.get(BLOCKS_KEY);
-      if (isBlocks(keptBlocks)) {
+      const keptBlocks = keptBlocksOf(await $.store.get(BLOCKS_KEY));
+      if (keptBlocks !== null) {
         await $.state.set({ plugin: "claude-carbon", key: "blocks" }, keptBlocks);
       }
     } catch {
@@ -491,6 +521,7 @@ export const register: Register = (on, options) => {
     const started = await next(e);
     const id = started.agentId;
     if (id !== undefined) {
+      pane.subagents += 1;
       const parent = e.parentAgentId;
       // A subagent of a background subagent is in the background too, and one of a
       // foreground subagent belongs to its parent's answer.
@@ -546,6 +577,8 @@ export const register: Register = (on, options) => {
         const model = usage.model !== "" ? usage.model : e.model;
         if (!isExcluded(model, factors.excludeModels)) {
           const grams = co2Grams(usage, model, factors);
+          pane.sessionFamily = family(model);
+          pane.sessionOutput += usage.output_tokens ?? 0;
           const usd = prices !== null ? costUsd(usage, model, prices) : null;
           await update($, session, ({ usd: spent, ...total }) => ({
             ...total,
@@ -746,6 +779,8 @@ export const register: Register = (on, options) => {
               version: CURRENT_VERSION,
               project: own?.project ?? pane.project,
               usd: total.usd ?? null,
+              model: own?.model ?? "",
+              output: pane.sessionOutput > 0 ? pane.sessionOutput : (own?.output ?? null),
             },
           ]
         : past;
@@ -988,6 +1023,21 @@ export const register: Register = (on, options) => {
           </Text>
         </Box>
       );
+      // The portrait: the main model family, the three hours that weigh most, the tokens
+      // Claude wrote against the Harry Potter saga. Read, never judged.
+      const portrait: string[] = [];
+      if (blocks.portrait && hasTotals && totals !== null) {
+        const main = totals.families[0];
+        if (main !== undefined) portrait.push(favoriteModelText(main.family, main.share, lang));
+        const peak = peakHours(totals.hours);
+        if (peak !== null) portrait.push(peakHoursText(peak.start, peak.share, lang));
+        if (totals.output !== null && totals.output > 0)
+          portrait.push(booksText(totals.output, lang));
+      }
+      const sessionStats =
+        total.turns > 0
+          ? sessionStatsText(total.turns, pane.subagents, pane.sessionFamily, lang)
+          : null;
       const noHistory = pane.rows === null && <Text dimColor>{noHistoryText(lang)}</Text>;
       const empty =
         pane.rows !== null && !hasTotals && <Text dimColor>{emptyRangeText(lang)}</Text>;
@@ -1000,6 +1050,7 @@ export const register: Register = (on, options) => {
             {mascot}
             <Box flexDirection="column" marginLeft={2} flexShrink={1}>
               <Text bold>{sessionText}</Text>
+              {sessionStats !== null && <Text dimColor>{sessionStats}</Text>}
               {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
               <Box flexDirection="row" columnGap={2} flexWrap="wrap">
                 {rangeButtons}
@@ -1031,6 +1082,7 @@ export const register: Register = (on, options) => {
               </Text>
             </Box>
           )}
+          {portrait.length > 0 && <Text dimColor>{portrait.join(" · ")}</Text>}
           {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
         </Box>
       ) : (
@@ -1039,10 +1091,12 @@ export const register: Register = (on, options) => {
             {mascot}
             <Box flexDirection="column" marginLeft={2} flexShrink={1}>
               <Text bold>{sessionText}</Text>
+              {sessionStats !== null && <Text dimColor>{sessionStats}</Text>}
               {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
             </Box>
           </Box>
-          <Box flexDirection="column" rowGap={1}>
+          <Box flexDirection="column" rowGap={1} marginTop={1}>
+            <Text bold>{blockTitle("usage", lang)}</Text>
             <Box flexDirection="row" columnGap={1} rowGap={1} flexWrap="wrap">
               {rangeButtons}
             </Box>
@@ -1072,6 +1126,13 @@ export const register: Register = (on, options) => {
               {stripesDrawing}
               <Text dimColor>{dates}</Text>
               <Text dimColor>{`${stripesCaption(w.step, bm, lang)} · ${legendText(lang)}`}</Text>
+            </Box>
+          )}
+          {portrait.length > 0 && (
+            <Box flexDirection="column" marginTop={1}>
+              {portrait.map((line) => (
+                <Text key={line}>{line}</Text>
+              ))}
             </Box>
           )}
           {hasTotals && totals !== null && (blocks.equivalence || listed.length > 0) && (
