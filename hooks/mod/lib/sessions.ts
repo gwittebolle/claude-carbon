@@ -3,8 +3,6 @@
 // The mod never opens the database. Pure: no Claude Code API, so Node runs it directly
 // (tests/run-mod-tests.mjs).
 
-import { family } from "./co2.ts";
-import type { Family } from "./co2.ts";
 import { median } from "./format.ts";
 
 export type SessionRow = {
@@ -164,8 +162,6 @@ export type PeriodTotal = {
   usd: number | null;
   // Heaviest first
   projects: ProjectTotal[];
-  // The model families, heaviest first, by their share of the CO2
-  families: Array<{ family: Family; share: number }>;
 };
 
 export type Bar = {
@@ -285,15 +281,7 @@ function sumOf(rows: readonly SessionRow[]): PeriodTotal {
   const projects = [...byProject.entries()]
     .map(([project, g]) => ({ project, grams: g, share: grams > 0 ? g / grams : 0 }))
     .sort((a, b) => b.grams - a.grams);
-  const byFamily = new Map<Family, number>();
-  for (const r of rows)
-    if (r.model)
-      byFamily.set(family(r.model), (byFamily.get(family(r.model)) ?? 0) + r.grams);
-  const known = [...byFamily.values()].reduce((s, g) => s + g, 0);
-  const families = [...byFamily.entries()]
-    .map(([f, g]) => ({ family: f, share: known > 0 ? g / known : 0 }))
-    .sort((a, b) => b.share - a.share);
-  return { grams, sessions: rows.length, usd, projects, families };
+  return { grams, sessions: rows.length, usd, projects };
 }
 
 

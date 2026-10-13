@@ -90,10 +90,10 @@ import {
   builtByLabel,
   METHODOLOGY_URL,
   methodologyLabel,
+  stripesCredit,
   forTeamLabel,
   teamUrl,
   blockTitle,
-  favoriteModelText,
   sessionStatsText,
   changeValue,
   moneyValue,
@@ -107,13 +107,17 @@ import {
   colorOf,
   FRAMES,
   MINI_FRAMES,
+  faceFrame,
+  miniFaceFrame,
+  moodOf,
+  faceAt,
+  MOODS,
   mascotCells,
   mascotSvg,
   mascotWords,
   NEUTRAL,
   PALETTE,
   stepMs,
-  infoIconSvg,
   stripesSvg,
   stripeWords,
   subagentsSvg,
@@ -675,6 +679,55 @@ check("svg walks", svg.includes("@keyframes") && svg.includes("344ms"), true);
 check("svg reduced motion", svg.includes("prefers-reduced-motion"), true);
 check("svg at rest breathes slowly", mascotSvg({ color: NEUTRAL, walking: false, step: 300, title: "t" }).includes("2400ms"), true);
 check("svg size", svg.length < 131072, true);
+
+// Faces: every one fits both hops, big and small, and changes only the face
+const ALL_FACES = ["neutral", "blink", "lookLeft", "lookRight", "lookUp", "wink", "happy", "surprised", "worried", "worriedBlink", "sleep", "doze"];
+for (const f of ALL_FACES) {
+  for (const hop of [0, 1]) {
+    const big = faceFrame(hop, f);
+    const mini = miniFaceFrame(hop, f);
+    check(`face ${f} hop ${hop}: big size`, big.length === FRAMES[0].length && big.every((r) => r.length === 18), true);
+    check(`face ${f} hop ${hop}: small size`, mini.length === CELL_ROWS * 2 && mini.every((r) => r.length === CELL_COLUMNS), true);
+    // The body's outline never moves: a face only repaints inside it, or beside it (a drop, a z)
+    const bodyOf = (rows) => rows.map((r) => r.replace(/k/g, "#").replace(/[sz]/g, "."));
+    check(`face ${f} hop ${hop}: same body`, bodyOf(big).join(), bodyOf(faceFrame(hop, "neutral")).join());
+  }
+}
+check("neutral is the README's face", faceFrame(0, "neutral").join(), FRAMES[0].join());
+check("happy smiles", faceFrame(0, "happy").join("\n").split("k").length - 1 > faceFrame(0, "neutral").join("\n").split("k").length - 1, true);
+check("worried sweats", faceFrame(0, "worried").join("").includes("s"), true);
+check("asleep: a z", faceFrame(0, "sleep").join("").includes("z") && miniFaceFrame(0, "sleep").join("").includes("z"), true);
+check("small blink shuts the eyes", miniFaceFrame(0, "blink").join("").includes("k"), false);
+
+// Moods
+const mood = (o) => moodOf({ working: false, cls: 3, hasAnswer: true, idleMs: 0, reacting: false, ...o });
+check("mood idle", mood({}), "idle");
+check("mood waiting", mood({ hasAnswer: false }), "waiting");
+check("mood working", mood({ working: true }), "working");
+check("mood light work cheerful", mood({ working: true, cls: 1 }), "cheerful");
+check("mood heavy work strained", mood({ working: true, cls: 6 }), "strained");
+check("mood grey work", mood({ working: true, cls: null }), "working");
+check("mood after an answer", mood({ reacting: true }), "pleased");
+check("mood after a heavy answer", mood({ reacting: true, cls: 7 }), "phew");
+check("mood asleep after 5 min", mood({ idleMs: 5 * 60_000 }), "asleep");
+check("mood still awake before", mood({ idleMs: 5 * 60_000 - 1 }), "idle");
+check("face at start", faceAt("idle", 0).face, "neutral");
+check("face hold", faceAt("idle", 400).holdMs, 2000);
+check("face blink", faceAt("idle", 2450).face, "blink");
+const idleLoop = MOODS.idle.reduce((sum, [, ms]) => sum + ms, 0);
+check("face loops", faceAt("idle", idleLoop + 10).face, "neutral");
+check("one-face mood holds", faceAt("pleased", 999_999).face, "happy");
+{
+  const idleSvg = mascotSvg({ color: PALETTE[3], walking: false, step: 300, title: "t", mood: "idle" });
+  check("svg: a layer per face", ["f-neutral", "f-blink", "f-lookLeft", "f-wink", "f-happy"].every((c) => idleSvg.includes(c)), true);
+  check("svg: faces loop", idleSvg.includes(`${idleLoop}ms steps(1,end) infinite`), true);
+  check("svg: still face under reduced motion", idleSvg.includes(".f-neutral{opacity:1}}"), true);
+  const pleasedSvg = mascotSvg({ color: PALETTE[3], walking: false, step: 300, title: "t", mood: "pleased" });
+  check("svg: one face, no face animation", pleasedSvg.includes("@keyframes k-"), false);
+  const strainedSvg = mascotSvg({ color: PALETTE[7], walking: true, step: 124, title: "t", mood: "strained" });
+  check("svg: sweat drawn", strainedSvg.includes("#4f9fd8"), true);
+  check("svg: faces keep it small", strainedSvg.length < 131072, true);
+}
 // The desktop pane draws at most 180 stripes, each with its hover label
 const stripesDoc = stripesSvg(
   Array.from({ length: 180 }, (_, i) => ({
@@ -825,26 +878,16 @@ check("cost grouped", costText(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $ 
 check("cost grouped en", costText(27608.16, "en"), "$27,608 at API prices");
 check("cost small", costText(12.3, "fr").replaceAll(NBSP, " "), "12,30 $ au prix API");
 const plainText = (s) => s.replaceAll(NBSP, " ");
-// The portrait
-check("main model", plainText(favoriteModelText("opus", 0.55, "fr")), "Surtout Opus (55 %)");
 check("session stats", sessionStatsText(1, 3, "opus", "fr"), "1 réponse · 3 sous-agents · Opus");
 check("session stats en", sessionStatsText(2, 1, null, "en"), "2 answers · 1 subagent");
 {
   const parsed8 = parseHistory("a\t10\t5\t2\tsite\t0.5\tclaude-opus-5-5\t1234\n")[0];
   check("model read", parsed8.model, "claude-opus-5-5");
-  const r = [
-    { id: "a", at: now - day, grams: 30, version: 2, project: "", usd: null, model: "claude-opus-5-5", output: 10 },
-    { id: "b", at: now - day, grams: 10, version: 2, project: "", usd: null, model: "claude-haiku-5-5", output: null },
-    { id: "c", at: now - day, grams: 60, version: 2, project: "", usd: null, model: "", output: 5 },
-  ];
-  const sum = periodTotal(r, windowOf({ range: "7d" }, r, now));
-  check("families by CO2, known models only", sum.families.map((f) => `${f.family}:${f.share}`).join(","), "opus:0.75,haiku:0.25");
 }
 check("money value", moneyValue(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $");
 check("money value en", moneyValue(12.3, "en"), "$12.30");
 check("change value", changeValue(-18).replaceAll(NBSP, " "), "-18 %");
 check("api value note", apiValueNote("fr").replaceAll(NBSP, " "), "Le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.");
-check("info icon", /<title>a &amp; b<\/title>/.test(infoIconSvg("a & b")) && !/<script|on[a-z]+=/i.test(infoIconSvg("x")), true);
 check("bar median needs 3 full bars", barMedian([{ grams: 1 }, { grams: 0 }, { grams: 3 }]), null);
 check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams: 5 }]), 3);
 // Where midnight is skipped for summer time (Santiago, Sunday 6 Sep 2026), no session
@@ -899,7 +942,7 @@ for (const lang of ["fr", "en"]) {
   pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 6000, 0.07, lang), projectBarLine("", 50, 0.001, lang));
   pane.push(subagentsAlt(1, lang), subagentsAlt(3, lang), subagentTitle(1, 12, lang), contextText(42, lang), builtByLabel(lang), forTeamLabel(lang), apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
   for (const k of ["period", "change", "sessions", "cost"]) pane.push(tileLabel(k, lang));
-  pane.push(favoriteModelText("opus", 0.5, lang), sessionStatsText(3, 2, "fable", lang), blockTitle("usage", lang), blockTitle("session", lang));
+  pane.push(sessionStatsText(3, 2, "fable", lang), blockTitle("usage", lang), blockTitle("session", lang));
   pane.push(waitingText(lang), fromLabel(lang), toLabel(lang), datePlaceholder(lang), dateInvalid(lang));
   pane.push(otherProjectsLine(4, 900, 0.01, lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
@@ -918,7 +961,7 @@ for (const text of pane) {
 }
 // French puts a no-break space before : ; ! and ?, never a plain one
 for (const lang of ["fr"]) {
-  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), favoriteModelText("opus", 0.5, lang), dateInvalid(lang)];
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), dateInvalid(lang)];
   for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
 check("current line", plainText(currentLine(52, 140, "fr")), "Cette session : 52 gCO₂ · 0,37× votre médiane");
@@ -930,6 +973,8 @@ check("team url en", teamUrl("en"), "https://tokenclimate.com/en?ref=carbon-pane
 check("author url", AUTHOR_URL, "https://gaetanwittebolle.com/?ref=carbon-panel");
 check("built by", builtByLabel("fr"), "Développé par");
 check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
+check("stripes credit fr", Object.values(stripesCredit("fr")).join(" "), "Inspiré des warming stripes d'Ed Hawkins");
+check("stripes credit en", Object.values(stripesCredit("en")).join(" ").trim(), "Inspired by Ed Hawkins' warming stripes");
 check("methodology label", methodologyLabel("fr"), "Comment c'est calculé");
 check("car tag in gCO₂", plainText(carTag("142 g/km, ADEME 2025")), "142 gCO₂/km, ADEME 2025");
 check("car tag in miles", plainText(carTag("393 g/mile, EPA US")), "393 gCO₂/mile, EPA US");
@@ -938,7 +983,8 @@ check("context", plainText(contextText(41.6, "fr")), "Contexte 42 %");
   const row = subagentsSvg([{ color: PALETTE[2], title: "a" }, { color: PALETTE[7], title: "<b>" }], { walking: true, step: 172 });
   check("subagents: one molecule each", (row.match(/<g class="m\d+">/g) ?? []).length, 2);
   check("subagents: they walk", row.includes("344ms"), true);
-  check("subagents: out of step", row.includes("-170ms"), true);
+  check("subagents: out of step", row.includes(".m1 .a,.m1 .b,.m1 .f{animation-delay:-1170ms}"), true);
+  check("subagents: they pull faces", row.includes("f-blink"), true);
   check("subagents: at rest they breathe", subagentsSvg([{ color: NEUTRAL, title: "a" }], { walking: false, step: 172 }).includes("2400ms"), true);
   check("subagents: reduced motion", row.includes("prefers-reduced-motion"), true);
   check("subagents: no script", /<script|on[a-z]+=/i.test(row), false);

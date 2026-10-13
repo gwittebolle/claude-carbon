@@ -29,7 +29,13 @@ two from dark blue to dark red, grey until 10 past sessions are recorded. It hop
 one pixel up and down while a main-loop turn runs, one step every 460 ms for
 the bluest down to 124 ms for the reddest: a small 13 x 4 cell molecule blitted
 into a `Raster` in the terminal, a CSS animation inside an `Svg` in the desktop
-app, still under reduced motion. Below it, warming
+app, still under reduced motion. It pulls faces as it goes, over a body that never
+changes (`FACES`, `MOODS`): it looks around before the first answer, blinks and
+glances aside while at work, smiles through a light session and sweats through a
+heavy one, smiles or startles for a moment after each answer, winks and looks up
+at rest, and falls asleep with a z after five minutes without a turn. In the
+desktop app each face is a layer of the Svg shown in turn by CSS; in the terminal
+the picture follows the clock, a blit at each hop and each change of face. Below it, warming
 stripes of past sessions, the running one included with its live total, covering
 exactly the period picked: 7 or 30 days by day, 12 months by week (from Monday),
 everything or a custom range of two typed dates by day, week or month after its
@@ -43,24 +49,29 @@ kept in `$.store` for the next session. The stripe under the pointer lights up a
 its label (date, total, sessions) shows under the stripes at once, drawn in the
 Svg and revealed by CSS `:hover`, since the app's own tooltip is slow and placed
 far off; the Svg's viewBox matches its drawn width so the label keeps its shape.
-The tab is titled "claude-carbon", and two short lines held at the pane's foot
-link to the author's site and to TokenClimate (`?ref=carbon-panel`). The pane opens without the keyboard, so typing
+The tab is titled "claude-carbon", and a few short lines held at the pane's foot
+link to the methodology, to Ed Hawkins' warming stripes (showyourstripes.info), to
+the author's site and to TokenClimate (`?ref=carbon-panel`). The pane opens without the keyboard, so typing
 and Escape stay with the prompt. The period's figures (CO2, change, sessions,
-API-price value) are tiles under the range buttons in the desktop app, a line
-under the stripes in the terminal; then the blocks the person chooses under the gear beside "My usage", kept in
+API-price value, car) are tiles under the range buttons in the desktop app, two
+lines above the stripes in the terminal; then the blocks the person chooses under the gear beside "My usage", kept in
 `$.store`: the change
 against the same length of time before, the API-price value (worded so it holds
 whoever pays: a Pro or Max subscription covers some or all of it), the car
 equivalence
 of the reports (`hooks/mod/lib/equiv.ts`), and the split by project (off until
-turned on), and the main model family by share of CO2 ("Mostly Opus (83 %)").
-In the desktop app the car is a tile of the period beside its CO2, with the
-factor and source in its (i). The session block gives its
+turned on). A tile that needs a word of explanation (the API-price value, the
+car's factor and source) shows an (i), and the pointer on the tile reveals the
+note under the tiles: a hover group of the surface (`hover.scope`, a Box drawn
+`display: "none"`), no hook and no redraw. The session block gives its
 answers, subagents and model, its context window's fill (`$.session.usage()`)
 and API-price value, and in the desktop app a small molecule per subagent
 (`subagentsSvg`, eight then "+N"), coloured by the CO2 of its own requests, and
-walking or breathing like the big one. The history file now also carries each
-session's model. A "Get my 2026 card" button (the card covers the
+walking, breathing and blinking like the big one; in the terminal a dot each in
+its colour. The terminal pane follows the desktop's order in lines: this session
+and the card beside the small molecule, "My usage" with its gear and ranges on
+one line, the period's figures, the stripes, the projects, and the links on one
+line at the foot. The history file now also carries each session's model. A "Get my 2026 card" button (the card covers the
 calendar year so far, whatever range the pane shows) puts `/carbon-card` in
 an empty prompt (`$.prompt.fill`) and never sends it; a draft in progress is left
 alone.

@@ -280,9 +280,9 @@ describe("the /carbon-panel pane", () => {
     const gear = await ui.find({ key: "customize" });
     expect(gear.props.label).toBe("\u2699");
     expect(gear.props.plain).toBe(true);
-    expect(await ui.find({ key: "block-portrait" })).toBeUndefined();
+    expect(await ui.find({ key: "block-cost" })).toBeUndefined();
     await ui.press({ key: "customize" });
-    expect(await ui.find({ key: "block-portrait" })).toBeDefined();
+    expect(await ui.find({ key: "block-cost" })).toBeDefined();
     await ui.press({ key: "customize" });
     // The month lists show only for a custom range
     expect(await ui.find({ key: "from" })).toBeUndefined();
@@ -345,7 +345,7 @@ describe("the /carbon-panel pane", () => {
     await ui.unmount();
   });
 
-  test("the main model under the stripes, the car in a tile", async ($: any, on: any) => {
+  test("no main-model line, the car in a tile", async ($: any, on: any) => {
     // Three Opus sessions and one Sonnet
     const at = (days: number) => Math.floor((NOW - days * DAY) / 1000);
     const lines = [
@@ -360,26 +360,23 @@ describe("the /carbon-panel pane", () => {
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     const text = await drawn(ui);
     expect(text).toContain("Mon usage");
-    // The model on its own line, the car in a tile of the period: side by side, the km
-    // read as Opus's share
-    expect(text).toContain("Surtout Opus (90 %)");
-    expect(text).not.toContain("Surtout Opus (90 %) ·");
-    expect(text).toContain("En voiture\n≈ 7 km");
+    // The main model is not shown; the car is a tile of the period
+    expect(text).not.toContain("Surtout");
+    expect(text).toContain("En voiture\nⓘ\n≈ 7 km");
     expect(text).toContain("Développé par");
     const links = JSON.stringify(await ui.drawn());
     expect(links).toContain("https://gaetanwittebolle.com/?ref=carbon-panel");
     expect(links).toContain("https://tokenclimate.com/?ref=carbon-panel");
     expect(links).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
+    // The stripes' credit, as in the README
+    expect(links).toContain("https://showyourstripes.info");
+    expect(text).toContain("Inspiré des\nd'Ed Hawkins");
     // The foot is the pane's last element, held at the bottom
     const tree = (await ui.drawn()) as any;
     // As tall as the rows the surface gives the pane's body (20 in these props)
     expect(tree.props.minHeight).toBe(20);
     expect(tree.props.justifyContent).toBe("space-between");
     expect(JSON.stringify(tree.children.at(-1))).toContain("TokenClimate");
-    // The main model can be turned off under the gear
-    await ui.press({ key: "customize" });
-    await ui.press({ key: "block-portrait" });
-    expect(await drawn(ui)).not.toContain("Surtout Opus");
     await ui.unmount();
   });
 
@@ -559,17 +556,36 @@ describe("the /carbon-panel pane", () => {
     const text = await drawn(ui);
     // The tiles: the period, its change, its sessions, its API-price value
     expect(text).toContain(
-      "Sur la période\n300 gCO₂\nPar rapport à avant\n+50 %\nSessions\n2\nValeur au prix API\n3,00 $",
+      "Sur la période\n300 gCO₂\nPar rapport à avant\n+50 %\nSessions\n2\nValeur au prix API\nⓘ\n3,00 $",
     );
-    // The value never says who paid it: its (i) explains on hover, taking no line
-    expect(text).not.toContain("un abonnement Pro ou Max");
-    expect(JSON.stringify(await ui.drawn()).replaceAll("\u00a0", " ")).toContain(
+    expect(text).toContain("En voiture\nⓘ\n≈ 2 km");
+    // The value never says who paid it: an (i) on its tile, and its note hidden until
+    // the pointer is on the tile, taking no line
+    const nodes: any[] = [];
+    const walkAll = (node: any) => {
+      if (node === null || typeof node !== "object") return;
+      if (Array.isArray(node)) return node.forEach(walkAll);
+      nodes.push(node);
+      walkAll(node.children);
+    };
+    walkAll(await ui.drawn());
+    const tileOf = (kind: string) => nodes.find((n) => n.props?.key === `tile-${kind}`)?.hover;
+    for (const kind of ["cost", "car"]) {
+      const hidden = nodes.find(
+        (n) => n.type === "Box" && n.props?.display === "none" && n.hover?.scope === `note-${kind}`,
+      );
+      expect(hidden?.hover).toEqual({ display: "flex", scope: `note-${kind}` });
+      // No key of its own: a keyed Box drawn hidden would be a scope no pointer reaches
+      expect(hidden?.props.key).toBeUndefined();
+      expect(tileOf(kind)).toEqual({ scope: `note-${kind}` });
+    }
+    const notes = JSON.stringify(await ui.drawn()).replaceAll("\u00a0", " ");
+    expect(notes).toContain(
       "Le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.",
     );
-    expect(text).toContain("En voiture\n≈ 2 km");
-    expect(JSON.stringify(await ui.drawn()).replaceAll("\u00a0", " ")).toContain(
-      "142 gCO₂/km, ADEME 2025",
-    );
+    expect(notes).toContain("142 gCO₂/km, ADEME 2025");
+    // A tile with nothing to explain has no (i) and lights nothing
+    expect(tileOf("sessions")).toBeUndefined();
     // A rise is drawn in the error colour
     const rise = await ui.find({ type: "Text", text: "+50\u00a0%" });
     expect(rise.props.color).toBe("error");
@@ -610,16 +626,20 @@ describe("the /carbon-panel pane", () => {
     await startSession($);
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-    // At rest, one frame every 1.2 s
+    // At rest a slow bob, a blit at each hop and each change of face: it looks around
     await clock.advance(6000);
-    expect(blits.length).toBe(5);
+    const atRest = blits.length;
+    expect(atRest >= 4 && atRest <= 14).toBe(true);
     expect(blits[0].key).toBe("mascot");
     expect(blits[0].columns).toBe(13);
+    expect(new Set(blits.map((b: any) => b.cells)).size > 2).toBe(true);
     await $.turn.start({ text: "go", turnId: "turn-1" });
     const before = blits.length;
     await clock.advance(3000);
-    // Grey molecule, middle pace: a step every 316 ms once the rest step is done
-    expect(blits.length - before >= 5).toBe(true);
+    // Grey molecule, middle pace: a hop every 316 ms, faster than at rest
+    const working = blits.length - before;
+    expect(working >= 9).toBe(true);
+    expect(working / 3 > atRest / 6).toBe(true);
     await $.turn.complete({
       answer: "done",
       durationMs: 3000,
@@ -629,7 +649,7 @@ describe("the /carbon-panel pane", () => {
     });
     const after = blits.length;
     await clock.advance(6000);
-    expect(blits.length - after <= 6).toBe(true);
+    expect(blits.length - after <= 14).toBe(true);
     await ui.unmount();
   });
   test("a turn the module lost track of still slows the walk down", async ($: any, on: any) => {
@@ -649,7 +669,43 @@ describe("the /carbon-panel pane", () => {
     await clock.advance(1300);
     const after = blits.length;
     await clock.advance(6000);
-    expect(blits.length - after).toBe(5);
+    // Walking, six seconds would take some twenty
+    expect(blits.length - after <= 14).toBe(true);
+  });
+  test("the desktop molecule reacts to an answer, then falls asleep", async ($: any, on: any) => {
+    world(on, { history: historyText(40) });
+    await startSession($);
+    await openPane($);
+    const faces = async () => {
+      const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+      const sources: string[] = [];
+      const walk = (node: any) => {
+        if (node === null || typeof node !== "object") return;
+        if (Array.isArray(node)) return node.forEach(walk);
+        if (node.type === "Svg") sources.push(node.props.source);
+        walk(node.children);
+      };
+      walk(await ui.drawn());
+      await ui.unmount();
+      // The big molecule is the first drawing
+      return sources[0] ?? "";
+    };
+    // No answer yet: it looks around
+    expect(await faces()).toContain("f-lookLeft");
+    await $.turn.start({ text: "go", turnId: "turn-1" });
+    await $.turn.complete({
+      answer: "done",
+      durationMs: 1000,
+      isAborted: false,
+      turnId: "turn-1",
+      reason: "answer",
+    });
+    // Right after the answer, a smile and nothing else
+    const pleased = await faces();
+    expect(pleased).toContain("f-happy");
+    expect(pleased).not.toContain("f-blink");
+    await clock.advance(5 * 60_000 + 1000);
+    expect(await faces()).toContain("f-sleep");
   });
   test("no walk without the pane open", async ($: any, on: any) => {
     const { blits } = world(on);
@@ -689,8 +745,8 @@ describe("the /carbon-panel pane", () => {
       walk(node.children);
     };
     walk(tree);
-    // The molecule, the stripes, and the car tile's (i)
-    expect(sources.length).toBe(3);
+    // The molecule and the stripes
+    expect(sources.length).toBe(2);
     expect(sources.every((s) => s.length <= 131072)).toBe(true);
     // About eight years, one stripe a month, with the years written out
     expect(await drawn(ui)).toContain("une bande par mois");

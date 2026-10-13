@@ -404,7 +404,7 @@ export function compareText(
     : `${amount} vs ${before[1]}`;
 }
 
-// ── The pane's portrait: a human reading of the period, never a judgement ─────
+// ── Model families, as the session block names them ─────
 
 const FAMILY_NAMES: Record<string, string> = {
   fable: "Fable",
@@ -416,12 +416,6 @@ export function familyName(f: string): string {
   return FAMILY_NAMES[f] ?? f;
 }
 
-// "Surtout Opus (83 %)", the main model family and its share of the period's CO2
-export function favoriteModelText(f: string, share: number, lang: Lang): string {
-  return lang === "fr"
-    ? `Surtout ${familyName(f)} (${percent(share)})`
-    : `Mostly ${familyName(f)} (${percent(share)})`;
-}
 
 // The car factor as the pane prints it, the unit spelled out: "142 gCO₂/km, ADEME 2025"
 export function carTag(tag: string): string {
@@ -476,6 +470,14 @@ export function teamUrl(lang: Lang): string {
 }
 
 // How the figures are computed, every factor and its source
+// The stripes' credit, as the README gives it: the text around the link, and the link's label
+export const STRIPES_URL = "https://showyourstripes.info";
+export function stripesCredit(lang: Lang): { before: string; label: string; after: string } {
+  return lang === "fr"
+    ? { before: "Inspiré des", label: "warming stripes", after: "d'Ed Hawkins" }
+    : { before: "Inspired by Ed Hawkins'", label: "warming stripes", after: "" };
+}
+
 export const METHODOLOGY_URL =
   "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md";
 export function methodologyLabel(lang: Lang): string {
@@ -564,7 +566,6 @@ export function carValue(
 // The blocks a person can show or hide in the pane, under the gear
 
 const BLOCK_LABELS: Record<string, [string, string]> = {
-  portrait: ["Modèle principal", "Main model"],
   compare: ["Comparaison", "Comparison"],
   cost: ["Coût API", "API cost"],
   equivalence: ["Équivalence", "Equivalence"],

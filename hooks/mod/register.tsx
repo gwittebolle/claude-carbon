@@ -38,6 +38,8 @@ import {
   answerLine,
   builtByLabel,
   METHODOLOGY_URL,
+  STRIPES_URL,
+  stripesCredit,
   methodologyLabel,
   forTeamLabel,
   AUTHOR_URL,
@@ -47,7 +49,6 @@ import {
   teamUrl,
   apiValueNote,
   blockTitle,
-  favoriteModelText,
   sessionStatsText,
   changeValue,
   formatGrams,
@@ -106,13 +107,17 @@ import {
   CELL_ROWS,
   classOf,
   colorOf,
-  MINI_FRAMES,
+  miniFaceFrame,
+  moodOf,
+  faceAt,
+  REACT_MS,
+  SLEEP_AFTER_MS,
+  type Mood,
   mascotCells,
   mascotSvg,
   NEUTRAL,
   IDLE_STEP_MS,
   stepMs,
-  infoIconSvg,
   stripeCells,
   subagentsSvg,
   STRIPES_SVG_HEIGHT,
@@ -162,13 +167,12 @@ const paneView = atom(
 );
 // What the pane shows under the stripes, besides the total: the person's choice
 const DEFAULT_BLOCKS: PaneBlocks = {
-  portrait: true,
   compare: true,
   cost: true,
   equivalence: true,
   projects: false,
 };
-const BLOCKS = ["portrait", "compare", "cost", "equivalence", "projects"] as const;
+const BLOCKS = ["compare", "cost", "equivalence", "projects"] as const;
 const paneBlocks = atom(
   { plugin: "claude-carbon", key: "blocks" } as const,
   DEFAULT_BLOCKS,
@@ -257,13 +261,12 @@ async function resetSessionState($: EngineInterface) {
 // The pane. Where the history file is, this session's id (its own row in the file holds
 // a partial total), and the history as last read: undefined until read, null when there
 // is no file to read (no database: an install without the bash hooks). The walk in the
-// terminal: the frame shown, and the timer that steps it, read by the drawing so a
-// redraw for another reason (a new request's total) keeps the step.
+// terminal: the timer that steps it; the picture follows the clock, so a redraw for
+// another reason (a new request's total) keeps the step.
 const pane: {
   historyFile: string | null;
   sessionId: string | null;
   rows: SessionRow[] | null | undefined;
-  walkFrame: number;
   walkTimer: { cancel: () => void } | null;
   // Bumped by every start and stop of the walk: a step begun under an older one stops,
   // so two chains never run at once and a stopped walk never draws again.
@@ -280,11 +283,16 @@ const pane: {
   // Each subagent started this session, in order, and the CO2 of its requests
   agents: Map<string, number>;
   sessionFamily: Family | null;
+  // The molecule's mood, since when (its faces loop from there), the last turn's start
+  // or end, and until when it reacts to the last answer (ms)
+  mood: Mood | null;
+  moodSince: number;
+  lastActive: number;
+  reactUntil: number;
 } = {
   historyFile: null,
   sessionId: null,
   rows: undefined,
-  walkFrame: 0,
   walkTimer: null,
   walkRun: 0,
   project: "",
@@ -293,6 +301,10 @@ const pane: {
   subagents: 0,
   agents: new Map<string, number>(),
   sessionFamily: null,
+  mood: null,
+  moodSince: 0,
+  lastActive: 0,
+  reactUntil: 0,
 };
 
 async function loadPaneHistory($: EngineInterface) {
@@ -316,13 +328,47 @@ async function isPaneOpen($: EngineInterface): Promise<boolean> {
   }
 }
 
-// The molecule's class: this session against the median of past sessions, null without
-// enough of them.
-async function currentClass($: EngineInterface): Promise<number | null> {
+// The molecule's class (this session against the median of past sessions, null without
+// enough of them) and mood. A new mood starts its faces from the first.
+async function moleculeNow(
+  $: EngineInterface,
+  now: number,
+): Promise<{ cls: number | null; mood: Mood; isWorking: boolean }> {
   const total = await read($, session);
+  const isWorking = await read($, working);
   const m = sessionMedian(pastSessions(pane.rows ?? [], pane.sessionId));
   // Grey, as drawn, until this session counts something
-  return m === null || !(total.grams > 0) ? null : classOf(total.grams, m);
+  const cls = m === null || !(total.grams > 0) ? null : classOf(total.grams, m);
+  if (pane.lastActive === 0) pane.lastActive = now;
+  const mood = moodOf({
+    working: isWorking,
+    cls,
+    hasAnswer: total.turns > 0,
+    idleMs: now - pane.lastActive,
+    reacting: now < pane.reactUntil,
+  });
+  if (mood !== pane.mood) {
+    pane.mood = mood;
+    pane.moodSince = now;
+  }
+  return { cls, mood, isWorking };
+}
+
+// The terminal's molecule at `now`: its hop, at the pace of its colour while a turn runs
+// and a slow breath at rest, and its face; with how long that picture holds.
+function terminalMolecule(
+  now: number,
+  mood: Mood,
+  cls: number | null,
+  isWorking: boolean,
+): { frame: string[]; holdMs: number } {
+  const pace = isWorking ? stepMs(cls ?? NEUTRAL_CLASS) : IDLE_STEP_MS;
+  const hop = Math.floor(now / pace) % 2 === 0 ? 0 : 1;
+  const { face, holdMs } = faceAt(mood, now - pane.moodSince);
+  return {
+    frame: miniFaceFrame(hop, face),
+    holdMs: Math.min(pace - (now % pace), holdMs),
+  };
 }
 
 // The kept choice over the defaults: a block added since it was kept takes its default.
@@ -345,7 +391,6 @@ function keptBlocksOf(value: unknown): PaneBlocks | null {
 function stopWalk() {
   pane.walkTimer?.cancel();
   pane.walkTimer = null;
-  pane.walkFrame = 0;
   pane.walkRun += 1;
 }
 
@@ -364,21 +409,21 @@ async function walkStep($: EngineInterface, run: number) {
       stopWalk();
       return;
     }
-    const cls = await currentClass($);
+    const now = await $.clock.now();
+    const { cls, mood } = await moleculeNow($, now);
     if (!isCurrent()) return;
-    pane.walkFrame = 1 - pane.walkFrame;
+    const shown = terminalMolecule(now, mood, cls, isWorking);
     await $.ui
       .blit({
         requestId: PANE_ID,
         key: "mascot",
-        cells: mascotCells(MINI_FRAMES[pane.walkFrame] ?? MINI_FRAMES[0], colorOf(cls)),
+        cells: mascotCells(shown.frame, colorOf(cls)),
         columns: CELL_COLUMNS,
         rows: CELL_ROWS,
       })
       .catch(() => undefined);
     if (!isCurrent()) return;
-    const pace = isWorking ? stepMs(cls ?? NEUTRAL_CLASS) : IDLE_STEP_MS;
-    pane.walkTimer = $.clock.after(pace, () => {
+    pane.walkTimer = $.clock.after(Math.max(40, shown.holdMs), () => {
       void walkStep($, run);
     });
   } catch {
@@ -495,6 +540,9 @@ export const register: Register = (on, options) => {
       pane.agents = new Map();
       pane.sessionFamily = null;
       pane.rows = undefined;
+      pane.mood = null;
+      pane.lastActive = 0;
+      pane.reactUntil = 0;
       stopWalk();
       await $.state.set({ plugin: "claude-carbon", key: "working" }, false);
       const kept = await $.store.get(VIEW_KEY);
@@ -578,6 +626,7 @@ export const register: Register = (on, options) => {
     // The main loop alone raises turn.start; a subagent's run does not.
     current = openTurn(e.turnId);
     try {
+      pane.lastActive = await $.clock.now();
       await $.state.set({ plugin: "claude-carbon", key: "working" }, true);
       if (await isPaneOpen($)) ensureWalk($);
     } catch {
@@ -642,6 +691,19 @@ export const register: Register = (on, options) => {
       await $.state.set({ plugin: "claude-carbon", key: "working" }, false);
     } catch {
       // The next session start sets it again.
+    }
+    // The molecule reacts to the answer, then falls asleep if nothing follows. On the
+    // desktop nothing else redraws it at those two moments.
+    try {
+      const now = await $.clock.now();
+      pane.lastActive = now;
+      pane.reactUntil = now + REACT_MS;
+      if (await isPaneOpen($)) {
+        $.clock.after(REACT_MS, () => $.ui.invalidate("ui.render"));
+        $.clock.after(SLEEP_AFTER_MS, () => $.ui.invalidate("ui.render"));
+      }
+    } catch {
+      // It keeps its face until the next drawing.
     }
     // Only the turn that opened the answer closes it.
     const done = current;
@@ -783,6 +845,7 @@ export const register: Register = (on, options) => {
       // Grey until there is a median, and until this session has counted something
       const cls = sm === null || !(total.grams > 0) ? null : classOf(total.grams, sm);
       const color = colorOf(cls);
+      const { mood } = await moleculeNow($, now);
       // The running session joins the stripes with its live total, as the newest, at
       // the start its own row in the file gives.
       const own = (pane.rows ?? []).find((r) => r.id === pane.sessionId);
@@ -835,7 +898,7 @@ export const register: Register = (on, options) => {
           key="mascot"
           columns={CELL_COLUMNS}
           rows={CELL_ROWS}
-          cells={mascotCells(MINI_FRAMES[pane.walkFrame] ?? MINI_FRAMES[0], color)}
+          cells={mascotCells(terminalMolecule(now, mood, cls, isWorking).frame, color)}
         />
       ) : (
         <ui.Svg
@@ -844,6 +907,7 @@ export const register: Register = (on, options) => {
             walking: isWorking,
             step: stepMs(cls ?? NEUTRAL_CLASS),
             title: mascotAlt(lang),
+            mood,
           })}
           alt={mascotAlt(lang)}
           width={112}
@@ -1039,11 +1103,9 @@ export const register: Register = (on, options) => {
           ))}
         </Box>
       );
-      // A tile of the desktop pane: a dim label over a bold figure, in a rounded frame
-      // An (i) beside a tile's label, its explanation on hover
-      const info = (text: string) => (
-        <ui.Svg source={infoIconSvg(text)} alt={text} width={14} height={14} isInteractive />
-      );
+      // A tile of the desktop pane: a dim label over a bold figure, in a rounded frame.
+      // A tile with a note shows an (i), and the pointer on the tile reveals the note
+      // under the tiles: a hover group of the surface's, no hook, nothing drawn again.
       const tile = (
         kind: string,
         value: string,
@@ -1056,23 +1118,27 @@ export const register: Register = (on, options) => {
           paddingX={1}
           flexDirection="column"
           flexGrow={1}
+          {...(note !== undefined ? { hover: { scope: `note-${kind}` } } : {})}
         >
           <Box flexDirection="row" columnGap={1} alignItems="center">
             <Text dimColor>{tileLabel(kind, lang)}</Text>
-            {note !== undefined && info(note)}
+            {note !== undefined && <Text dimColor>{"\u24d8"}</Text>}
           </Box>
           <Text bold {...(color !== undefined ? { color } : {})}>
             {value}
           </Text>
         </Box>
       );
-      // The main model family, the first lever, on its own line under the stripes (the
-      // car is a tile: beside the model it read as that model's share)
-      const main = hasTotals && totals !== null ? totals.families[0] : undefined;
-      const modelLine =
-        blocks.portrait && main !== undefined
-          ? favoriteModelText(main.family, main.share, lang)
-          : null;
+      // A tile's note, hidden until the pointer is on its tile. No key: a keyed Box is a
+      // hover scope of its own, and one drawn hidden can never be under the pointer.
+      const tileNote = (kind: string, text: string) => (
+        <Box
+          display="none"
+          hover={{ display: "flex", scope: `note-${kind}` }}
+        >
+          <Text dimColor>{text}</Text>
+        </Box>
+      );
       // The session's subagents as small molecules, each coloured by its CO2 against the
       // median of past sessions (grey without one): at most eight, then "+N"
       const agentList = [...pane.agents.values()];
@@ -1120,9 +1186,15 @@ export const register: Register = (on, options) => {
         </Box>
       );
       // Mods set no font size: the foot stays small by saying little
+      const credit = stripesCredit(lang);
       const foot = (
         <Box flexDirection="column" marginTop={1}>
           <ui.Link href={METHODOLOGY_URL} label={methodologyLabel(lang)} />
+          <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+            <Text dimColor>{credit.before}</Text>
+            <ui.Link href={STRIPES_URL} label={credit.label} />
+            {credit.after !== "" && <Text dimColor>{credit.after}</Text>}
+          </Box>
           <Box flexDirection="row" columnGap={1} flexWrap="wrap">
             <Text dimColor>{builtByLabel(lang)}</Text>
             <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />
@@ -1145,9 +1217,9 @@ export const register: Register = (on, options) => {
         </Box>
       );
 
-      // The terminal reads like the desktop pane, in lines: this session beside a small
-      // molecule, then "Mon usage" with its gear, the period's figures before the
-      // stripes, the card, and the links at the foot of the rows it is given.
+      // The terminal reads like the desktop pane, in lines: this session and the card
+      // beside a small molecule, then "Mon usage" with its gear and ranges, the period's
+      // figures before the stripes, and the links at the foot of the rows it is given.
       return isTerminal ? (
         <Box
           flexDirection="column"
@@ -1163,23 +1235,25 @@ export const register: Register = (on, options) => {
                 {agentDots}
                 {sessionMeta !== "" && <Text dimColor>{sessionMeta}</Text>}
                 {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
+                {/* Beside the molecule, where the rows are free: the card stays in view
+                    when the pane scrolls */}
+                <Box flexDirection="row">{cardButton}</Box>
               </Box>
             </Box>
+            {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
             <Box flexDirection="column" marginTop={1}>
-              <Box flexDirection="row" columnGap={2}>
+              <Box flexDirection="row" columnGap={2} flexWrap="wrap">
                 <Text bold>{blockTitle("usage", lang)}</Text>
                 {customizeButton}
-              </Box>
-              {options}
-              <Box flexDirection="row" columnGap={2} flexWrap="wrap">
                 {rangeButtons}
               </Box>
+              {options}
               {customRange}
             </Box>
             {noHistory}
             {empty}
             {hasTotals && totals !== null && (
-              <Box flexDirection="column" marginTop={1}>
+              <Box flexDirection="column">
                 <Box flexDirection="row" columnGap={1} flexWrap="wrap">
                   <Text bold>{periodHeadline(totals.grams, lang)}</Text>
                   {changeText}
@@ -1187,20 +1261,26 @@ export const register: Register = (on, options) => {
                 <Text dimColor>{secondary.join(" · ")}</Text>
               </Box>
             )}
+            {hasStripes && stripesDrawing}
             {hasStripes && (
-              <Box flexDirection="column" marginTop={1}>
-                {stripesDrawing}
-                <Text dimColor>{`${dates} · ${stripesCaption(w.step, bm, lang)}`}</Text>
-              </Box>
+              <Text dimColor>{`${dates} · ${stripesCaption(w.step, bm, lang)}`}</Text>
             )}
-            {modelLine !== null && <Text dimColor>{modelLine}</Text>}
             {projectsList}
-            <Box flexDirection="column" marginTop={1}>
-              <Box flexDirection="row">{cardButton}</Box>
-              {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
-            </Box>
           </Box>
-          {foot}
+          {/* The same links as the desktop's foot, on one line that wraps */}
+          <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+            <ui.Link href={METHODOLOGY_URL} label={methodologyLabel(lang)} />
+            <Text dimColor>·</Text>
+            <Text dimColor>{credit.before}</Text>
+            <ui.Link href={STRIPES_URL} label={credit.label} />
+            {credit.after !== "" && <Text dimColor>{credit.after}</Text>}
+            <Text dimColor>·</Text>
+            <Text dimColor>{builtByLabel(lang)}</Text>
+            <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />
+            <Text dimColor>·</Text>
+            <Text dimColor>{forTeamLabel(lang)}</Text>
+            <ui.Link href={teamUrl(lang)} label="TokenClimate" />
+          </Box>
         </Box>
       ) : (
         // The whole height of the side pane, the links held at its foot whatever shows
@@ -1261,6 +1341,8 @@ export const register: Register = (on, options) => {
                 {blocks.equivalence && car !== null &&
                   tile("car", carValue(totals.grams, car, lang), undefined, carTag(car.tag))}
               </Box>
+              {blocks.cost && totals.usd !== null && totals.usd > 0 && tileNote("cost", apiValueNote(lang))}
+              {blocks.equivalence && car !== null && tileNote("car", carTag(car.tag))}
             </Box>
           )}
           {noHistory}
@@ -1272,11 +1354,6 @@ export const register: Register = (on, options) => {
               {stripesDrawing}
               <Text dimColor>{dates}</Text>
               <Text dimColor>{stripesCaption(w.step, bm, lang)}</Text>
-            </Box>
-          )}
-          {modelLine !== null && (
-            <Box marginTop={1}>
-              <Text dimColor>{modelLine}</Text>
             </Box>
           )}
           {projectsList}
