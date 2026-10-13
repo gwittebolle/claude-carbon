@@ -130,6 +130,7 @@ import {
   CURRENT_VERSION,
   DEFAULT_VIEW,
   folderName,
+  panelSite,
   historyPath,
   isView,
   dayKey,
@@ -880,12 +881,13 @@ export const register: Register = (on, options) => {
   // the pane has nothing to type into, and Escape must still interrupt a turn. The
   // command is also a skill of the plugin (skills/carbon-panel), so the desktop app lists
   // it: its plugin spelling is caught here too, and its text never reaches the model.
-  on("command.run", { command: [COMMAND, `claude-carbon:${COMMAND}`] }, async ($) => {
+  on("command.run", { command: [COMMAND, `claude-carbon:${COMMAND}`] }, async ($, e) => {
     try {
-      // A terminal shows the molecule in the band above the prompt, on and off: a pane
-      // would dock as a whole column in fullscreen rendering, for four lines.
+      // Typed in a terminal, the molecule shows in the band above the prompt, on and off:
+      // a pane would dock as a whole column in fullscreen rendering, for four lines.
+      // Sent from the desktop app or a phone, it opens the side pane there.
       const surfaces = await $.session.surfaces();
-      if (surfaces.includes("terminal")) {
+      if (panelSite(surfaces, e.origin?.kind ?? "") === "band") {
         const isOn = !(await read($, band));
         if (isOn) {
           pane.rows = undefined;

@@ -149,6 +149,16 @@ export function sessionMedian(past: readonly SessionRow[]): number | null {
 }
 
 // A folder's name from a path, as the hooks' basename gives it
+// Where /carbon-panel shows: the band above a terminal's prompt when it was typed there,
+// the side pane otherwise. A session run in a terminal and driven from the desktop app
+// or a phone (Remote Control, origin "bridge") opens the pane where it was asked for.
+export function panelSite(
+  surfaces: readonly string[],
+  originKind: string,
+): "band" | "pane" {
+  return surfaces.includes("terminal") && originKind !== "bridge" ? "band" : "pane";
+}
+
 export function folderName(path: string): string {
   const parts = path.split(/[\\/]/).filter((p) => p !== "");
   return parts.at(-1) ?? "";

@@ -126,6 +126,7 @@ import {
   barMedian,
   bars,
   folderName,
+  panelSite,
   historyPath,
   isView,
   dayKey,
@@ -988,6 +989,10 @@ check("stripes credit en", Object.values(stripesCredit("en")).join(" ").trim(), 
 check("methodology label", methodologyLabel("fr"), "Comment c'est calculé");
 check("car tag in gCO₂", plainText(carTag("142 g/km, ADEME 2025")), "142 gCO₂/km, ADEME 2025");
 check("car tag in miles", plainText(carTag("393 g/mile, EPA US")), "393 gCO₂/mile, EPA US");
+check("panel: typed in a terminal, the band", panelSite(["terminal"], "composer"), "band");
+check("panel: a terminal session driven from the app, the pane", panelSite(["terminal", "desktop"], "bridge"), "pane");
+check("panel: the desktop app's own session, the pane", panelSite(["desktop"], "composer"), "pane");
+check("panel: another plugin's run in a terminal, the band", panelSite(["terminal"], "plugin"), "band");
 check("context", plainText(contextText(41.6, "fr")), "Contexte 42 %");
 {
   const row = subagentsSvg([{ color: PALETTE[2], title: "a" }, { color: PALETTE[7], title: "<b>" }], { walking: true, step: 172 });
