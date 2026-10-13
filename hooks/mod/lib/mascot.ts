@@ -269,8 +269,8 @@ export function eyesFor(color: string): string {
 }
 
 // A drop of sweat, and a sleeper's z
-const SWEAT = "#4f9fd8";
-const ZED = OUTLINE;
+export const SWEAT = "#4f9fd8";
+export const ZED = OUTLINE;
 
 type Pixel = "body" | "eye" | "sweat" | "zed" | "outline" | null;
 const KIND: Record<string, Pixel> = { "#": "body", k: "eye", s: "sweat", z: "zed" };
@@ -330,7 +330,7 @@ function path(fill: string, d: string, extra = ""): string {
 
 // One hop of a molecule: its outline and body, then each face it may pull, stacked and
 // hidden but for the one the animation shows. The body is the same under every face.
-function moleculeHop(
+export function moleculeHop(
   hop: 0 | 1,
   color: string,
   faces: readonly Face[],
@@ -358,22 +358,32 @@ function moleculeHop(
 }
 
 // The CSS that walks or breathes (the two hops) and runs a mood's faces in a loop. Under
-// reduced motion: the first hop and the mood's first face, still.
-function moleculeCss(mood: Mood, hopPeriod: number): { css: string; faces: Face[] } {
+// reduced motion: the first hop and the mood's first face, still. With a scope (a class
+// on the molecule's group), several molecules in one drawing each keep their own mood
+// and phase: the README's banner and its row of moods.
+export function moleculeCss(
+  mood: Mood,
+  hopPeriod: number,
+  opts: { scope?: string; hopDelay?: number; faceDelay?: number } = {},
+): { css: string; faces: Face[] } {
   const loop = MOODS[mood];
   const faces = [...new Set(loop.map(([f]) => f))];
   const total = loop.reduce((sum, [, ms]) => sum + ms, 0);
-  const css = [`.b{opacity:0}.f{opacity:0}`];
+  const p = opts.scope !== undefined ? `.${opts.scope} ` : "";
+  const k = opts.scope !== undefined ? `${opts.scope}-` : "";
+  const hopDelay = opts.hopDelay ? ` -${opts.hopDelay}ms` : "";
+  const faceDelay = opts.faceDelay ? ` -${opts.faceDelay}ms` : "";
+  const css = [`${p}.b{opacity:0}${p}.f{opacity:0}`];
   // Asleep it lies still: its Z takes the room the hop would
   if (!isStill(mood))
     css.push(
       `@keyframes fa{0%{opacity:1}50%{opacity:0}100%{opacity:0}}`,
       `@keyframes fb{0%{opacity:0}50%{opacity:1}100%{opacity:1}}`,
-      `.a{animation:fa ${hopPeriod}ms steps(1,end) infinite}`,
-      `.b{animation:fb ${hopPeriod}ms steps(1,end) infinite}`,
+      `${p}.a{animation:fa ${hopPeriod}ms steps(1,end) infinite${hopDelay}}`,
+      `${p}.b{animation:fb ${hopPeriod}ms steps(1,end) infinite${hopDelay}}`,
     );
   if (faces.length === 1) {
-    css.push(`.f-${faces[0]}{opacity:1}`);
+    css.push(`${p}.f-${faces[0]}{opacity:1}`);
   } else {
     for (const f of faces) {
       let at = 0;
@@ -385,13 +395,13 @@ function moleculeCss(mood: Mood, hopPeriod: number): { css: string; faces: Face[
       const last = loop[loop.length - 1];
       stops.push(`100%{opacity:${last !== undefined && last[0] === f ? 1 : 0}}`);
       css.push(
-        `@keyframes k-${f}{${stops.join("")}}`,
-        `.f-${f}{animation:k-${f} ${total}ms steps(1,end) infinite}`,
+        `@keyframes k-${k}${f}{${stops.join("")}}`,
+        `${p}.f-${f}{animation:k-${k}${f} ${total}ms steps(1,end) infinite${faceDelay}}`,
       );
     }
   }
   css.push(
-    `@media (prefers-reduced-motion: reduce){.a,.b,.f{animation:none}.a{opacity:1}.b{opacity:0}.f{opacity:0}.f-${faces[0] ?? "neutral"}{opacity:1}}`,
+    `@media (prefers-reduced-motion: reduce){${p}.a,${p}.b,${p}.f{animation:none}${p}.a{opacity:1}${p}.b{opacity:0}${p}.f{opacity:0}${p}.f-${faces[0] ?? "neutral"}{opacity:1}}`,
   );
   return { css: css.join(""), faces };
 }

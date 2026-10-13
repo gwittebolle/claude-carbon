@@ -15,6 +15,18 @@ it. The README's `/carbon-pr` note now speaks of the session's last folder.
 `tests/run-per-model-tests.sh` covers a session that changes folder mid-way,
 with and without a truncated last line.
 
+### docs: the README's molecules pull the pane's faces
+
+The banner's eight molecules walk as before and now wear the faces the
+`/carbon-panel` pane gives their weight: the blue ones smile, the middle ones
+blink and glance aside, the red ones sweat. A new drawing in the pane's section,
+`docs/molecule-moods.svg`, shows its eight moods with a caption each. Both come
+from `scripts/render-mascot.mjs`, which now draws from the mod's own faces and
+moods (`moleculeCss` and `moleculeHop`, exported by `hooks/mod/lib/mascot.ts`,
+take a scope so several molecules keep their own mood in one drawing), and which
+can also write the moods as a GIF (`--gif out.gif`, ImageMagick) for places an SVG
+does not play.
+
 ## 2026-10-12
 
 ### feat: /carbon-panel opens a pane with a CO2 molecule and the warming stripes of your sessions (1.11.0)
