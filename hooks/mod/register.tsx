@@ -42,6 +42,8 @@ import {
   isCarbonStatusLine,
   cardButtonLabel,
   cardDraftBusy,
+  cardFillFailed,
+  cardReadyText,
   methodSwitchNote,
   methodSwitchText,
   otherProjectsLine,
@@ -134,6 +136,8 @@ const NEUTRAL_CLASS = 3;
 // what the line holds, up to a Raster's 512 columns.
 const DESKTOP_MAX_STRIPES = 180;
 const RASTER_MAX_COLUMNS = 512;
+// How long the pane says that /carbon-card waits in the prompt
+const CARD_NOTE_MS = 10_000;
 
 // v2: the values of v1 counted background subagents in the answer that started them.
 // The v1 key is left as it is and never read again.
@@ -206,6 +210,8 @@ const pane: {
   walkRun: number;
   // This session's project, its folder's name, as the hooks will record it
   project: string;
+  // Until when the pane confirms that /carbon-card waits in the prompt (ms)
+  cardReadyUntil: number;
 } = {
   historyFile: null,
   sessionId: null,
@@ -214,6 +220,7 @@ const pane: {
   walkTimer: null,
   walkRun: 0,
   project: "",
+  cardReadyUntil: 0,
 };
 
 async function loadPaneHistory($: EngineInterface) {
@@ -820,9 +827,22 @@ export const register: Register = (on, options) => {
             $.ui.toast(cardDraftBusy(lang), { timeoutMs: 6000 });
             return;
           }
-          await $.prompt.fill({ text: "/carbon-card" });
+          const filled = await $.prompt.fill({ text: "/carbon-card" });
+          if (!filled.isFilled) {
+            $.ui.toast(cardFillFailed(lang), { timeoutMs: 6000 });
+            return;
+          }
+          // Said twice, since a prompt filled from a side pane is easy to miss: a toast,
+          // and a line under the button for ten seconds.
+          $.ui.toast(cardReadyText(lang), { timeoutMs: 8000 });
+          pane.cardReadyUntil = (await $.clock.now()) + CARD_NOTE_MS;
+          $.ui.invalidate("ui.render");
+          $.clock.after(CARD_NOTE_MS, () => {
+            $.ui.invalidate("ui.render");
+          });
         })().catch(() => undefined);
       };
+      const isCardReady = now < pane.cardReadyUntil;
       const cardButton = (
         <Button
           key="card"
@@ -880,6 +900,7 @@ export const register: Register = (on, options) => {
               {`${totalLine(totals.grams, totals.sessions, lang)} · ${topProjectsText(totals.projects.slice(0, 3), lang)}`}
             </Text>
           )}
+          {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
         </Box>
       ) : (
         <Box flexDirection="column" rowGap={1}>
@@ -925,7 +946,10 @@ export const register: Register = (on, options) => {
               )}
             </Box>
           )}
-          <Box flexDirection="row">{cardButton}</Box>
+          <Box flexDirection="column">
+            <Box flexDirection="row">{cardButton}</Box>
+            {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
+          </Box>
         </Box>
       );
     } catch {

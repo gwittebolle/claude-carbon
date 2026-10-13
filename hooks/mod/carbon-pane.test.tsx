@@ -315,6 +315,24 @@ describe("the /carbon-panel pane", () => {
     expect(submits).toEqual([]);
   });
 
+  test("after the card button the pane says the command waits in the prompt", async ($: any, on: any) => {
+    const { toasts } = world(on);
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    await ui.press({ key: "card" });
+    await clock.settle();
+    const ready = "/carbon-card est dans le prompt : appuyez sur Entrée pour créer la carte.";
+    expect(toasts.map((x) => x.replaceAll(NBSP, " "))).toContain(ready);
+    expect(await drawn(ui)).toContain(ready);
+    await ui.unmount();
+    // Ten seconds later the line is gone
+    await clock.advance(11_000);
+    const again = await $.ui.mount({ ...PANE, surface: "desktop" });
+    expect(await drawn(again)).not.toContain(ready);
+    await again.unmount();
+  });
+
   test("the card button leaves a draft alone", async ($: any, on: any) => {
     const { fills, toasts } = world(on, { draft: "half a thought" });
     await startSession($);

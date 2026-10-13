@@ -384,6 +384,20 @@ export function cardButtonLabel(lang: Lang): string {
   return lang === "fr" ? "Préparer ma carte" : "Prepare my card";
 }
 
+// After the button filled the prompt: what is there and what to do
+export function cardReadyText(lang: Lang): string {
+  return lang === "fr"
+    ? `/carbon-card est dans le prompt${NBSP}: appuyez sur Entrée pour créer la carte.`
+    : "/carbon-card is in the prompt: press Enter to make the card.";
+}
+
+// The prompt could not take it (a dialog is open, or no prompt box here)
+export function cardFillFailed(lang: Lang): string {
+  return lang === "fr"
+    ? `Le prompt n'a pas pu recevoir /carbon-card${NBSP}: tapez-le vous-même.`
+    : "The prompt could not take /carbon-card: type it yourself.";
+}
+
 // When the prompt already holds a draft, the button leaves it alone and says why
 export function cardDraftBusy(lang: Lang): string {
   return lang === "fr"

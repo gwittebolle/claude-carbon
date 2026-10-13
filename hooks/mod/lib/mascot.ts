@@ -215,7 +215,9 @@ export function stripesSvg(stripes: readonly Stripe[], title: string): string {
     .map((s, i) =>
       s.divider === true
         ? `<rect x="${i * 10 + 4}" y="0" width="2" height="${h}" fill="${OUTLINE}"><title>${escapeXml(s.title)}</title></rect>`
-        : `<rect x="${i * 10}" y="0" width="10" height="${h}" fill="${s.color ?? EMPTY}"><title>${escapeXml(s.title)}</title></rect>`,
+        : s.color === null
+          ? `<rect x="${i * 10}" y="0" width="10" height="${h}" fill="${OUTLINE}" fill-opacity="0.2"><title>${escapeXml(s.title)}</title></rect>`
+          : `<rect x="${i * 10}" y="0" width="10" height="${h}" fill="${s.color}"><title>${escapeXml(s.title)}</title></rect>`,
     )
     .join("");
   return (
