@@ -109,6 +109,7 @@ import {
   colorOf,
   miniFaceFrame,
   moodOf,
+  isStill,
   faceAt,
   REACT_MS,
   SLEEP_AFTER_MS,
@@ -363,7 +364,7 @@ function terminalMolecule(
   isWorking: boolean,
 ): { frame: string[]; holdMs: number } {
   const pace = isWorking ? stepMs(cls ?? NEUTRAL_CLASS) : IDLE_STEP_MS;
-  const hop = Math.floor(now / pace) % 2 === 0 ? 0 : 1;
+  const hop = isStill(mood) || Math.floor(now / pace) % 2 === 0 ? 0 : 1;
   const { face, holdMs } = faceAt(mood, now - pane.moodSince);
   return {
     frame: miniFaceFrame(hop, face),

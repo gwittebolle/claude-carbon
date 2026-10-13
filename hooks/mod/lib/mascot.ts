@@ -58,8 +58,22 @@ export type Face =
   | "worriedBlink"
   | "sleep"
   | "doze";
-type Marks = { k: readonly (readonly [number, number])[]; s?: readonly (readonly [number, number])[]; z?: readonly (readonly [number, number])[] };
-const Z = [[13, -1], [14, -1], [15, -1], [14, 0], [13, 1], [14, 1], [15, 1]] as const;
+// k eyes and mouth, s sweat, z a Z in pixels; g a cell of the terminal's molecule that
+// shows the letter z instead (a Z of a few pixels does not read there)
+type Marks = {
+  k: readonly (readonly [number, number])[];
+  s?: readonly (readonly [number, number])[];
+  z?: readonly (readonly [number, number])[];
+  g?: readonly (readonly [number, number])[];
+};
+// A Z of 4 x 4 with its diagonal, above the right oxygen: room the first hop alone has,
+// so the molecule asleep does not hop
+const Z = [
+  [14, -2], [15, -2], [16, -2], [17, -2],
+  [16, -1],
+  [15, 0],
+  [14, 1], [15, 1], [16, 1], [17, 1],
+] as const;
 const DROP = [[13, 0], [13, 1]] as const;
 const SMILE = [[7, 6], [8, 7], [9, 7], [10, 6]] as const;
 const FLAT = [[8, 6], [9, 6]] as const;
@@ -93,7 +107,7 @@ const MINI_FACES: Record<Face, Marks> = {
   surprised: { k: [[5, 0], [5, 1], [7, 0], [7, 1], [6, 3], [6, 4]] },
   worried: { k: [...MINI_EYES, [5, 3], [6, 3], [7, 3]], s: [[10, 0], [10, -1]] },
   worriedBlink: { k: [[5, 3], [6, 3], [7, 3]], s: [[10, 0], [10, -1]] },
-  sleep: { k: [], z: [[10, -1], [11, -1], [11, 0], [12, 0]] },
+  sleep: { k: [], g: [[10, -2], [12, -2]] },
   doze: { k: [] },
 };
 
@@ -107,6 +121,7 @@ function withMarks(hop: readonly string[], top: number, marks: Marks): string[] 
   put(marks.k, "k");
   put(marks.s, "s");
   put(marks.z, "z");
+  put(marks.g, "g");
   return rows.map((r) => r.join(""));
 }
 
@@ -166,6 +181,11 @@ export const MOODS: Record<Mood, ReadonlyArray<readonly [Face, number]>> = {
   phew: [["surprised", 700], ["worriedBlink", 150], ["worried", 1550]],
   asleep: [["sleep", 1400], ["doze", 1000]],
 };
+
+// A mood in which the molecule does not hop
+export function isStill(mood: Mood): boolean {
+  return mood === "asleep";
+}
 
 // How long the molecule reacts to an answer, and how long it stays idle before it sleeps
 export const REACT_MS = 2400;
@@ -345,13 +365,15 @@ function moleculeCss(mood: Mood, hopPeriod: number): { css: string; faces: Face[
   const loop = MOODS[mood];
   const faces = [...new Set(loop.map(([f]) => f))];
   const total = loop.reduce((sum, [, ms]) => sum + ms, 0);
-  const css = [
-    `.b{opacity:0}.f{opacity:0}`,
-    `@keyframes fa{0%{opacity:1}50%{opacity:0}100%{opacity:0}}`,
-    `@keyframes fb{0%{opacity:0}50%{opacity:1}100%{opacity:1}}`,
-    `.a{animation:fa ${hopPeriod}ms steps(1,end) infinite}`,
-    `.b{animation:fb ${hopPeriod}ms steps(1,end) infinite}`,
-  ];
+  const css = [`.b{opacity:0}.f{opacity:0}`];
+  // Asleep it lies still: its Z takes the room the hop would
+  if (!isStill(mood))
+    css.push(
+      `@keyframes fa{0%{opacity:1}50%{opacity:0}100%{opacity:0}}`,
+      `@keyframes fb{0%{opacity:0}50%{opacity:1}100%{opacity:1}}`,
+      `.a{animation:fa ${hopPeriod}ms steps(1,end) infinite}`,
+      `.b{animation:fb ${hopPeriod}ms steps(1,end) infinite}`,
+    );
   if (faces.length === 1) {
     css.push(`.f-${faces[0]}{opacity:1}`);
   } else {
@@ -496,6 +518,7 @@ const DEFAULT_COLOR = 0x01000000;
 const UPPER_HALF = 0x2580; // ▀
 const LOWER_HALF = 0x2584; // ▄
 const FULL_BLOCK = 0x2588; // █
+const LETTER_Z = 0x7a; // z
 const SPACE = 0x20;
 
 function rgb(hex: string): number {
@@ -533,6 +556,10 @@ export function mascotWords(frame: readonly string[], color: string): number[] {
   const words: number[] = [];
   for (let row = 0; row < CELL_ROWS; row++)
     for (let x = 0; x < CELL_COLUMNS; x++) {
+      if (frame[row * 2]?.[x] === "g" || frame[row * 2 + 1]?.[x] === "g") {
+        words.push(LETTER_Z, rgb(ZED), DEFAULT_COLOR);
+        continue;
+      }
       const top = paint(frame[row * 2]?.[x]);
       const bottom = paint(frame[row * 2 + 1]?.[x]);
       if (top !== null) words.push(UPPER_HALF, top, bottom ?? DEFAULT_COLOR);

@@ -110,6 +110,7 @@ import {
   faceFrame,
   miniFaceFrame,
   moodOf,
+  isStill,
   faceAt,
   MOODS,
   mascotCells,
@@ -689,14 +690,25 @@ for (const f of ALL_FACES) {
     check(`face ${f} hop ${hop}: big size`, big.length === FRAMES[0].length && big.every((r) => r.length === 18), true);
     check(`face ${f} hop ${hop}: small size`, mini.length === CELL_ROWS * 2 && mini.every((r) => r.length === CELL_COLUMNS), true);
     // The body's outline never moves: a face only repaints inside it, or beside it (a drop, a z)
-    const bodyOf = (rows) => rows.map((r) => r.replace(/k/g, "#").replace(/[sz]/g, "."));
+    const bodyOf = (rows) => rows.map((r) => r.replace(/k/g, "#").replace(/[szg]/g, "."));
     check(`face ${f} hop ${hop}: same body`, bodyOf(big).join(), bodyOf(faceFrame(hop, "neutral")).join());
   }
 }
 check("neutral is the README's face", faceFrame(0, "neutral").join(), FRAMES[0].join());
 check("happy smiles", faceFrame(0, "happy").join("\n").split("k").length - 1 > faceFrame(0, "neutral").join("\n").split("k").length - 1, true);
 check("worried sweats", faceFrame(0, "worried").join("").includes("s"), true);
-check("asleep: a z", faceFrame(0, "sleep").join("").includes("z") && miniFaceFrame(0, "sleep").join("").includes("z"), true);
+check("asleep: a Z of ten pixels", faceFrame(0, "sleep").join("").split("z").length - 1, 10);
+// Its diagonal: one pixel on each of the two middle rows, the upper one further right
+{
+  const rows = faceFrame(0, "sleep").filter((r) => r.includes("z"));
+  check("asleep: the Z has a diagonal", rows[1].indexOf("z") > rows[2].indexOf("z") && rows[1].split("z").length === 2, true);
+}
+{
+  const sleepWords = mascotWords(miniFaceFrame(0, "sleep"), PALETTE[3]);
+  check("asleep in a terminal: the letter z", sleepWords.filter((w, i) => i % 3 === 0 && w === 0x7a).length, 2);
+}
+check("asleep: no hop", isStill("asleep") && !isStill("idle"), true);
+check("asleep svg: no hop animation", mascotSvg({ color: PALETTE[3], walking: false, step: 300, title: "t", mood: "asleep" }).includes("@keyframes fa"), false);
 check("small blink shuts the eyes", miniFaceFrame(0, "blink").join("").includes("k"), false);
 
 // Moods
