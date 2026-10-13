@@ -205,6 +205,45 @@ export type Stripe = {
   start?: number;
 };
 
+// The running session's subagents, a small molecule each, in a row under the big one:
+// frame A at 3 px a pixel, each with its own colour and a <title> (its CO2).
+export const SUBAGENT_PX = 3;
+export function subagentsSvg(
+  agents: ReadonlyArray<{ color: string; title: string }>,
+  title: string,
+): string {
+  const w = SPRITE_WIDTH * SUBAGENT_PX;
+  const h = SPRITE_HEIGHT * SUBAGENT_PX;
+  const gap = 6;
+  const grid = pixels(FRAME_A);
+  const cells = (kind: Pixel, ox: number) => {
+    let d = "";
+    grid.forEach((row, y) =>
+      row.forEach((v, x) => {
+        if (v === kind)
+          d += `M${ox + x * SUBAGENT_PX} ${y * SUBAGENT_PX}h${SUBAGENT_PX}v${SUBAGENT_PX}h-${SUBAGENT_PX}z`;
+      }),
+    );
+    return d;
+  };
+  const items = agents
+    .map((a, i) => {
+      const ox = i * (w + gap);
+      return (
+        `<g><title>${escapeXml(a.title)}</title>` +
+        `<path fill="${OUTLINE}" fill-opacity="0.45" d="${cells("outline", ox)}"/>` +
+        `<path fill="${a.color}" d="${cells("body", ox)}"/>` +
+        `<path fill="${eyesFor(a.color)}" d="${cells("eye", ox)}"/></g>`
+      );
+    })
+    .join("");
+  const total = Math.max(1, agents.length) * (w + gap) - gap;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${h}" width="${total}" height="${h}" shape-rendering="crispEdges">` +
+    `<title>${escapeXml(title)}</title>${items}</svg>`
+  );
+}
+
 export const STRIPES_HEIGHT = 72;
 // The hovered stripe's label shows over the stripes' foot: no room kept for it
 export const STRIPES_SVG_HEIGHT = STRIPES_HEIGHT;

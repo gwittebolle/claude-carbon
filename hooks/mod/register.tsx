@@ -77,6 +77,9 @@ import {
   carLabel,
   carValue,
   contextText,
+  moreAgentsText,
+  subagentsAlt,
+  subagentTitle,
   modelValue,
   portraitLabel,
   slotName,
@@ -116,6 +119,7 @@ import {
   IDLE_STEP_MS,
   stepMs,
   stripeCells,
+  subagentsSvg,
   STRIPES_SVG_HEIGHT,
   stripesSvg,
 } from "./lib/mascot.ts";
@@ -192,6 +196,8 @@ const GEAR = "\u2699";
 // readable in a side pane (and far under the Svg's 131072 characters), in a terminal
 // what the line holds, up to a Raster's 512 columns.
 const DESKTOP_MAX_STRIPES = 180;
+// The subagent molecules shown under the big one before "+N"
+const MAX_AGENT_MOLECULES = 8;
 const RASTER_MAX_COLUMNS = 512;
 // How long the pane says that /carbon-card waits in the prompt
 const CARD_NOTE_MS = 10_000;
@@ -250,6 +256,7 @@ async function resetSessionState($: EngineInterface) {
   await $.state.set({ plugin: "claude-carbon", key: "answers" }, []);
   $.ui.status(undefined);
   pane.subagents = 0;
+  pane.agents = new Map();
   pane.sessionFamily = null;
   pane.sessionOutput = 0;
 }
@@ -277,6 +284,8 @@ const pane: {
   // The running session as the pane tells it: subagents started, the family of the last
   // model that answered, the tokens the model wrote
   subagents: number;
+  // Each subagent started this session, in order, and the CO2 of its requests
+  agents: Map<string, number>;
   sessionFamily: Family | null;
   sessionOutput: number;
 } = {
@@ -290,6 +299,7 @@ const pane: {
   cardReadyUntil: 0,
   customizing: false,
   subagents: 0,
+  agents: new Map<string, number>(),
   sessionFamily: null,
   sessionOutput: 0,
 };
@@ -491,6 +501,7 @@ export const register: Register = (on, options) => {
       pane.sessionId = await $.session.id().catch(() => null);
       pane.project = folderName(e.cwd ?? "");
       pane.subagents = 0;
+      pane.agents = new Map();
       pane.sessionFamily = null;
       pane.sessionOutput = 0;
       pane.rows = undefined;
@@ -537,6 +548,7 @@ export const register: Register = (on, options) => {
     const id = started.agentId;
     if (id !== undefined) {
       pane.subagents += 1;
+      pane.agents.set(id, 0);
       const parent = e.parentAgentId;
       // A subagent of a background subagent is in the background too, and one of a
       // foreground subagent belongs to its parent's answer.
@@ -593,6 +605,8 @@ export const register: Register = (on, options) => {
         if (!isExcluded(model, factors.excludeModels)) {
           const grams = co2Grams(usage, model, factors);
           pane.sessionFamily = family(model);
+          if (e.agentId !== undefined && pane.agents.has(e.agentId))
+            pane.agents.set(e.agentId, (pane.agents.get(e.agentId) ?? 0) + grams);
           pane.sessionOutput += usage.output_tokens ?? 0;
           const usd = prices !== null ? costUsd(usage, model, prices) : null;
           await update($, session, ({ usd: spent, ...total }) => ({
@@ -1079,6 +1093,14 @@ export const register: Register = (on, options) => {
         if (blocks.equivalence && car !== null)
           portraitTiles.push({ label: carLabel(car, lang), value: carValue(totals.grams, car, lang) });
       }
+      // The session's subagents as small molecules, each coloured by its CO2 against the
+      // median of past sessions (grey without one): at most eight, then "+N"
+      const agentList = [...pane.agents.values()];
+      const shownAgents = agentList.slice(0, MAX_AGENT_MOLECULES).map((grams, i) => ({
+        color: sm === null || !(grams > 0) ? NEUTRAL : colorOf(classOf(grams, sm)),
+        title: subagentTitle(i + 1, grams, lang),
+      }));
+      const moreAgents = agentList.length - shownAgents.length;
       const sessionStats =
         total.turns > 0
           ? sessionStatsText(total.turns, pane.subagents, pane.sessionFamily, lang)
@@ -1155,6 +1177,18 @@ export const register: Register = (on, options) => {
               {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
             </Box>
           </Box>
+          {shownAgents.length > 0 && (
+            <Box flexDirection="row" alignItems="center" columnGap={1}>
+              <ui.Svg
+                source={subagentsSvg(shownAgents, subagentsAlt(agentList.length, lang))}
+                alt={subagentsAlt(agentList.length, lang)}
+                width={shownAgents.length * 66 - 6}
+                height={48}
+                isInteractive
+              />
+              {moreAgents > 0 && <Text dimColor>{moreAgentsText(moreAgents)}</Text>}
+            </Box>
+          )}
           <Box flexDirection="column" rowGap={1} marginTop={1}>
             <Box flexDirection="row" justifyContent="space-between" alignItems="center">
               <Text bold>{blockTitle("usage", lang)}</Text>

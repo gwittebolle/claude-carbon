@@ -380,6 +380,40 @@ describe("the /carbon-panel pane", () => {
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     expect(await drawn(ui)).toContain("1 réponse · 1 sous-agent");
+    // A small molecule for the subagent, under the big one
+    const row = JSON.stringify(await ui.drawn());
+    expect(row).toContain("1 sous-agent de cette session");
+    await ui.unmount();
+  });
+
+  test("past eight subagents the row says how many more", async ($: any, on: any) => {
+    world(on);
+    on("agent.spawn", ($: any, e: any) => ({ model: "claude-haiku-5-5", agentId: e.description }));
+    await startSession($);
+    await $.turn.start({ text: "go", turnId: "turn-1" });
+    for (let i = 1; i <= 10; i++)
+      await $.agent.spawn({
+        prompt: "explore",
+        description: `agent-${i}`,
+        subagentType: "Explore",
+        provider: { kind: "engine" },
+        parentModel: "claude-opus-5-5",
+        background: false,
+      });
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    const svgs: any[] = [];
+    const walk = (node: any) => {
+      if (node === null || typeof node !== "object") return;
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (node.type === "Svg") svgs.push(node);
+      walk(node.children);
+    };
+    walk(await ui.drawn());
+    const row = svgs.find((s) => String(s.props.alt).startsWith("10 sous-agents"));
+    expect(row).toBeDefined();
+    expect((row.props.source.match(/<g>/g) ?? []).length).toBe(8);
+    expect(await drawn(ui)).toContain("+2");
     await ui.unmount();
   });
 

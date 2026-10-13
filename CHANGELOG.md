@@ -56,7 +56,9 @@ of the reports (`hooks/mod/lib/equiv.ts`), and the split by project (off until
 turned on), and a portrait: the main model family by share of CO2, the three
 hours that hold most of it, and the output tokens against the seven Harry Potter
 books (`SAGA_TOKENS`, sources in METHODOLOGY.md). The session block gives its
-answers, subagents and model. The history file now also carries each session's
+answers, subagents and model, its context window's fill (`$.session.usage()`)
+and API-price value, and in the desktop app a small molecule per subagent
+(`subagentsSvg`, eight then "+N"), coloured by the CO2 of its own requests. The history file now also carries each session's
 model and output tokens. A "Prepare my card" button puts `/carbon-card` in
 an empty prompt (`$.prompt.fill`) and never sends it; a draft in progress is left
 alone.

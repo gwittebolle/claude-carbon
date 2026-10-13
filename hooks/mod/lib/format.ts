@@ -511,6 +511,22 @@ export function carValue(grams: number, car: { divisor: number; unit: string }, 
   return `≈${NBSP}${thousands(grams / car.divisor, lang)}${NBSP}${car.unit}`;
 }
 
+// A subagent's molecule, on hover: "Sous-agent 2 · 12 gCO₂"
+export function subagentTitle(n: number, grams: number, lang: Lang): string {
+  return `${lang === "fr" ? "Sous-agent" : "Subagent"} ${n} · ${formatGrams(grams, lang)}`;
+}
+
+export function subagentsAlt(n: number, lang: Lang): string {
+  return lang === "fr"
+    ? `${n} sous-agent${n > 1 ? "s" : ""} de cette session, une petite molécule chacun, colorée selon son CO₂`
+    : `${n} subagent${n > 1 ? "s" : ""} of this session, a small molecule each, coloured by its CO₂`;
+}
+
+// More subagents than the row shows: "+4"
+export function moreAgentsText(n: number): string {
+  return `+${n}`;
+}
+
 // The context window's fill: "Contexte 42 %"
 export function contextText(percentUsed: number, lang: Lang): string {
   const p = `${Math.round(percentUsed)}${NBSP}%`;

@@ -79,6 +79,9 @@ import {
   carTag,
   carValue,
   contextText,
+  moreAgentsText,
+  subagentsAlt,
+  subagentTitle,
   modelValue,
   portraitLabel,
   slotName,
@@ -120,6 +123,7 @@ import {
   stepMs,
   stripesSvg,
   stripeWords,
+  subagentsSvg,
 } from "../hooks/mod/lib/mascot.ts";
 import {
   barMedian,
@@ -911,7 +915,7 @@ for (const lang of ["fr", "en"]) {
   pane.push(equivalenceText(240000, carEquivalence(factorsDoc, lang === "fr" ? "fr" : "us"), lang));
   for (const b of ["compare", "cost", "equivalence", "projects"]) pane.push(blockLabel(b, lang));
   pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 6000, 0.07, lang), projectBarLine("", 50, 0.001, lang));
-  pane.push(carLabel({ tag: "142 g/km, ADEME 2025" }, lang), contextText(42, lang), portraitLabel("model", lang), portraitLabel("books", lang), slotName(22, lang), builtByLabel(lang), forTeamLabel(lang), apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
+  pane.push(subagentsAlt(1, lang), subagentsAlt(3, lang), subagentTitle(1, 12, lang), carLabel({ tag: "142 g/km, ADEME 2025" }, lang), contextText(42, lang), portraitLabel("model", lang), portraitLabel("books", lang), slotName(22, lang), builtByLabel(lang), forTeamLabel(lang), apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
   for (const k of ["period", "change", "sessions", "cost"]) pane.push(tileLabel(k, lang));
   pane.push(peakHoursText(22, 0.3, lang), peakHoursText(7, 0.3, lang), favoriteModelText("opus", 0.5, lang), booksText(3e6, lang), booksText(5e5, lang), sessionStatsText(3, 2, "fable", lang), blockTitle("usage", lang), blockTitle("session", lang));
   pane.push(waitingText(lang), fromLabel(lang), toLabel(lang), datePlaceholder(lang), dateInvalid(lang));
@@ -952,6 +956,13 @@ check("slot value", plainText(slotValue(8, 0.38, "fr")), "8 h – 11 h · 38 %")
 check("books value", plainText(booksValue(SAGA_TOKENS * 24, "fr")), "≈ 24 sagas Harry Potter");
 check("books value en", plainText(booksValue(SAGA_TOKENS * 0.4, "en")), "≈ 40 % of a Harry Potter saga");
 check("context", plainText(contextText(41.6, "fr")), "Contexte 42 %");
+{
+  const row = subagentsSvg([{ color: PALETTE[2], title: "a" }, { color: PALETTE[7], title: "<b>" }], "t");
+  check("subagents: one molecule each", (row.match(/<g>/g) ?? []).length, 2);
+  check("subagents: no script", /<script|on[a-z]+=/i.test(row), false);
+  check("subagents: titles escaped", row.includes("&lt;b&gt;"), true);
+  check("subagent title", plainText(subagentTitle(2, 12, "fr")), "Sous-agent 2 · 12 gCO₂");
+}
 check("for a team", plainText(forTeamLabel("fr")), "Pour une équipe :");
 check("caption", plainText(stripesCaption("week", 1200, "fr")), "une bande par semaine · médiane 1,2 kgCO₂ par semaine");
 check("caption en", plainText(stripesCaption("day", null, "en")), "one stripe per day");
