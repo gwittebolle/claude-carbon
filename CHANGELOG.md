@@ -53,13 +53,15 @@ against the same length of time before, the API-price value (worded so it holds
 whoever pays: a Pro or Max subscription covers some or all of it), the car
 equivalence
 of the reports (`hooks/mod/lib/equiv.ts`), and the split by project (off until
-turned on), on one line with the main model family by share of CO2 ("Mostly
-Opus (83 %)"). The session block gives its
+turned on), and the main model family by share of CO2 ("Mostly Opus (83 %)").
+In the desktop app the car is a tile of the period beside its CO2, with the
+factor and source in its (i). The session block gives its
 answers, subagents and model, its context window's fill (`$.session.usage()`)
 and API-price value, and in the desktop app a small molecule per subagent
 (`subagentsSvg`, eight then "+N"), coloured by the CO2 of its own requests, and
 walking or breathing like the big one. The history file now also carries each
-session's model. A "Prepare my card" button puts `/carbon-card` in
+session's model. A "Get my 2026 card" button (the card covers the
+calendar year so far, whatever range the pane shows) puts `/carbon-card` in
 an empty prompt (`$.prompt.fill`) and never sends it; a draft in progress is left
 alone.
 

@@ -69,6 +69,8 @@ import {
   detectLang,
   emptyRangeText,
   equivalenceText,
+  carValue,
+  carTag,
   fromLabel,
   hasLangVariable,
   isCarbonStatusLine,
@@ -948,7 +950,7 @@ export const register: Register = (on, options) => {
       const cardButton = (
         <Button
           key="card"
-          label={cardButtonLabel(lang)}
+          label={cardButtonLabel(new Date(now).getFullYear(), lang)}
           {...(isTerminal ? { hotkey: "c", plain: true as const } : { variant: "primary" as const })}
           onPress={prepareCard}
         />
@@ -1065,19 +1067,13 @@ export const register: Register = (on, options) => {
           </Text>
         </Box>
       );
-      // The main model family, the first lever, and the car, on one line under the stripes
+      // The main model family, the first lever, on its own line under the stripes (the
+      // car is a tile: beside the model it read as that model's share)
       const main = hasTotals && totals !== null ? totals.families[0] : undefined;
       const modelLine =
         blocks.portrait && main !== undefined
           ? favoriteModelText(main.family, main.share, lang)
           : null;
-      const portrait = modelLine === null ? [] : [modelLine];
-      const usageLine = [
-        ...portrait,
-        ...(blocks.equivalence && car !== null && hasTotals && totals !== null
-          ? [equivalenceText(totals.grams, car, lang)]
-          : []),
-      ];
       // The session's subagents as small molecules, each coloured by its CO2 against the
       // median of past sessions (grey without one): at most eight, then "+N"
       const agentList = [...pane.agents.values()];
@@ -1145,7 +1141,7 @@ export const register: Register = (on, options) => {
               </Text>
             </Box>
           )}
-          {portrait.length > 0 && <Text dimColor>{portrait.join(" · ")}</Text>}
+          {modelLine !== null && <Text dimColor>{modelLine}</Text>}
           {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
         </Box>
       ) : (
@@ -1204,6 +1200,8 @@ export const register: Register = (on, options) => {
                 {tile("sessions", String(totals.sessions))}
                 {blocks.cost && totals.usd !== null && totals.usd > 0 &&
                   tile("cost", moneyValue(totals.usd, lang), undefined, apiValueNote(lang))}
+                {blocks.equivalence && car !== null &&
+                  tile("car", carValue(totals.grams, car, lang), undefined, carTag(car.tag))}
               </Box>
             </Box>
           )}
@@ -1218,9 +1216,9 @@ export const register: Register = (on, options) => {
               <Text dimColor>{stripesCaption(w.step, bm, lang)}</Text>
             </Box>
           )}
-          {usageLine.length > 0 && (
+          {modelLine !== null && (
             <Box marginTop={1}>
-              <Text dimColor>{usageLine.join(" · ")}</Text>
+              <Text dimColor>{modelLine}</Text>
             </Box>
           )}
           {hasTotals && totals !== null && listed.length > 0 && (

@@ -322,7 +322,7 @@ describe("the /carbon-panel pane", () => {
     await term.unmount();
   });
 
-  test("one line under the stripes: the main model and the car", async ($: any, on: any) => {
+  test("the main model under the stripes, the car in a tile", async ($: any, on: any) => {
     // Three Opus sessions and one Sonnet
     const at = (days: number) => Math.floor((NOW - days * DAY) / 1000);
     const lines = [
@@ -337,7 +337,11 @@ describe("the /carbon-panel pane", () => {
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     const text = await drawn(ui);
     expect(text).toContain("Mon usage");
-    expect(text).toContain("Surtout Opus (90 %) · ≈ 7 km en voiture (142 gCO₂/km, ADEME 2025)");
+    // The model on its own line, the car in a tile of the period: side by side, the km
+    // read as Opus's share
+    expect(text).toContain("Surtout Opus (90 %)");
+    expect(text).not.toContain("Surtout Opus (90 %) ·");
+    expect(text).toContain("En voiture\n≈ 7 km");
     expect(text).toContain("Développé par");
     const links = JSON.stringify(await ui.drawn());
     expect(links).toContain("https://gaetanwittebolle.com/?ref=carbon-panel");
@@ -452,7 +456,7 @@ describe("the /carbon-panel pane", () => {
     await ui.unmount();
     expect(fills).toEqual([]);
     expect(toasts.map((t) => t.replaceAll(NBSP, " "))).toEqual([
-      "Le prompt contient déjà un brouillon : videz-le pour préparer la carte.",
+      "Le prompt contient déjà un brouillon : videz-le pour obtenir la carte.",
     ]);
   });
 
@@ -533,7 +537,10 @@ describe("the /carbon-panel pane", () => {
     expect(JSON.stringify(await ui.drawn()).replaceAll("\u00a0", " ")).toContain(
       "Le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.",
     );
-    expect(text).toContain("≈ 2 km en voiture (142 gCO₂/km, ADEME 2025)");
+    expect(text).toContain("En voiture\n≈ 2 km");
+    expect(JSON.stringify(await ui.drawn()).replaceAll("\u00a0", " ")).toContain(
+      "142 gCO₂/km, ADEME 2025",
+    );
     // A rise is drawn in the error colour
     const rise = await ui.find({ type: "Text", text: "+50\u00a0%" });
     expect(rise.props.color).toBe("error");
@@ -653,7 +660,8 @@ describe("the /carbon-panel pane", () => {
       walk(node.children);
     };
     walk(tree);
-    expect(sources.length).toBe(2);
+    // The molecule, the stripes, and the car tile's (i)
+    expect(sources.length).toBe(3);
     expect(sources.every((s) => s.length <= 131072)).toBe(true);
     // About eight years, one stripe a month, with the years written out
     expect(await drawn(ui)).toContain("une bande par mois");

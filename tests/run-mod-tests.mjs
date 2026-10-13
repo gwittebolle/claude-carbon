@@ -59,6 +59,7 @@ import {
   compareText,
   costText,
   equivalenceText,
+  carValue,
   showLabel,
   noHistoryText,
   otherProjectsLine,
@@ -818,6 +819,8 @@ check("compare custom", compareText(80, 100, "custom", "fr").replaceAll(NBSP, " 
 check("compare nothing before", compareText(80, 0, "30d", "fr"), null);
 check("compare all", compareText(80, 100, "all", "fr"), null);
 check("change percent", changePercent(150, 100), 50);
+check("car tile value", carValue(240000, carEquivalence(factorsDoc, "fr"), "fr").replaceAll(NBSP, " "), "≈ 1 690 km");
+check("card button names the card's year", cardButtonLabel(2026, "fr"), "Obtenir ma carte 2026");
 check("equivalence text", equivalenceText(240000, carEquivalence(factorsDoc, "fr"), "fr").replaceAll(NBSP, " "), "≈ 1 690 km en voiture (142 gCO₂/km, ADEME 2025)");
 check("cost grouped", costText(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $ au prix API");
 check("cost grouped en", costText(27608.16, "en"), "$27,608 at API prices");
@@ -890,7 +893,7 @@ for (const lang of ["fr", "en"]) {
   pane.push(currentLine(52, 140, lang), currentLine(800, 140, lang), currentLine(52, null, lang));
   pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang));
   pane.push(mascotAlt(lang), stripesAlt(lang));
-  pane.push(cardButtonLabel(lang), cardDraftBusy(lang), cardReadyText(lang), cardFillFailed(lang));
+  pane.push(cardButtonLabel(2026, lang), cardDraftBusy(lang), cardReadyText(lang), cardFillFailed(lang));
   pane.push(compareText(120, 100, "30d", lang), compareText(80, 100, "1y", lang), costText(12.3, lang), showLabel(lang));
   pane.push(equivalenceText(240000, carEquivalence(factorsDoc, lang === "fr" ? "fr" : "us"), lang));
   for (const b of ["compare", "cost", "equivalence", "projects"]) pane.push(blockLabel(b, lang));

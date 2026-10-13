@@ -500,6 +500,7 @@ const TILE_LABELS: Record<string, [string, string]> = {
   change: ["Par rapport à avant", "Against before"],
   sessions: ["Sessions", "Sessions"],
   cost: ["Valeur au prix API", "API-price value"],
+  car: ["En voiture", "By car"],
 };
 export function tileLabel(kind: string, lang: Lang): string {
   return pick(TILE_LABELS[kind], lang);
@@ -551,6 +552,15 @@ export function equivalenceText(
   return `≈${NBSP}${thousands(grams / car.divisor, lang)} ${car.label} (${carTag(car.tag)})`;
 }
 
+// The car tile's figure, the period's CO2 in the locale's unit: "≈ 1 684 km"
+export function carValue(
+  grams: number,
+  car: { divisor: number; unit: string },
+  lang: Lang,
+): string {
+  return `≈${NBSP}${thousands(grams / car.divisor, lang)} ${car.unit}`;
+}
+
 // The blocks a person can show or hide in the pane, under the gear
 
 const BLOCK_LABELS: Record<string, [string, string]> = {
@@ -569,9 +579,10 @@ export function showLabel(lang: Lang): string {
 }
 
 
-// The button that puts /carbon-card in the prompt, for the person to send
-export function cardButtonLabel(lang: Lang): string {
-  return lang === "fr" ? "Préparer ma carte" : "Prepare my card";
+// The button that puts /carbon-card in the prompt, for the person to send. The card
+// covers the calendar year so far, whatever range the pane shows: the label says which.
+export function cardButtonLabel(year: number, lang: Lang): string {
+  return lang === "fr" ? `Obtenir ma carte ${year}` : `Get my ${year} card`;
 }
 
 // After the button filled the prompt: what is there and what to do
@@ -591,8 +602,8 @@ export function cardFillFailed(lang: Lang): string {
 // When the prompt already holds a draft, the button leaves it alone and says why
 export function cardDraftBusy(lang: Lang): string {
   return lang === "fr"
-    ? `Le prompt contient déjà un brouillon${NBSP}: videz-le pour préparer la carte.`
-    : "The prompt already holds a draft: clear it to prepare the card.";
+    ? `Le prompt contient déjà un brouillon${NBSP}: videz-le pour obtenir la carte.`
+    : "The prompt already holds a draft: clear it to get the card.";
 }
 
 
