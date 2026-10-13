@@ -74,18 +74,11 @@ import {
   sessionsCount,
   projectBarLine,
   waitingText,
-  booksValue,
-  carLabel,
   carTag,
-  carValue,
   contextText,
   moreAgentsText,
   subagentsAlt,
   subagentTitle,
-  modelValue,
-  portraitLabel,
-  slotName,
-  slotValue,
   fromLabel,
   toLabel,
   dateInvalid,
@@ -95,13 +88,12 @@ import {
   apiValueNote,
   AUTHOR_URL,
   builtByLabel,
+  METHODOLOGY_URL,
+  methodologyLabel,
   forTeamLabel,
   teamUrl,
   blockTitle,
-  booksText,
   favoriteModelText,
-  peakHoursText,
-  SAGA_TOKENS,
   sessionStatsText,
   changeValue,
   moneyValue,
@@ -136,7 +128,6 @@ import {
   parseDay,
   parseHistory,
   pastSessions,
-  peakHours,
   periodTotal,
   previousTotal,
   RANGES,
@@ -833,25 +824,12 @@ check("cost grouped en", costText(27608.16, "en"), "$27,608 at API prices");
 check("cost small", costText(12.3, "fr").replaceAll(NBSP, " "), "12,30 $ au prix API");
 const plainText = (s) => s.replaceAll(NBSP, " ");
 // The portrait
-check("peak hours wrap past midnight", peakHours([5, 0, ...Array(20).fill(0), 3, 4]).start, 22);
-check("peak hours share", Math.round(peakHours([5, 0, ...Array(20).fill(0), 3, 4]).share * 100), 100);
-check("no peak without CO2", peakHours(Array(24).fill(0)), null);
-check("night owl", plainText(peakHoursText(22, 0.34, "fr")), "Oiseau de nuit, de 22 h à 1 h (34 %)");
-check("early bird en", plainText(peakHoursText(5, 0.2, "en")), "Early bird, 05:00 to 08:00 (20 %)");
-check("daytime", plainText(peakHoursText(13, 0.5, "fr")), "En journée, de 13 h à 16 h (50 %)");
-check("evening", plainText(peakHoursText(18, 0.5, "fr")), "Plutôt le soir, de 18 h à 21 h (50 %)");
-check("main model", plainText(favoriteModelText("opus", 0.55, "fr")), "Modèle principal : Opus (55 %)");
-check("saga tokens", Math.round(SAGA_TOKENS), 1517838);
-check("books many", plainText(booksText(SAGA_TOKENS * 86.4, "fr")), "≈ 86 sagas Harry Potter écrites par Claude");
-check("books few", plainText(booksText(SAGA_TOKENS * 2.34, "en")), "≈ 2.3 Harry Potter sagas written by Claude");
-check("books one", plainText(booksText(SAGA_TOKENS * 1.2, "fr")), "≈ 1,2 saga Harry Potter écrite par Claude");
-check("books share", plainText(booksText(SAGA_TOKENS * 0.4, "fr")), "≈ 40 % d'une saga Harry Potter écrite par Claude");
+check("main model", plainText(favoriteModelText("opus", 0.55, "fr")), "Surtout Opus (55 %)");
 check("session stats", sessionStatsText(1, 3, "opus", "fr"), "1 réponse · 3 sous-agents · Opus");
 check("session stats en", sessionStatsText(2, 1, null, "en"), "2 answers · 1 subagent");
 {
   const parsed8 = parseHistory("a\t10\t5\t2\tsite\t0.5\tclaude-opus-5-5\t1234\n")[0];
   check("model read", parsed8.model, "claude-opus-5-5");
-  check("output read", parsed8.output, 1234);
   const r = [
     { id: "a", at: now - day, grams: 30, version: 2, project: "", usd: null, model: "claude-opus-5-5", output: 10 },
     { id: "b", at: now - day, grams: 10, version: 2, project: "", usd: null, model: "claude-haiku-5-5", output: null },
@@ -859,8 +837,6 @@ check("session stats en", sessionStatsText(2, 1, null, "en"), "2 answers · 1 su
   ];
   const sum = periodTotal(r, windowOf({ range: "7d" }, r, now));
   check("families by CO2, known models only", sum.families.map((f) => `${f.family}:${f.share}`).join(","), "opus:0.75,haiku:0.25");
-  check("output over the rows that carry it", sum.output, 15);
-  check("hours sum to the total", sum.hours.reduce((s, g) => s + g, 0), 100);
 }
 check("money value", moneyValue(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $");
 check("money value en", moneyValue(12.3, "en"), "$12.30");
@@ -919,9 +895,9 @@ for (const lang of ["fr", "en"]) {
   pane.push(equivalenceText(240000, carEquivalence(factorsDoc, lang === "fr" ? "fr" : "us"), lang));
   for (const b of ["compare", "cost", "equivalence", "projects"]) pane.push(blockLabel(b, lang));
   pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 6000, 0.07, lang), projectBarLine("", 50, 0.001, lang));
-  pane.push(subagentsAlt(1, lang), subagentsAlt(3, lang), subagentTitle(1, 12, lang), carLabel({ tag: "142 g/km, ADEME 2025" }, lang), contextText(42, lang), portraitLabel("model", lang), portraitLabel("books", lang), slotName(22, lang), builtByLabel(lang), forTeamLabel(lang), apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
+  pane.push(subagentsAlt(1, lang), subagentsAlt(3, lang), subagentTitle(1, 12, lang), contextText(42, lang), builtByLabel(lang), forTeamLabel(lang), apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
   for (const k of ["period", "change", "sessions", "cost"]) pane.push(tileLabel(k, lang));
-  pane.push(peakHoursText(22, 0.3, lang), peakHoursText(7, 0.3, lang), favoriteModelText("opus", 0.5, lang), booksText(3e6, lang), booksText(5e5, lang), sessionStatsText(3, 2, "fable", lang), blockTitle("usage", lang), blockTitle("session", lang));
+  pane.push(favoriteModelText("opus", 0.5, lang), sessionStatsText(3, 2, "fable", lang), blockTitle("usage", lang), blockTitle("session", lang));
   pane.push(waitingText(lang), fromLabel(lang), toLabel(lang), datePlaceholder(lang), dateInvalid(lang));
   pane.push(otherProjectsLine(4, 900, 0.01, lang), topProjectsText([{ project: "a", share: 0.4 }], lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
@@ -940,7 +916,7 @@ for (const text of pane) {
 }
 // French puts a no-break space before : ; ! and ?, never a plain one
 for (const lang of ["fr"]) {
-  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), peakHoursText(22, 0.3, lang), favoriteModelText("opus", 0.5, lang), dateInvalid(lang)];
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), favoriteModelText("opus", 0.5, lang), dateInvalid(lang)];
   for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
 check("current line", plainText(currentLine(52, 140, "fr")), "Cette session : 52 gCO₂ · 0,37× votre médiane");
@@ -951,18 +927,18 @@ check("team url fr", teamUrl("fr"), "https://tokenclimate.com/?ref=carbon-panel"
 check("team url en", teamUrl("en"), "https://tokenclimate.com/en?ref=carbon-panel");
 check("author url", AUTHOR_URL, "https://gaetanwittebolle.com/?ref=carbon-panel");
 check("built by", builtByLabel("fr"), "Développé par");
+check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
+check("methodology label", methodologyLabel("fr"), "Comment c'est calculé");
 check("car tag in gCO₂", plainText(carTag("142 g/km, ADEME 2025")), "142 gCO₂/km, ADEME 2025");
 check("car tag in miles", plainText(carTag("393 g/mile, EPA US")), "393 gCO₂/mile, EPA US");
-check("car value", plainText(carValue(238000, { divisor: 142, unit: "km" }, "fr")), "≈ 1 676 km");
-check("model value", plainText(modelValue("opus", 0.83)), "Opus · 83 %");
-check("slot", slotName(8, "fr"), "En journée");
-check("slot value", plainText(slotValue(8, 0.38, "fr")), "8 h – 11 h · 38 %");
-check("books value", plainText(booksValue(SAGA_TOKENS * 24, "fr")), "≈ 24 sagas Harry Potter");
-check("books value en", plainText(booksValue(SAGA_TOKENS * 0.4, "en")), "≈ 40 % of a Harry Potter saga");
 check("context", plainText(contextText(41.6, "fr")), "Contexte 42 %");
 {
-  const row = subagentsSvg([{ color: PALETTE[2], title: "a" }, { color: PALETTE[7], title: "<b>" }], "t");
-  check("subagents: one molecule each", (row.match(/<g>/g) ?? []).length, 2);
+  const row = subagentsSvg([{ color: PALETTE[2], title: "a" }, { color: PALETTE[7], title: "<b>" }], { walking: true, step: 172 });
+  check("subagents: one molecule each", (row.match(/<g class="m\d+">/g) ?? []).length, 2);
+  check("subagents: they walk", row.includes("344ms"), true);
+  check("subagents: out of step", row.includes("-170ms"), true);
+  check("subagents: at rest they breathe", subagentsSvg([{ color: NEUTRAL, title: "a" }], { walking: false, step: 172 }).includes("2400ms"), true);
+  check("subagents: reduced motion", row.includes("prefers-reduced-motion"), true);
   check("subagents: no script", /<script|on[a-z]+=/i.test(row), false);
   check("subagents: titles escaped", row.includes("&lt;b&gt;"), true);
   check("subagent title", plainText(subagentTitle(2, 12, "fr")), "Sous-agent 2 · 12 gCO₂");

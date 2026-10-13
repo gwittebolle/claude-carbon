@@ -416,99 +416,16 @@ export function familyName(f: string): string {
   return FAMILY_NAMES[f] ?? f;
 }
 
-// "Modèle principal : Opus (68 %)", the share of the period's CO2
+// "Surtout Opus (83 %)", the main model family and its share of the period's CO2
 export function favoriteModelText(f: string, share: number, lang: Lang): string {
   return lang === "fr"
-    ? `Modèle principal${NBSP}: ${familyName(f)} (${percent(share)})`
-    : `Main model: ${familyName(f)} (${percent(share)})`;
-}
-
-const SLOT_NAMES: Array<{ from: number; to: number; fr: string; en: string }> = [
-  { from: 5, to: 9, fr: "Lève-tôt", en: "Early bird" },
-  { from: 9, to: 17, fr: "En journée", en: "Daytime" },
-  { from: 17, to: 22, fr: "Plutôt le soir", en: "Evening person" },
-];
-function hourText(h: number, lang: Lang): string {
-  const hour = ((h % 24) + 24) % 24;
-  return lang === "fr" ? `${hour}${NBSP}h` : `${String(hour).padStart(2, "0")}:00`;
-}
-// The three hours' name, after their middle hour: "Oiseau de nuit"
-export function slotName(start: number, lang: Lang): string {
-  const middle = (start + 1) % 24;
-  const slot = SLOT_NAMES.find((s) => middle >= s.from && middle < s.to);
-  if (slot === undefined) return lang === "fr" ? "Oiseau de nuit" : "Night owl";
-  return lang === "fr" ? slot.fr : slot.en;
-}
-
-// "22 h – 1 h · 34 %", for a tile under the slot's name
-export function slotValue(start: number, share: number, lang: Lang): string {
-  return `${hourText(start, lang)} – ${hourText((start + 3) % 24, lang)} · ${percent(share)}`;
-}
-
-// Named after the middle of the three hours, with their share of the period's CO2:
-// "Oiseau de nuit, de 22 h à 1 h (34 %)"
-export function peakHoursText(start: number, share: number, lang: Lang): string {
-  const name = slotName(start, lang);
-  const end = (start + 3) % 24;
-  return lang === "fr"
-    ? `${name}, de ${hourText(start, lang)} à ${hourText(end, lang)} (${percent(share)})`
-    : `${name}, ${hourText(start, lang)} to ${hourText(end, lang)} (${percent(share)})`;
-}
-
-// The seven Harry Potter books: 1,084,170 words (a widely cited count, not a publisher's
-// figure), at 1.4 tokens a word (estimates for recent Claude tokenizers run 1.3 to 1.5 in
-// English prose). METHODOLOGY.md gives both sources.
-export const SAGA_WORDS = 1_084_170;
-export const TOKENS_PER_WORD = 1.4;
-export const SAGA_TOKENS = SAGA_WORDS * TOKENS_PER_WORD;
-
-// The tokens Claude wrote, against the saga: "≈ 2,3 sagas Harry Potter écrites par
-// Claude". Under one saga, a share of it.
-export function booksText(outputTokens: number, lang: Lang): string {
-  const ratio = outputTokens / SAGA_TOKENS;
-  const fr = lang === "fr";
-  if (ratio < 1) {
-    const share = percent(ratio);
-    return fr
-      ? `≈${NBSP}${share} d'une saga Harry Potter écrite par Claude`
-      : `≈${NBSP}${share} of a Harry Potter saga written by Claude`;
-  }
-  const times = ratio >= 10 ? String(Math.round(ratio)) : decimal(ratio, 1, lang);
-  const plural = ratio >= 2;
-  return fr
-    ? `≈${NBSP}${times} saga${plural ? "s" : ""} Harry Potter écrite${plural ? "s" : ""} par Claude`
-    : `≈${NBSP}${times} Harry Potter saga${plural ? "s" : ""} written by Claude`;
-}
-
-// The portrait's tiles in the desktop pane
-export function modelValue(f: string, share: number): string {
-  return `${familyName(f)} · ${percent(share)}`;
-}
-
-export function booksValue(outputTokens: number, lang: Lang): string {
-  return booksText(outputTokens, lang)
-    .replace(lang === "fr" ? / écrites? par Claude$/ : / written by Claude$/, "");
-}
-
-const PORTRAIT_LABELS: Record<string, [string, string]> = {
-  model: ["Modèle principal", "Main model"],
-  books: ["Écrit par Claude", "Written by Claude"],
-};
-export function portraitLabel(kind: string, lang: Lang): string {
-  return pick(PORTRAIT_LABELS[kind], lang);
+    ? `Surtout ${familyName(f)} (${percent(share)})`
+    : `Mostly ${familyName(f)} (${percent(share)})`;
 }
 
 // The car factor as the pane prints it, the unit spelled out: "142 gCO₂/km, ADEME 2025"
 export function carTag(tag: string): string {
   return tag.replace(/(\d)\s*g\//, `$1${NBSP}gCO₂/`);
-}
-
-export function carLabel(car: { tag: string }, lang: Lang): string {
-  return lang === "fr" ? `En voiture (${carTag(car.tag)})` : `By car (${carTag(car.tag)})`;
-}
-
-export function carValue(grams: number, car: { divisor: number; unit: string }, lang: Lang): string {
-  return `≈${NBSP}${thousands(grams / car.divisor, lang)}${NBSP}${car.unit}`;
 }
 
 // A subagent's molecule, on hover: "Sous-agent 2 · 12 gCO₂"
@@ -556,6 +473,13 @@ export function teamUrl(lang: Lang): string {
   return lang === "fr"
     ? "https://tokenclimate.com/?ref=carbon-panel"
     : "https://tokenclimate.com/en?ref=carbon-panel";
+}
+
+// How the figures are computed, every factor and its source
+export const METHODOLOGY_URL =
+  "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md";
+export function methodologyLabel(lang: Lang): string {
+  return lang === "fr" ? "Comment c'est calculé" : "How it is calculated";
 }
 
 export function builtByLabel(lang: Lang): string {
@@ -630,7 +554,7 @@ export function equivalenceText(
 // The blocks a person can show or hide in the pane, under the gear
 
 const BLOCK_LABELS: Record<string, [string, string]> = {
-  portrait: ["Portrait", "Portrait"],
+  portrait: ["Modèle principal", "Main model"],
   compare: ["Comparaison", "Comparison"],
   cost: ["Coût API", "API cost"],
   equivalence: ["Équivalence", "Equivalence"],

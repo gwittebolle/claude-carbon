@@ -37,6 +37,8 @@ import type { Prices } from "./lib/cost.ts";
 import {
   answerLine,
   builtByLabel,
+  METHODOLOGY_URL,
+  methodologyLabel,
   forTeamLabel,
   AUTHOR_URL,
   datePlaceholder,
@@ -45,9 +47,7 @@ import {
   teamUrl,
   apiValueNote,
   blockTitle,
-  booksText,
   favoriteModelText,
-  peakHoursText,
   sessionStatsText,
   changeValue,
   formatGrams,
@@ -73,17 +73,10 @@ import {
   hasLangVariable,
   isCarbonStatusLine,
   languageSetting,
-  booksValue,
-  carLabel,
-  carValue,
   contextText,
   moreAgentsText,
   subagentsAlt,
   subagentTitle,
-  modelValue,
-  portraitLabel,
-  slotName,
-  slotValue,
   mascotAlt,
   noHistoryText,
   otherProjectsLine,
@@ -137,7 +130,6 @@ import {
   parseDay,
   parseHistory,
   pastSessions,
-  peakHours,
   periodTotal,
   previousTotal,
   RANGES,
@@ -259,7 +251,6 @@ async function resetSessionState($: EngineInterface) {
   pane.subagents = 0;
   pane.agents = new Map();
   pane.sessionFamily = null;
-  pane.sessionOutput = 0;
 }
 
 // The pane. Where the history file is, this session's id (its own row in the file holds
@@ -283,12 +274,11 @@ const pane: {
   // The row of block switches is open
   customizing: boolean;
   // The running session as the pane tells it: subagents started, the family of the last
-  // model that answered, the tokens the model wrote
+  // model that answered
   subagents: number;
   // Each subagent started this session, in order, and the CO2 of its requests
   agents: Map<string, number>;
   sessionFamily: Family | null;
-  sessionOutput: number;
 } = {
   historyFile: null,
   sessionId: null,
@@ -302,7 +292,6 @@ const pane: {
   subagents: 0,
   agents: new Map<string, number>(),
   sessionFamily: null,
-  sessionOutput: 0,
 };
 
 async function loadPaneHistory($: EngineInterface) {
@@ -504,7 +493,6 @@ export const register: Register = (on, options) => {
       pane.subagents = 0;
       pane.agents = new Map();
       pane.sessionFamily = null;
-      pane.sessionOutput = 0;
       pane.rows = undefined;
       stopWalk();
       await $.state.set({ plugin: "claude-carbon", key: "working" }, false);
@@ -608,7 +596,6 @@ export const register: Register = (on, options) => {
           pane.sessionFamily = family(model);
           if (e.agentId !== undefined && pane.agents.has(e.agentId))
             pane.agents.set(e.agentId, (pane.agents.get(e.agentId) ?? 0) + grams);
-          pane.sessionOutput += usage.output_tokens ?? 0;
           const usd = prices !== null ? costUsd(usage, model, prices) : null;
           await update($, session, ({ usd: spent, ...total }) => ({
             ...total,
@@ -810,7 +797,6 @@ export const register: Register = (on, options) => {
               project: own?.project ?? pane.project,
               usd: total.usd ?? null,
               model: own?.model ?? "",
-              output: pane.sessionOutput > 0 ? pane.sessionOutput : (own?.output ?? null),
             },
           ]
         : past;
@@ -1079,33 +1065,19 @@ export const register: Register = (on, options) => {
           </Text>
         </Box>
       );
-      // The portrait: the main model family, the three hours that weigh most, the tokens
-      // Claude wrote against the Harry Potter saga. Read, never judged.
-      const portrait: string[] = [];
-      if (blocks.portrait && hasTotals && totals !== null) {
-        const main = totals.families[0];
-        if (main !== undefined) portrait.push(favoriteModelText(main.family, main.share, lang));
-        const peak = peakHours(totals.hours);
-        if (peak !== null) portrait.push(peakHoursText(peak.start, peak.share, lang));
-        if (totals.output !== null && totals.output > 0)
-          portrait.push(booksText(totals.output, lang));
-      }
-      // The portrait as tiles in the desktop pane, the car with it
-      const portraitTiles: Array<{ label: string; value: string }> = [];
-      if (hasTotals && totals !== null) {
-        if (blocks.portrait) {
-          const main = totals.families[0];
-          if (main !== undefined)
-            portraitTiles.push({ label: portraitLabel("model", lang), value: modelValue(main.family, main.share) });
-          const peak = peakHours(totals.hours);
-          if (peak !== null)
-            portraitTiles.push({ label: slotName(peak.start, lang), value: slotValue(peak.start, peak.share, lang) });
-          if (totals.output !== null && totals.output > 0)
-            portraitTiles.push({ label: portraitLabel("books", lang), value: booksValue(totals.output, lang) });
-        }
-        if (blocks.equivalence && car !== null)
-          portraitTiles.push({ label: carLabel(car, lang), value: carValue(totals.grams, car, lang) });
-      }
+      // The main model family, the first lever, and the car, on one line under the stripes
+      const main = hasTotals && totals !== null ? totals.families[0] : undefined;
+      const modelLine =
+        blocks.portrait && main !== undefined
+          ? favoriteModelText(main.family, main.share, lang)
+          : null;
+      const portrait = modelLine === null ? [] : [modelLine];
+      const usageLine = [
+        ...portrait,
+        ...(blocks.equivalence && car !== null && hasTotals && totals !== null
+          ? [equivalenceText(totals.grams, car, lang)]
+          : []),
+      ];
       // The session's subagents as small molecules, each coloured by its CO2 against the
       // median of past sessions (grey without one): at most eight, then "+N"
       const agentList = [...pane.agents.values()];
@@ -1193,7 +1165,10 @@ export const register: Register = (on, options) => {
           {shownAgents.length > 0 && (
             <Box flexDirection="row" alignItems="center" columnGap={1}>
               <ui.Svg
-                source={subagentsSvg(shownAgents, subagentsAlt(agentList.length, lang))}
+                source={subagentsSvg(shownAgents, {
+                  walking: isWorking,
+                  step: stepMs(cls ?? NEUTRAL_CLASS),
+                })}
                 alt={subagentsAlt(agentList.length, lang)}
                 width={shownAgents.length * 66 - 6}
                 height={48}
@@ -1237,20 +1212,9 @@ export const register: Register = (on, options) => {
               <Text dimColor>{stripesCaption(w.step, bm, lang)}</Text>
             </Box>
           )}
-          {portraitTiles.length > 0 && (
-            <Box flexDirection="row" columnGap={1} rowGap={1} flexWrap="wrap" marginTop={1}>
-              {portraitTiles.map((p) => (
-                <Box
-                  key={`portrait-${p.label}`}
-                  borderStyle="round"
-                  paddingX={1}
-                  flexDirection="column"
-                  flexGrow={1}
-                >
-                  <Text dimColor>{p.label}</Text>
-                  <Text bold>{p.value}</Text>
-                </Box>
-              ))}
+          {usageLine.length > 0 && (
+            <Box marginTop={1}>
+              <Text dimColor>{usageLine.join(" · ")}</Text>
             </Box>
           )}
           {hasTotals && totals !== null && listed.length > 0 && (
@@ -1283,6 +1247,7 @@ export const register: Register = (on, options) => {
         </Box>
           {/* Mods set no font size: the foot stays small by saying little */}
           <Box flexDirection="column" marginTop={1}>
+            <ui.Link href={METHODOLOGY_URL} label={methodologyLabel(lang)} />
             <Box flexDirection="row" columnGap={1}>
               <Text dimColor>{builtByLabel(lang)}</Text>
               <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />

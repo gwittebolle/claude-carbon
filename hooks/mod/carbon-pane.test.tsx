@@ -322,18 +322,14 @@ describe("the /carbon-panel pane", () => {
     await term.unmount();
   });
 
-  test("the portrait reads the period: main model, peak hours, the saga", async ($: any, on: any) => {
-    // Three Opus sessions at 22:00 local, 1.5 M output tokens each, and one Sonnet at 10:00
-    const at = (days: number, hour: number) => {
-      const d = new Date(NOW - days * DAY);
-      d.setHours(hour, 0, 0, 0);
-      return Math.floor(d.getTime() / 1000);
-    };
+  test("one line under the stripes: the main model and the car", async ($: any, on: any) => {
+    // Three Opus sessions and one Sonnet
+    const at = (days: number) => Math.floor((NOW - days * DAY) / 1000);
     const lines = [
-      `a\t${at(4, 22)}\t300\t2\tsite\t1\tclaude-opus-5-5\t1500000`,
-      `b\t${at(3, 22)}\t300\t2\tsite\t1\tclaude-opus-5-5\t1500000`,
-      `c\t${at(2, 22)}\t300\t2\tsite\t1\tclaude-opus-5-5\t1500000`,
-      `d\t${at(1, 10)}\t100\t2\tsite\t1\tclaude-sonnet-5-5\t36000`,
+      `a\t${at(4)}\t300\t2\tsite\t1\tclaude-opus-5-5`,
+      `b\t${at(3)}\t300\t2\tsite\t1\tclaude-opus-5-5`,
+      `c\t${at(2)}\t300\t2\tsite\t1\tclaude-opus-5-5`,
+      `d\t${at(1)}\t100\t2\tsite\t1\tclaude-sonnet-5-5`,
     ];
     world(on, { history: lines.join("\n") });
     await startSession($);
@@ -341,25 +337,21 @@ describe("the /carbon-panel pane", () => {
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     const text = await drawn(ui);
     expect(text).toContain("Mon usage");
-    // The portrait as tiles: a label over a value
-    expect(text).toContain("Modèle principal\nOpus · 90 %");
-    expect(text).toContain("Oiseau de nuit\n21 h – 0 h · 90 %");
-    expect(text).toContain("Écrit par Claude\n≈ 3,0 sagas Harry Potter");
-    // The footer: who made it, and the team version
-    const links = JSON.stringify(await ui.drawn());
+    expect(text).toContain("Surtout Opus (90 %) · ≈ 7 km en voiture (142 gCO₂/km, ADEME 2025)");
     expect(text).toContain("Développé par");
-    expect(text).toContain("Pour une équipe :");
+    const links = JSON.stringify(await ui.drawn());
     expect(links).toContain("https://gaetanwittebolle.com/?ref=carbon-panel");
     expect(links).toContain("https://tokenclimate.com/?ref=carbon-panel");
+    expect(links).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
     // The foot is the pane's last element, held at the bottom
     const tree = (await ui.drawn()) as any;
     expect(tree.props.minHeight).toBe("100%");
     expect(tree.props.justifyContent).toBe("space-between");
     expect(JSON.stringify(tree.children.at(-1))).toContain("TokenClimate");
-    // The portrait can be turned off
+    // The main model can be turned off under the gear
     await ui.press({ key: "customize" });
     await ui.press({ key: "block-portrait" });
-    expect(await drawn(ui)).not.toContain("Modèle principal");
+    expect(await drawn(ui)).not.toContain("Surtout Opus");
     await ui.unmount();
   });
 
@@ -412,7 +404,7 @@ describe("the /carbon-panel pane", () => {
     walk(await ui.drawn());
     const row = svgs.find((s) => String(s.props.alt).startsWith("10 sous-agents"));
     expect(row).toBeDefined();
-    expect((row.props.source.match(/<g>/g) ?? []).length).toBe(8);
+    expect((row.props.source.match(/<g class="m\d+">/g) ?? []).length).toBe(8);
     expect(await drawn(ui)).toContain("+2");
     await ui.unmount();
   });
@@ -540,7 +532,7 @@ describe("the /carbon-panel pane", () => {
     expect(JSON.stringify(await ui.drawn()).replaceAll("\u00a0", " ")).toContain(
       "Le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.",
     );
-    expect(text).toContain("En voiture (142 gCO₂/km, ADEME 2025)\n≈ 2 km");
+    expect(text).toContain("≈ 2 km en voiture (142 gCO₂/km, ADEME 2025)");
     // A rise is drawn in the error colour
     const rise = await ui.find({ type: "Text", text: "+50\u00a0%" });
     expect(rise.props.color).toBe("error");
