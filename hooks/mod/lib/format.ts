@@ -499,12 +499,6 @@ export function teamUrl(lang: Lang): string {
     ? "https://tokenclimate.com/?ref=carbon-panel"
     : "https://tokenclimate.com/en?ref=carbon-panel";
 }
-export function madeByLabel(lang: Lang): string {
-  return lang === "fr" ? "Fait par" : "Made by";
-}
-export function forTeamLabel(lang: Lang): string {
-  return lang === "fr" ? `Pour une équipe${NBSP}:` : "For a team:";
-}
 
 export function blockTitle(kind: "session" | "usage", lang: Lang): string {
   if (kind === "session") return lang === "fr" ? "Cette session" : "This session";

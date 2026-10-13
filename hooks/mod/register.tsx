@@ -40,8 +40,6 @@ import {
   datePlaceholder,
   dateInvalid,
   dayInputValue,
-  forTeamLabel,
-  madeByLabel,
   teamUrl,
   apiValueNote,
   blockTitle,
@@ -1101,6 +1099,9 @@ export const register: Register = (on, options) => {
           {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
         </Box>
       ) : (
+        // The whole height of the side pane, the links held at its foot whatever shows
+        // above them
+        <Box flexDirection="column" minHeight="100%" justifyContent="space-between" rowGap={1}>
         <Box flexDirection="column" rowGap={1}>
           <Box flexDirection="row" alignItems="center">
             {mascot}
@@ -1184,11 +1185,11 @@ export const register: Register = (on, options) => {
             {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
             {options}
           </Box>
+        </Box>
+          {/* Mods set no font size: the foot stays small by saying little */}
           <Box flexDirection="row" columnGap={1} flexWrap="wrap" marginTop={1}>
-            <Text dimColor>{madeByLabel(lang)}</Text>
             <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />
             <Text dimColor>·</Text>
-            <Text dimColor>{forTeamLabel(lang)}</Text>
             <ui.Link href={teamUrl(lang)} label="TokenClimate" />
           </Box>
         </Box>

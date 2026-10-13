@@ -336,10 +336,14 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain("Oiseau de nuit, de 21 h à 0 h (90 %)");
     expect(text).toContain("≈ 3,0 sagas Harry Potter écrites par Claude");
     // The footer: who made it, and the team version
-    expect(text).toContain("Fait par");
     const links = JSON.stringify(await ui.drawn());
     expect(links).toContain("https://gaetanwittebolle.com/?ref=carbon-panel");
     expect(links).toContain("https://tokenclimate.com/?ref=carbon-panel");
+    // The foot is the pane's last element, held at the bottom
+    const tree = (await ui.drawn()) as any;
+    expect(tree.props.minHeight).toBe("100%");
+    expect(tree.props.justifyContent).toBe("space-between");
+    expect(JSON.stringify(tree.children.at(-1))).toContain("TokenClimate");
     // The portrait can be turned off
     await ui.press({ key: "customize" });
     await ui.press({ key: "block-portrait" });

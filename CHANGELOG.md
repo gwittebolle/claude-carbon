@@ -40,8 +40,9 @@ stripes in the desktop app's side pane and 512 in the terminal, the most recent.
 The range is a row of buttons, the custom dates two `Input` fields read at Enter
 (`parseDay`: day first or ISO, a date that does not exist refused); the choice is
 kept in `$.store` for the next session. The stripe under the pointer lights up
-(CSS `:hover`) before its tooltip. The tab is titled "claude-carbon", and a last
-line links to the author's site and to TokenClimate (`?ref=carbon-panel`). The pane opens without the keyboard, so typing
+(CSS `:hover`) before its tooltip. The tab is titled "claude-carbon", and a short
+line held at the pane's foot links to the author's site and to TokenClimate
+(`?ref=carbon-panel`). The pane opens without the keyboard, so typing
 and Escape stay with the prompt. The period's figures (CO2, change, sessions,
 API-price value) are tiles under the range buttons in the desktop app, a line
 under the stripes in the terminal; then the blocks the person chooses under "Customize", kept in `$.store`: the change
