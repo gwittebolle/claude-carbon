@@ -218,9 +218,11 @@ export function stripesSvg(stripes: readonly Stripe[], title: string): string {
           : `<rect x="${i * 10}" y="0" width="10" height="${h}" fill="${s.color}"><title>${escapeXml(s.title)}</title></rect>`,
     )
     .join("");
+  // The stripe under the pointer answers at once, before its tooltip shows
+  const hover = `<style>rect:hover{opacity:.7;stroke:#ffffff;stroke-width:2}</style>`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" shape-rendering="crispEdges">` +
-    `<title>${escapeXml(title)}</title>${bars}</svg>`
+    `<title>${escapeXml(title)}</title>${hover}${bars}</svg>`
   );
 }
 

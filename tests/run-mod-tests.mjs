@@ -78,7 +78,9 @@ import {
   legendText,
   fromLabel,
   toLabel,
-  monthLabel,
+  dateInvalid,
+  datePlaceholder,
+  dayInputValue,
   stripesCaption,
   apiValueNote,
   blockTitle,
@@ -109,13 +111,13 @@ import {
   stripeWords,
 } from "../hooks/mod/lib/mascot.ts";
 import {
-  availableMonths,
   barMedian,
   bars,
   folderName,
   historyPath,
   isView,
-  monthKey,
+  dayKey,
+  parseDay,
   parseHistory,
   pastSessions,
   peakHours,
@@ -743,9 +745,8 @@ const rows = [
   check("a younger history starts at its first session", bars(rows.slice(1), windowOf({ range: "30d" }, rows.slice(1), now)).length, 13);
   check("30 days keep the 3 recent sessions", b30.reduce((s, b) => s + b.sessions, 0), 3);
   check("an empty day is 0 g", b30.filter((b) => b.grams === 0).length, 27);
-  const w90 = windowOf({ range: "90d" }, rows, now);
-  check("90 days by week", w90.step, "week");
-  check("weeks start on Monday", new Date(bars(rows, w90)[0].start).getDay(), 1);
+  const w1y = windowOf({ range: "1y" }, rows, now);
+  check("weeks start on Monday", new Date(bars(rows, w1y)[0].start).getDay(), 1);
   check("12 months by week", windowOf({ range: "1y" }, rows, now).step, "week");
   const wAll = windowOf({ range: "all" }, rows, now);
   check("400 days of history by week", wAll.step, "week");
@@ -754,17 +755,21 @@ const rows = [
   check("all keeps every session", bars(rows, wAll).reduce((s, b) => s + b.sessions, 0), 4);
   const wShort = windowOf({ range: "all" }, rows.slice(1), now);
   check("a short history by day", wShort.step, "day");
-  const custom = windowOf({ range: "custom", from: "2026-09", to: "2026-09" }, rows, now);
+  const custom = windowOf({ range: "custom", from: "2026-09-01", to: "2026-09-30" }, rows, now);
   check("a custom month by day", custom.step, "day");
   check("a custom month starts on the 1st", new Date(custom.start).getDate(), 1);
   check("a custom month, 30 stripes", bars(rows, custom).length, 30);
   check("a custom month sums its sessions", periodTotal(rows, custom).grams, 10);
-  const longCustom = windowOf({ range: "custom", from: "2025-01", to: "2026-10" }, rows, now);
+  const longCustom = windowOf({ range: "custom", from: "2025-01-01", to: "2026-10-31" }, rows, now);
   check("a custom range over a year by month", longCustom.step, "month");
   check("a custom range ends now at the latest", longCustom.end, now);
-  check("months to pick", availableMonths(rows, now).at(-1), "2026-10");
-  check("months from the first session", availableMonths(rows, now).length, 14);
-  check("month key", monthKey(new Date(2026, 4, 3).getTime()), "2026-05");
+  check("day key", dayKey(new Date(2026, 4, 3).getTime()), "2026-05-03");
+  check("date day first", parseDay("1/5/2026"), "2026-05-01");
+  check("date with dots", parseDay(" 01.05.2026 "), "2026-05-01");
+  check("date iso", parseDay("2026-05-01"), "2026-05-01");
+  check("not a real date", parseDay("31/02/2026"), null);
+  check("not a date", parseDay("mai 2026"), null);
+  check("date back in its field", dayInputValue("2026-05-01"), "01/05/2026");
 }
 // The same length of time before, for the comparison; none for the whole history
 {
@@ -805,15 +810,16 @@ const plainText = (s) => s.replaceAll(NBSP, " ");
 check("peak hours wrap past midnight", peakHours([5, 0, ...Array(20).fill(0), 3, 4]).start, 22);
 check("peak hours share", Math.round(peakHours([5, 0, ...Array(20).fill(0), 3, 4]).share * 100), 100);
 check("no peak without CO2", peakHours(Array(24).fill(0)), null);
-check("night owl", plainText(peakHoursText(22, 0.34, "fr")), "Oiseau de nuit : 34 % de votre CO₂ entre 22 h et 1 h");
-check("early bird en", peakHoursText(5, 0.2, "en"), "Early bird: 20\u00a0% of your CO₂ between 05:00 and 08:00");
-check("daytime", plainText(peakHoursText(13, 0.5, "fr")), "En journée : 50 % de votre CO₂ entre 13 h et 16 h");
-check("evening", plainText(peakHoursText(18, 0.5, "fr")), "Plutôt le soir : 50 % de votre CO₂ entre 18 h et 21 h");
-check("main model", plainText(favoriteModelText("opus", 0.55, "fr")), "Modèle principal : Opus, 55 % de votre CO₂");
+check("night owl", plainText(peakHoursText(22, 0.34, "fr")), "Oiseau de nuit, de 22 h à 1 h (34 %)");
+check("early bird en", plainText(peakHoursText(5, 0.2, "en")), "Early bird, 05:00 to 08:00 (20 %)");
+check("daytime", plainText(peakHoursText(13, 0.5, "fr")), "En journée, de 13 h à 16 h (50 %)");
+check("evening", plainText(peakHoursText(18, 0.5, "fr")), "Plutôt le soir, de 18 h à 21 h (50 %)");
+check("main model", plainText(favoriteModelText("opus", 0.55, "fr")), "Modèle principal : Opus (55 %)");
 check("saga tokens", Math.round(SAGA_TOKENS), 1517838);
-check("books many", plainText(booksText(SAGA_TOKENS * 86.4, "fr")), "Claude vous a écrit ≈ 86 fois la saga Harry Potter");
-check("books few", plainText(booksText(SAGA_TOKENS * 2.34, "en")), "Claude wrote you ≈ 2.3 times the Harry Potter saga");
-check("books share", plainText(booksText(SAGA_TOKENS * 0.4, "fr")), "Claude vous a écrit ≈ 40 % de la saga Harry Potter");
+check("books many", plainText(booksText(SAGA_TOKENS * 86.4, "fr")), "≈ 86 sagas Harry Potter écrites par Claude");
+check("books few", plainText(booksText(SAGA_TOKENS * 2.34, "en")), "≈ 2.3 Harry Potter sagas written by Claude");
+check("books one", plainText(booksText(SAGA_TOKENS * 1.2, "fr")), "≈ 1,2 saga Harry Potter écrite par Claude");
+check("books share", plainText(booksText(SAGA_TOKENS * 0.4, "fr")), "≈ 40 % d'une saga Harry Potter écrite par Claude");
 check("session stats", sessionStatsText(1, 3, "opus", "fr"), "1 réponse · 3 sous-agents · Opus");
 check("session stats en", sessionStatsText(2, 1, null, "en"), "2 answers · 1 subagent");
 {
@@ -845,7 +851,7 @@ check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams
   const tue = new Date(2026, 8, 8, 12).getTime();
   const at = new Date(2026, 8, 20, 12).getTime();
   const dst = [row("a", sun, 10), row("b", tue, 20)];
-  const w = bars(dst, windowOf({ range: "90d" }, dst, at));
+  const w = bars(dst, windowOf({ range: "1y" }, dst, at));
   check("DST weeks keep every session", w.reduce((s, b) => s + b.grams, 0), 30);
   check("DST weeks reach the current week", w.at(-1).start <= at && at - w.at(-1).start < 7 * day, true);
   check("DST week starts at the day's first instant", new Date(w.at(-1).start).getHours(), 0);
@@ -865,16 +871,19 @@ check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams
   check("projects heaviest first", sum.projects.map((q) => q.project).join(","), "y,x");
   check("project share", Math.round(sum.projects[0].share * 100), 67);
 }
-check("view check", isView({ range: "90d" }), true);
-check("view check custom", isView({ range: "custom", from: "2026-05", to: "2026-10" }), true);
-check("view check custom backwards", isView({ range: "custom", from: "2026-10", to: "2026-05" }), false);
+check("view check", isView({ range: "1y" }), true);
+check("view check custom", isView({ range: "custom", from: "2026-05-01", to: "2026-10-13" }), true);
+check("view check custom backwards", isView({ range: "custom", from: "2026-10-13", to: "2026-05-01" }), false);
+check("view check months only", isView({ range: "custom", from: "2026-05", to: "2026-10" }), false);
+check("view check 3 months is gone", isView({ range: "90d" }), false);
 check("view check custom no months", isView({ range: "custom" }), false);
 check("view check refuses", isView({ range: "2d" }), false);
 
 // Pane texts, French and English, under the same rules as the rest of the mod
 const pane = [];
 for (const lang of ["fr", "en"]) {
-  pane.push(paneTitle(lang), commandDescription(lang), paneHint(lang), paneUnplaced(lang));
+  // The tab title is the plugin's name on purpose (asked for), so it is checked apart
+  pane.push(commandDescription(lang), paneHint(lang), paneUnplaced(lang));
   pane.push(currentLine(52, 140, lang), currentLine(800, 140, lang), currentLine(52, null, lang));
   pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang));
   pane.push(mascotAlt(lang), stripesAlt(lang));
@@ -887,7 +896,7 @@ for (const lang of ["fr", "en"]) {
   pane.push(apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
   for (const k of ["period", "change", "sessions", "cost"]) pane.push(tileLabel(k, lang));
   pane.push(peakHoursText(22, 0.3, lang), peakHoursText(7, 0.3, lang), favoriteModelText("opus", 0.5, lang), booksText(3e6, lang), booksText(5e5, lang), sessionStatsText(3, 2, "fable", lang), blockTitle("usage", lang), blockTitle("session", lang));
-  pane.push(waitingText(lang), legendText(lang), fromLabel(lang), toLabel(lang), monthLabel("2026-05", lang));
+  pane.push(waitingText(lang), legendText(lang), fromLabel(lang), toLabel(lang), datePlaceholder(lang), dateInvalid(lang));
   pane.push(otherProjectsLine(4, 900, 0.01, lang), topProjectsText([{ project: "a", share: 0.4 }], lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
   for (const s of ["day", "week", "month"]) {
@@ -905,15 +914,15 @@ for (const text of pane) {
 }
 // French puts a no-break space before : ; ! and ?, never a plain one
 for (const lang of ["fr"]) {
-  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), legendText(lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), peakHoursText(22, 0.3, lang), favoriteModelText("opus", 0.5, lang)];
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), legendText(lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), peakHoursText(22, 0.3, lang), favoriteModelText("opus", 0.5, lang), dateInvalid(lang)];
   for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
 check("current line", plainText(currentLine(52, 140, "fr")), "Cette session : 52 gCO₂ · 0,37× votre médiane");
 check("current line high", plainText(currentLine(1400, 140, "en")), "This session: 1.4 kgCO₂ · 10× your median");
+check("pane title", paneTitle("fr"), "claude-carbon");
 check("caption", plainText(stripesCaption("week", 1200, "fr")), "une bande par semaine · médiane 1,2 kgCO₂ par semaine");
 check("caption en", plainText(stripesCaption("day", null, "en")), "one stripe per day");
 check("headline", plainText(periodHeadline(901200, "fr")), "901,2 kgCO₂ sur la période");
-check("month label", monthLabel("2026-05", "fr"), "mai 2026");
 check("date with year", plainText(dateLabel(now, "day", "fr", true)), "12 oct. 2026");
 check("project bar", plainText(projectBarLine("carbonara", 103500, 0.41, "fr")), "███████ 41 % carbonara · 103,5 kgCO₂");
 check("stripe title week", plainText(stripeTitle(now, "week", 1234, 3, "fr")), "semaine du 12 oct. · 1,2 kgCO₂ · 3 sessions");

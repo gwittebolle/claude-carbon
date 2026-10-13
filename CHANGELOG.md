@@ -31,14 +31,17 @@ the bluest down to 124 ms for the reddest: a small 13 x 4 cell molecule blitted
 into a `Raster` in the terminal, a CSS animation inside an `Svg` in the desktop
 app, still under reduced motion. Below it, warming
 stripes of past sessions, the running one included with its live total, covering
-exactly the period picked: 7 or 30 days by day, 3 or 12 months by week (from
-Monday), everything or a custom range of months by day, week or month after its
+exactly the period picked: 7 or 30 days by day, 12 months by week (from Monday),
+everything or a custom range of two typed dates by day, week or month after its
 length (`windowOf` in `hooks/mod/lib/sessions.ts`), empty periods included as
 gaps. They are coloured against the median of the periods shown with sessions in
 them (uncoloured under three), the one still filling left out of it; at most 180
 stripes in the desktop app's side pane and 512 in the terminal, the most recent.
-The range is a row of buttons, the custom months two `Select` lists; the choice is
-kept in `$.store` for the next session. The pane opens without the keyboard, so typing
+The range is a row of buttons, the custom dates two `Input` fields read at Enter
+(`parseDay`: day first or ISO, a date that does not exist refused); the choice is
+kept in `$.store` for the next session. The stripe under the pointer lights up
+(CSS `:hover`) before its tooltip. The tab is titled "claude-carbon", and a last
+line links to the author's site and to TokenClimate (`?ref=carbon-panel`). The pane opens without the keyboard, so typing
 and Escape stay with the prompt. The period's figures (CO2, change, sessions,
 API-price value) are tiles under the range buttons in the desktop app, a line
 under the stripes in the terminal; then the blocks the person chooses under "Customize", kept in `$.store`: the change

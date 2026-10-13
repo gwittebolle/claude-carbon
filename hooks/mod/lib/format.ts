@@ -195,8 +195,9 @@ export function isCarbonStatusLine(command: unknown): boolean {
 
 // ── The /carbon-panel pane ──────────────────────────────────────────────────
 
-export function paneTitle(lang: Lang): string {
-  return lang === "fr" ? "Carbone" : "Carbon";
+// The pane's tab: the plugin's name, as the person asked for it
+export function paneTitle(_lang: Lang): string {
+  return "claude-carbon";
 }
 
 export function commandDescription(lang: Lang): string {
@@ -256,7 +257,6 @@ export function emptyRangeText(lang: Lang): string {
 const RANGE_LABELS: Record<string, [string, string]> = {
   "7d": ["7 j", "7 d"],
   "30d": ["30 j", "30 d"],
-  "90d": ["3 mois", "3 months"],
   "1y": ["12 mois", "12 months"],
   all: ["Tout", "All"],
   custom: ["Personnalisée", "Custom"],
@@ -303,11 +303,21 @@ export function sessionsCount(n: number, lang: Lang): string {
   return countOf(n, "session", lang);
 }
 
-// A month for the custom range's lists: "mai 2026", "May 2026"
-export function monthLabel(key: string, lang: Lang): string {
-  const [y, m] = key.split("-").map(Number);
-  const names = lang === "fr" ? MONTHS_FULL_FR : MONTHS_FULL_EN;
-  return `${names[(m ?? 1) - 1] ?? ""} ${y ?? ""}`;
+// The custom range's fields: a date typed day first, or as 2026-05-01
+export function datePlaceholder(lang: Lang): string {
+  return lang === "fr" ? "JJ/MM/AAAA" : "DD/MM/YYYY";
+}
+
+export function dateInvalid(lang: Lang): string {
+  return lang === "fr"
+    ? `Date non reconnue${NBSP}: tapez-la comme 01/05/2026.`
+    : "Date not recognised: type it as 01/05/2026.";
+}
+
+// A day key shown back in its field: "01/05/2026"
+export function dayInputValue(key: string): string {
+  const [y, m, d] = key.split("-");
+  return `${d ?? ""}/${m ?? ""}/${y ?? ""}`;
 }
 
 export function fromLabel(lang: Lang): string {
@@ -331,8 +341,6 @@ export function legendText(lang: Lang): string {
     : "blue: below the median · red: above it (÷8 to ×8)";
 }
 
-const MONTHS_FULL_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
-const MONTHS_FULL_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 const MONTHS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -378,7 +386,6 @@ export function stripeTitle(
 const BEFORE: Record<string, [string, string]> = {
   "7d": ["aux 7 jours d'avant", "the 7 days before"],
   "30d": ["aux 30 jours d'avant", "the 30 days before"],
-  "90d": ["aux 90 jours d'avant", "the 90 days before"],
   "1y": ["aux 12 mois d'avant", "the 12 months before"],
   custom: ["à la période d'avant", "the period before"],
 };
@@ -415,11 +422,11 @@ export function familyName(f: string): string {
   return FAMILY_NAMES[f] ?? f;
 }
 
-// "Modèle principal : Opus, 55 % de votre CO₂"
+// "Modèle principal : Opus (68 %)", the share of the period's CO2
 export function favoriteModelText(f: string, share: number, lang: Lang): string {
   return lang === "fr"
-    ? `Modèle principal${NBSP}: ${familyName(f)}, ${percent(share)} de votre CO₂`
-    : `Main model: ${familyName(f)}, ${percent(share)} of your CO₂`;
+    ? `Modèle principal${NBSP}: ${familyName(f)} (${percent(share)})`
+    : `Main model: ${familyName(f)} (${percent(share)})`;
 }
 
 const SLOT_NAMES: Array<{ from: number; to: number; fr: string; en: string }> = [
@@ -431,16 +438,16 @@ function hourText(h: number, lang: Lang): string {
   const hour = ((h % 24) + 24) % 24;
   return lang === "fr" ? `${hour}${NBSP}h` : `${String(hour).padStart(2, "0")}:00`;
 }
-// Named after the middle of the three hours: "Oiseau de nuit : 34 % de votre CO₂ entre
-// 22 h et 1 h"
+// Named after the middle of the three hours, with their share of the period's CO2:
+// "Oiseau de nuit, de 22 h à 1 h (34 %)"
 export function peakHoursText(start: number, share: number, lang: Lang): string {
   const middle = (start + 1) % 24;
   const slot = SLOT_NAMES.find((s) => middle >= s.from && middle < s.to);
   const name = slot === undefined ? (lang === "fr" ? "Oiseau de nuit" : "Night owl") : lang === "fr" ? slot.fr : slot.en;
   const end = (start + 3) % 24;
   return lang === "fr"
-    ? `${name}${NBSP}: ${percent(share)} de votre CO₂ entre ${hourText(start, lang)} et ${hourText(end, lang)}`
-    : `${name}: ${percent(share)} of your CO₂ between ${hourText(start, lang)} and ${hourText(end, lang)}`;
+    ? `${name}, de ${hourText(start, lang)} à ${hourText(end, lang)} (${percent(share)})`
+    : `${name}, ${hourText(start, lang)} to ${hourText(end, lang)} (${percent(share)})`;
 }
 
 // The seven Harry Potter books: 1,084,170 words (a widely cited count, not a publisher's
@@ -450,21 +457,22 @@ export const SAGA_WORDS = 1_084_170;
 export const TOKENS_PER_WORD = 1.4;
 export const SAGA_TOKENS = SAGA_WORDS * TOKENS_PER_WORD;
 
-// The tokens Claude wrote, against the saga: "Claude vous a écrit ≈ 2,3 fois la saga
-// Harry Potter". Under one saga, a share of it.
+// The tokens Claude wrote, against the saga: "≈ 2,3 sagas Harry Potter écrites par
+// Claude". Under one saga, a share of it.
 export function booksText(outputTokens: number, lang: Lang): string {
   const ratio = outputTokens / SAGA_TOKENS;
   const fr = lang === "fr";
   if (ratio < 1) {
     const share = percent(ratio);
     return fr
-      ? `Claude vous a écrit ≈${NBSP}${share} de la saga Harry Potter`
-      : `Claude wrote you ≈${NBSP}${share} of the Harry Potter saga`;
+      ? `≈${NBSP}${share} d'une saga Harry Potter écrite par Claude`
+      : `≈${NBSP}${share} of a Harry Potter saga written by Claude`;
   }
   const times = ratio >= 10 ? String(Math.round(ratio)) : decimal(ratio, 1, lang);
+  const plural = ratio >= 2;
   return fr
-    ? `Claude vous a écrit ≈${NBSP}${times} fois la saga Harry Potter`
-    : `Claude wrote you ≈${NBSP}${times} times the Harry Potter saga`;
+    ? `≈${NBSP}${times} saga${plural ? "s" : ""} Harry Potter écrite${plural ? "s" : ""} par Claude`
+    : `≈${NBSP}${times} Harry Potter saga${plural ? "s" : ""} written by Claude`;
 }
 
 // The running session, under its line: "12 réponses · 3 sous-agents · Opus"
@@ -481,6 +489,18 @@ export function sessionStatsText(
   ];
   if (f !== null) parts.push(familyName(f));
   return parts.join(" · ");
+}
+
+// The pane's last line: who made it, and the version for a team
+export const AUTHOR_URL = "https://gaetanwittebolle.com/?ref=carbon-panel";
+export function teamUrl(lang: Lang): string {
+  return `https://tokenclimate.com/${lang === "fr" ? "fr" : "en"}?ref=carbon-panel`;
+}
+export function madeByLabel(lang: Lang): string {
+  return lang === "fr" ? "Fait par" : "Made by";
+}
+export function forTeamLabel(lang: Lang): string {
+  return lang === "fr" ? `Pour une équipe${NBSP}:` : "For a team:";
 }
 
 export function blockTitle(kind: "session" | "usage", lang: Lang): string {

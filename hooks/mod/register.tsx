@@ -36,6 +36,13 @@ import { costUsd, parsePrices } from "./lib/cost.ts";
 import type { Prices } from "./lib/cost.ts";
 import {
   answerLine,
+  AUTHOR_URL,
+  datePlaceholder,
+  dateInvalid,
+  dayInputValue,
+  forTeamLabel,
+  madeByLabel,
+  teamUrl,
   apiValueNote,
   blockTitle,
   booksText,
@@ -69,7 +76,6 @@ import {
   languageSetting,
   legendText,
   mascotAlt,
-  monthLabel,
   noHistoryText,
   otherProjectsLine,
   paneHint,
@@ -108,7 +114,6 @@ import {
 } from "./lib/mascot.ts";
 import type { Stripe } from "./lib/mascot.ts";
 import {
-  availableMonths,
   barMedian,
   bars,
   CURRENT_VERSION,
@@ -116,7 +121,8 @@ import {
   folderName,
   historyPath,
   isView,
-  monthKey,
+  dayKey,
+  parseDay,
   parseHistory,
   pastSessions,
   peakHours,
@@ -804,7 +810,6 @@ export const register: Register = (on, options) => {
         start: b.start,
       }));
       const blocks = await read($, paneBlocks);
-      const months = availableMonths(rows, now);
       const setView = (chosen: PaneView) => {
         void (async () => {
           await $.state.set({ plugin: "claude-carbon", key: "view" }, chosen);
@@ -862,35 +867,45 @@ export const register: Register = (on, options) => {
           {...choice(view.range === range)}
           onPress={() => {
             if (range !== "custom") return setView({ range });
-            // A custom range opens on the last three months, then the lists move it
-            const to = months.at(-1) ?? monthKey(now);
-            const from = months.at(-3) ?? months[0] ?? to;
-            setView({ range, from: view.from ?? from, to: view.to ?? to });
+            // A custom range opens on the last 30 days, then the fields move it
+            setView({
+              range,
+              from: view.from ?? dayKey(now - 29 * 86_400_000),
+              to: view.to ?? dayKey(now),
+            });
           }}
         />
       ));
-      const monthOptions = months.map((m) => ({ value: m, label: monthLabel(m, lang) }));
-      const customRange = view.range === "custom" && monthOptions.length > 0 && (
+      // The custom range: two dates typed, read at Enter. The mods API has no calendar:
+      // a field takes the day first ("01/05/2026") or as 2026-05-01. A start after the
+      // end swaps them.
+      const setDay = (field: "from" | "to", typed: string) => {
+        const key = parseDay(typed);
+        if (key === null) {
+          $.ui.toast(dateInvalid(lang), { timeoutMs: 6000 });
+          return;
+        }
+        const from = field === "from" ? key : (view.from ?? key);
+        const to = field === "to" ? key : (view.to ?? key);
+        setView({ range: "custom", from: from <= to ? from : to, to: from <= to ? to : from });
+      };
+      const customRange = view.range === "custom" && (
         <Box flexDirection="row" columnGap={1} flexWrap="wrap" alignItems="center">
-          <Text dimColor>{fromLabel(lang)}</Text>
-          <ui.Select
+          <ui.Input
             key="from"
-            value={view.from ?? monthOptions[0]?.value ?? ""}
-            options={monthOptions}
-            onSelect={(value: string) => {
-              const to = view.to !== undefined && view.to >= value ? view.to : value;
-              setView({ range: "custom", from: value, to });
-            }}
+            label={fromLabel(lang)}
+            placeholder={datePlaceholder(lang)}
+            value={view.from !== undefined ? dayInputValue(view.from) : ""}
+            submitLabel="ok"
+            onSubmit={(value: string) => setDay("from", value)}
           />
-          <Text dimColor>{toLabel(lang)}</Text>
-          <ui.Select
+          <ui.Input
             key="to"
-            value={view.to ?? monthOptions.at(-1)?.value ?? ""}
-            options={monthOptions}
-            onSelect={(value: string) => {
-              const from = view.from !== undefined && view.from <= value ? view.from : value;
-              setView({ range: "custom", from, to: value });
-            }}
+            label={toLabel(lang)}
+            placeholder={datePlaceholder(lang)}
+            value={view.to !== undefined ? dayInputValue(view.to) : ""}
+            submitLabel="ok"
+            onSubmit={(value: string) => setDay("to", value)}
           />
         </Box>
       );
@@ -1168,6 +1183,13 @@ export const register: Register = (on, options) => {
             </Box>
             {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
             {options}
+          </Box>
+          <Box flexDirection="row" columnGap={1} flexWrap="wrap" marginTop={1}>
+            <Text dimColor>{madeByLabel(lang)}</Text>
+            <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />
+            <Text dimColor>·</Text>
+            <Text dimColor>{forTeamLabel(lang)}</Text>
+            <ui.Link href={teamUrl(lang)} label="TokenClimate" />
           </Box>
         </Box>
       );

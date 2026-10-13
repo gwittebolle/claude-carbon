@@ -225,7 +225,7 @@ describe("the /carbon-panel pane", () => {
     expect(registered[0].immediate).toBe(true);
     await openPane($);
     expect(opened).toEqual([
-      { id: "carbon", title: "Carbone", closeOnEscape: true, rows: 10, columns: 48 },
+      { id: "carbon", title: "claude-carbon", closeOnEscape: true, rows: 10, columns: 48 },
     ]);
     await openPane($);
     expect(closed).toEqual(["carbon"]);
@@ -332,9 +332,14 @@ describe("the /carbon-panel pane", () => {
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     const text = await drawn(ui);
     expect(text).toContain("Mon usage");
-    expect(text).toContain("Modèle principal : Opus, 90 % de votre CO₂");
-    expect(text).toContain("Oiseau de nuit : 90 % de votre CO₂ entre 21 h et 0 h");
-    expect(text).toContain("Claude vous a écrit ≈ 3,0 fois la saga Harry Potter");
+    expect(text).toContain("Modèle principal : Opus (90 %)");
+    expect(text).toContain("Oiseau de nuit, de 21 h à 0 h (90 %)");
+    expect(text).toContain("≈ 3,0 sagas Harry Potter écrites par Claude");
+    // The footer: who made it, and the team version
+    expect(text).toContain("Fait par");
+    const links = JSON.stringify(await ui.drawn());
+    expect(links).toContain("https://gaetanwittebolle.com/?ref=carbon-panel");
+    expect(links).toContain("https://tokenclimate.com/fr?ref=carbon-panel");
     // The portrait can be turned off
     await ui.press({ key: "customize" });
     await ui.press({ key: "block-portrait" });
@@ -457,7 +462,7 @@ describe("the /carbon-panel pane", () => {
     await startSession($);
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-    await ui.press({ key: "range-90d" });
+    await ui.press({ key: "range-1y" });
     const text = await drawn(ui);
     expect(text).toContain("21,0 kgCO₂ sur la période");
     expect(text).toContain("25 sessions");
@@ -495,30 +500,29 @@ describe("the /carbon-panel pane", () => {
     await ui.unmount();
   });
 
-  test("the range buttons and the custom months change the view and keep it", async ($: any, on: any) => {
-    const { store } = world(on, { history: historyText(200) });
+  test("the range buttons and the custom dates change the view and keep it", async ($: any, on: any) => {
+    const { store, toasts } = world(on, { history: historyText(200) });
     await startSession($);
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
-    await ui.press({ key: "range-90d" });
-    expect(store.get("pane.view")).toEqual({ range: "90d" });
-    expect(await drawn(ui)).toContain("une bande par semaine");
-    await ui.press({ key: "range-all" });
-    // 200 days of history: by week, from the first session's week
+    await ui.press({ key: "range-1y" });
+    expect(store.get("pane.view")).toEqual({ range: "1y" });
     expect(await drawn(ui)).toContain("une bande par semaine");
     await ui.press({ key: "range-custom" });
-    const view = store.get("pane.view") as any;
-    expect(view).toEqual({ range: "custom", from: "2026-08", to: "2026-10" });
-    await ui.select({ key: "from", value: "2026-05" });
-    expect(store.get("pane.view")).toEqual({ range: "custom", from: "2026-05", to: "2026-10" });
-    // A start after the end moves the end with it
-    await ui.select({ key: "from", value: "2026-10" });
-    await ui.select({ key: "to", value: "2026-09" });
-    expect(store.get("pane.view")).toEqual({ range: "custom", from: "2026-09", to: "2026-09" });
+    // Opens on the last 30 days
+    expect(store.get("pane.view")).toEqual({ range: "custom", from: "2026-09-13", to: "2026-10-12" });
+    await ui.input({ key: "from", text: "01/09/2026" });
+    expect(store.get("pane.view")).toEqual({ range: "custom", from: "2026-09-01", to: "2026-10-12" });
+    // A start after the end swaps them
+    await ui.input({ key: "to", text: "2026-08-15" });
+    expect(store.get("pane.view")).toEqual({ range: "custom", from: "2026-08-15", to: "2026-09-01" });
+    // A date that does not read leaves the range and says how to type it
+    await ui.input({ key: "from", text: "31/02/2026" });
+    expect(store.get("pane.view")).toEqual({ range: "custom", from: "2026-08-15", to: "2026-09-01" });
+    expect(toasts.map((x) => x.replaceAll(NBSP, " "))).toContain("Date non reconnue : tapez-la comme 01/05/2026.");
     const text = await drawn(ui);
-    expect(text).toContain("Du");
     expect(text).toContain("une bande par jour");
-    expect(text).toContain("1 sept. → 30 sept.");
+    expect(text).toContain("15 août → 1 sept.");
     await ui.unmount();
   });
   test("the molecule walks while Claude works, then breathes slowly", async ($: any, on: any) => {

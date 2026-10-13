@@ -27,15 +27,15 @@ export type SessionRow = {
 // The current methodology: what the running session is measured with
 export const CURRENT_VERSION = 2;
 
-export type Range = "7d" | "30d" | "90d" | "1y" | "all" | "custom";
+export type Range = "7d" | "30d" | "1y" | "all" | "custom";
 // One stripe per day, week or month: picked from the period's length, so the stripes
 // always cover the whole period.
 export type Step = "day" | "week" | "month";
-// A custom range runs from the start of month `from` to the end of month `to`
-// ("2026-05"), local time.
+// A custom range runs from the start of day `from` to the end of day `to`
+// ("2026-05-01"), local time.
 export type View = { range: Range; from?: string; to?: string };
 
-export const RANGES: readonly Range[] = ["7d", "30d", "90d", "1y", "all", "custom"];
+export const RANGES: readonly Range[] = ["7d", "30d", "1y", "all", "custom"];
 export const DEFAULT_VIEW: View = { range: "30d" };
 export const HISTORY_FILE = "sessions-history.tsv";
 // Below this many past sessions the molecule has no median to be coloured against.
@@ -44,13 +44,12 @@ export const MIN_SESSIONS = 10;
 export const MIN_STRIPES = 3;
 
 const DAY_MS = 86_400_000;
-const RANGE_DAYS: Record<"7d" | "30d" | "90d" | "1y", number> = {
+const RANGE_DAYS: Record<"7d" | "30d" | "1y", number> = {
   "7d": 7,
   "30d": 30,
-  "90d": 90,
   "1y": 365,
 };
-const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
+const DAY_KEY = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 export function isView(value: unknown): value is View {
   const v = value as Partial<View> | null | undefined;
@@ -59,9 +58,9 @@ export function isView(value: unknown): value is View {
   if (v.range !== "custom") return true;
   return (
     typeof v.from === "string" &&
-    MONTH_KEY.test(v.from) &&
+    DAY_KEY.test(v.from) &&
     typeof v.to === "string" &&
-    MONTH_KEY.test(v.to) &&
+    DAY_KEY.test(v.to) &&
     v.from <= v.to
   );
 }
@@ -216,31 +215,41 @@ function nextPeriod(start: number, step: Step): number {
       : new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
 }
 
-// "2026-05" for a time, local
-export function monthKey(ms: number): string {
+// "2026-05-01" for a time, local
+export function dayKey(ms: number): string {
   const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function monthOf(key: string): number {
-  const [y, m] = key.split("-").map(Number);
-  return new Date(y ?? 1970, (m ?? 1) - 1, 1).getTime();
+function dayOf(key: string): number {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1).getTime();
 }
 
-// The months a custom range can pick from: the first session's to the current one
-export function availableMonths(rows: readonly SessionRow[], now: number): string[] {
-  const first = rows[0]?.at ?? now;
-  const out: string[] = [];
-  for (let s = monthStart(first); s <= now; s = nextPeriod(s, "month"))
-    out.push(monthKey(s));
-  return out;
+// A date the person typed, "01/05/2026" (day first) or "2026-05-01", as a day key; null
+// when it does not read as a real date.
+export function parseDay(text: string): string | null {
+  const s = text.trim();
+  const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s);
+  const ymd = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+  const [y, m, d] = dmy
+    ? [Number(dmy[3]), Number(dmy[2]), Number(dmy[1])]
+    : ymd
+      ? [Number(ymd[1]), Number(ymd[2]), Number(ymd[3])]
+      : [NaN, NaN, NaN];
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+  const date = new Date(y, m - 1, d);
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d)
+    return null;
+  return dayKey(date.getTime());
 }
 
 export type Window = { start: number; end: number; step: Step };
 
 // The period a view covers and its stripe: a day for up to 45 days, a week for up to
 // 400, a month beyond. The presets end now; the whole history starts at the first
-// session's period; a custom range covers its months whole, up to now.
+// session's period; a custom range covers its days whole, up to now.
 export function windowOf(
   view: View,
   rows: readonly SessionRow[],
@@ -249,8 +258,8 @@ export function windowOf(
   const stepFor = (span: number): Step =>
     span <= 45 * DAY_MS ? "day" : span <= 400 * DAY_MS ? "week" : "month";
   if (view.range === "custom" && view.from !== undefined && view.to !== undefined) {
-    const from = monthOf(view.from);
-    const end = Math.min(now, nextPeriod(monthOf(view.to), "month") - 1);
+    const from = dayOf(view.from);
+    const end = Math.min(now, nextPeriod(dayOf(view.to), "day") - 1);
     const step = stepFor(end - from);
     return { start: startOf(step, from), end, step };
   }
