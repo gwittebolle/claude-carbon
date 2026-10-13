@@ -1150,8 +1150,14 @@ export const register: Register = (on, options) => {
         </Box>
       ) : (
         // The whole height of the side pane, the links held at its foot whatever shows
-        // above them
-        <Box flexDirection="column" minHeight="100%" justifyContent="space-between" rowGap={1}>
+        // above them. A percentage does not reach the desktop's layout: the height is
+        // the rows the surface gives the pane's body.
+        <Box
+          flexDirection="column"
+          minHeight={Math.max(1, e.props.scroll.bodyRows)}
+          justifyContent="space-between"
+          rowGap={1}
+        >
         <Box flexDirection="column" rowGap={1}>
           <Box flexDirection="row" alignItems="center">
             {mascot}

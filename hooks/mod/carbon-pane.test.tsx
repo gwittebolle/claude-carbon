@@ -345,7 +345,8 @@ describe("the /carbon-panel pane", () => {
     expect(links).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
     // The foot is the pane's last element, held at the bottom
     const tree = (await ui.drawn()) as any;
-    expect(tree.props.minHeight).toBe("100%");
+    // As tall as the rows the surface gives the pane's body (20 in these props)
+    expect(tree.props.minHeight).toBe(20);
     expect(tree.props.justifyContent).toBe("space-between");
     expect(JSON.stringify(tree.children.at(-1))).toContain("TokenClimate");
     // The main model can be turned off under the gear
