@@ -493,8 +493,11 @@ export function sessionStatsText(
 
 // The pane's last line: who made it, and the version for a team
 export const AUTHOR_URL = "https://gaetanwittebolle.com/?ref=carbon-panel";
+// The French site is at the root; only the English one has a prefix
 export function teamUrl(lang: Lang): string {
-  return `https://tokenclimate.com/${lang === "fr" ? "fr" : "en"}?ref=carbon-panel`;
+  return lang === "fr"
+    ? "https://tokenclimate.com/?ref=carbon-panel"
+    : "https://tokenclimate.com/en?ref=carbon-panel";
 }
 export function madeByLabel(lang: Lang): string {
   return lang === "fr" ? "Fait par" : "Made by";

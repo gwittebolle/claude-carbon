@@ -83,6 +83,8 @@ import {
   dayInputValue,
   stripesCaption,
   apiValueNote,
+  AUTHOR_URL,
+  teamUrl,
   blockTitle,
   booksText,
   favoriteModelText,
@@ -920,6 +922,10 @@ for (const lang of ["fr"]) {
 check("current line", plainText(currentLine(52, 140, "fr")), "Cette session : 52 gCO₂ · 0,37× votre médiane");
 check("current line high", plainText(currentLine(1400, 140, "en")), "This session: 1.4 kgCO₂ · 10× your median");
 check("pane title", paneTitle("fr"), "claude-carbon");
+// Pages checked live on 2026-10-13: the French site is at the root, /fr is a 404
+check("team url fr", teamUrl("fr"), "https://tokenclimate.com/?ref=carbon-panel");
+check("team url en", teamUrl("en"), "https://tokenclimate.com/en?ref=carbon-panel");
+check("author url", AUTHOR_URL, "https://gaetanwittebolle.com/?ref=carbon-panel");
 check("caption", plainText(stripesCaption("week", 1200, "fr")), "une bande par semaine · médiane 1,2 kgCO₂ par semaine");
 check("caption en", plainText(stripesCaption("day", null, "en")), "one stripe per day");
 check("headline", plainText(periodHeadline(901200, "fr")), "901,2 kgCO₂ sur la période");

@@ -339,7 +339,7 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain("Fait par");
     const links = JSON.stringify(await ui.drawn());
     expect(links).toContain("https://gaetanwittebolle.com/?ref=carbon-panel");
-    expect(links).toContain("https://tokenclimate.com/fr?ref=carbon-panel");
+    expect(links).toContain("https://tokenclimate.com/?ref=carbon-panel");
     // The portrait can be turned off
     await ui.press({ key: "customize" });
     await ui.press({ key: "block-portrait" });
