@@ -277,6 +277,30 @@ describe("the /carbon-panel pane", () => {
     await term.unmount();
   });
 
+  test("the pane sums the period and names the heaviest projects", async ($: any, on: any) => {
+    const lines = [
+      ["a", 3, 600, "carbonara"],
+      ["b", 2, 300, "studio"],
+      ["c", 1, 100, "carbonara"],
+    ].map(([id, days, g, project]) => {
+      const at = Math.floor((NOW - (days as number) * DAY) / 1000);
+      return `${id}\t${at}\t${g}\t2\t${project}`;
+    });
+    world(on, { history: `${lines.join("\n")}\n` });
+    await startSession($);
+    await openPane($);
+    const desk = await $.ui.mount({ ...PANE, surface: "desktop" });
+    const text = await drawn(desk);
+    expect(text).toContain("Sur la période : 1,0 kgCO₂ · 3 sessions");
+    expect(text).toContain("carbonara · 700 gCO₂ · 70 %");
+    expect(text).toContain("studio · 300 gCO₂ · 30 %");
+    expect(text.indexOf("carbonara ·") < text.indexOf("studio ·")).toBe(true);
+    await desk.unmount();
+    const term = await $.ui.mount({ ...PANE, surface: "terminal" });
+    expect(await drawn(term)).toContain("surtout carbonara 70 %, studio 30 %");
+    await term.unmount();
+  });
+
   test("the card button puts /carbon-card in the prompt and never sends it", async ($: any, on: any) => {
     const { fills, submits } = world(on);
     await startSession($);

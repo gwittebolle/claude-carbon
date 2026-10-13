@@ -44,8 +44,12 @@ import {
   cardDraftBusy,
   methodSwitchNote,
   methodSwitchText,
+  otherProjectsLine,
   periodLabel,
+  projectLine,
   stripePerLabel,
+  topProjectsText,
+  totalLine,
   languageSetting,
   mascotAlt,
   noHistoryText,
@@ -83,12 +87,14 @@ import {
   bars,
   CURRENT_VERSION,
   DEFAULT_VIEW,
+  folderName,
   historyPath,
   isCurrent,
   isView,
   legacyMedian,
   parseHistory,
   pastSessions,
+  periodTotal,
   RANGES,
   sessionMedian,
   STEPS,
@@ -198,6 +204,8 @@ const pane: {
   // Bumped by every start and stop of the walk: a step begun under an older one stops,
   // so two chains never run at once and a stopped walk never draws again.
   walkRun: number;
+  // This session's project, its folder's name, as the hooks will record it
+  project: string;
 } = {
   historyFile: null,
   sessionId: null,
@@ -205,6 +213,7 @@ const pane: {
   walkFrame: 0,
   walkTimer: null,
   walkRun: 0,
+  project: "",
 };
 
 async function loadPaneHistory($: EngineInterface) {
@@ -382,6 +391,7 @@ export const register: Register = (on, options) => {
         userProfile: await $.env.get("USERPROFILE"),
       });
       pane.sessionId = await $.session.id().catch(() => null);
+      pane.project = folderName(e.cwd ?? "");
       pane.rows = undefined;
       stopWalk();
       await $.state.set({ plugin: "claude-carbon", key: "working" }, false);
@@ -673,6 +683,7 @@ export const register: Register = (on, options) => {
               at: own?.at ?? now,
               grams: total.grams,
               version: CURRENT_VERSION,
+              project: own?.project ?? pane.project,
             },
           ]
         : past;
@@ -837,6 +848,12 @@ export const register: Register = (on, options) => {
         />
       );
       const head = sm === null ? colorNote(past.length, lang) : summary;
+      // The range summed, and where it went: the heaviest projects first
+      const totals = pane.rows === null ? null : periodTotal(rows, view, now);
+      const hasTotals = totals !== null && totals.sessions > 0;
+      const listed = totals?.projects.slice(0, 5) ?? [];
+      const rest = totals?.projects.slice(5) ?? [];
+      const restGrams = rest.reduce((s, p) => s + p.grams, 0);
       // The terminal packs everything beside a small molecule, for a short block above the
       // prompt; the desktop app's side pane stacks it, one control group per line.
       return isTerminal ? (
@@ -858,6 +875,11 @@ export const register: Register = (on, options) => {
           {sm === null && <Text dimColor={!hasStripes}>{summary}</Text>}
           {hasStripes && stripesDrawing}
           {hasStripes && <Text dimColor>{span}</Text>}
+          {hasTotals && totals !== null && (
+            <Text dimColor>
+              {`${totalLine(totals.grams, totals.sessions, lang)} · ${topProjectsText(totals.projects.slice(0, 3), lang)}`}
+            </Text>
+          )}
         </Box>
       ) : (
         <Box flexDirection="column" rowGap={1}>
@@ -883,6 +905,26 @@ export const register: Register = (on, options) => {
             {hasStripes && stripesDrawing}
             {hasStripes && <Text dimColor>{span}</Text>}
           </Box>
+          {hasTotals && totals !== null && (
+            <Box flexDirection="column">
+              <Text bold>{totalLine(totals.grams, totals.sessions, lang)}</Text>
+              {listed.map((p) => (
+                <Text key={`project-${p.project}`}>
+                  {projectLine(p.project, p.grams, p.share, lang)}
+                </Text>
+              ))}
+              {rest.length > 0 && (
+                <Text dimColor>
+                  {otherProjectsLine(
+                    rest.length,
+                    restGrams,
+                    totals.grams > 0 ? restGrams / totals.grams : 0,
+                    lang,
+                  )}
+                </Text>
+              )}
+            </Box>
+          )}
           <Box flexDirection="row">{cardButton}</Box>
         </Box>
       );

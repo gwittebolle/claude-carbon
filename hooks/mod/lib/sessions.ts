@@ -12,6 +12,8 @@ export type SessionRow = {
   grams: number;
   // Methodology version: 1 for legacy rows, not comparable with the current one
   version: number;
+  // The project's folder name, as the hooks record it; "" when unknown
+  project: string;
 };
 
 // The current methodology: what the running session is measured with
@@ -82,13 +84,13 @@ export function historyPath(env: {
   return null;
 }
 
-// One line per session: id, start in epoch seconds, grams, methodology version,
+// One line per session: id, start in epoch seconds, grams, methodology version, project,
 // tab-separated (a file without the version, from an older hook, is the current one).
 // A line that does not read as that is skipped, never guessed.
 export function parseHistory(text: string): SessionRow[] {
   const rows: SessionRow[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const [id, start, grams, version] = line.split("\t");
+    const [id, start, grams, version, project] = line.split("\t");
     if (
       id === undefined ||
       id === "" ||
@@ -105,6 +107,7 @@ export function parseHistory(text: string): SessionRow[] {
       at: seconds * 1000,
       grams: g,
       version: Number.isFinite(v) ? v : CURRENT_VERSION,
+      project: project ?? "",
     });
   }
   return rows.sort((a, b) => a.at - b.at);
@@ -128,6 +131,45 @@ export function sessionMedian(past: readonly SessionRow[]): number | null {
   if (comparable.length < MIN_SESSIONS) return null;
   const m = median(comparable.map((r) => r.grams));
   return m > 0 ? m : null;
+}
+
+// A folder's name from a path, as the hooks' basename gives it
+export function folderName(path: string): string {
+  const parts = path.split(/[\\/]/).filter((p) => p !== "");
+  return parts.at(-1) ?? "";
+}
+
+export type ProjectTotal = { project: string; grams: number; share: number };
+export type PeriodTotal = {
+  grams: number;
+  sessions: number;
+  // Heaviest first
+  projects: ProjectTotal[];
+};
+
+// What the stripes cover, summed: the range of the view (whole weeks or months for
+// those steps), both methodologies, as the reports sum them.
+export function periodTotal(
+  rows: readonly SessionRow[],
+  view: View,
+  now: number,
+): PeriodTotal {
+  const from = rangeStart(view.range, now);
+  const start =
+    view.step === "session" || !Number.isFinite(from)
+      ? from
+      : view.step === "week"
+        ? weekStart(from)
+        : monthStart(from);
+  const inRange = rows.filter((r) => r.at >= start && r.at <= now);
+  const grams = inRange.reduce((s, r) => s + r.grams, 0);
+  const byProject = new Map<string, number>();
+  for (const r of inRange)
+    byProject.set(r.project, (byProject.get(r.project) ?? 0) + r.grams);
+  const projects = [...byProject.entries()]
+    .map(([project, g]) => ({ project, grams: g, share: grams > 0 ? g / grams : 0 }))
+    .sort((a, b) => b.grams - a.grams);
+  return { grams, sessions: inRange.length, projects };
 }
 
 // The median of legacy sessions, which colours them against each other only.

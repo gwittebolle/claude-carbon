@@ -57,6 +57,10 @@ import {
   methodSwitchNote,
   methodSwitchText,
   noHistoryText,
+  otherProjectsLine,
+  projectLine,
+  topProjectsText,
+  totalLine,
   periodLabel,
   stripePerLabel,
   paneHint,
@@ -90,8 +94,10 @@ import {
   barMedian,
   bars,
   historyPath,
+  folderName,
   isView,
   legacyMedian,
+  periodTotal,
   parseHistory,
   pastSessions,
   RANGES,
@@ -697,6 +703,10 @@ check("no version: current", mixed.find((r) => r.id === "bare").version, 2);
 check("legacy out of the session median", sessionMedian([...ten, ...mixed.filter((r) => r.version === 1)]), 5.5);
 check("legacy median", legacyMedian(mixed), 800);
 check("legacy median needs 3", legacyMedian(mixed.slice(0, 2)), null);
+check("project read", parseHistory("a\t10\t5\t2\tcarbonara\n")[0].project, "carbonara");
+check("no project field", parseHistory("a\t10\t5\t2\n")[0].project, "");
+check("folder name", folderName("/Users/g/code/claude-carbon/"), "claude-carbon");
+check("folder name Windows", folderName("C:\\Users\\g\\site"), "site");
 
 // Stripes by session, week and month, local time
 const now = new Date(2026, 9, 12, 12).getTime(); // Monday 12 Oct 2026
@@ -747,6 +757,21 @@ check("whole first month keeps its sessions", firstMonth.grams, 10);
   if (tz === undefined) delete process.env.TZ;
   else process.env.TZ = tz;
 }
+// The period summed, by project, heaviest first; whole months for a monthly view
+{
+  const p = (id, at, grams, project) => ({ id, at, grams, version: 2, project });
+  const sum = periodTotal(
+    [p("a", now - 2 * day, 30, "x"), p("b", now - day, 60, "y"), p("c", now - 400 * day, 999, "z")],
+    { range: "30d", step: "session" },
+    now,
+  );
+  check("total grams", sum.grams, 90);
+  check("total sessions", sum.sessions, 2);
+  check("projects heaviest first", sum.projects.map((q) => q.project).join(","), "y,x");
+  check("project share", Math.round(sum.projects[0].share * 100), 67);
+  const monthly = periodTotal(rows, { range: "30d", step: "month" }, now);
+  check("monthly total starts on the 1st", monthly.sessions, 3);
+}
 check("view check", isView({ range: "90d", step: "month" }), true);
 check("view check refuses", isView({ range: "2d", step: "month" }), false);
 
@@ -758,6 +783,8 @@ for (const lang of ["fr", "en"]) {
   pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang), uncolouredText(lang));
   pane.push(mascotAlt(lang), stripesAlt(lang));
   pane.push(methodSwitchText(now, lang), methodSwitchNote(now, lang), periodLabel(lang), stripePerLabel(lang), cardButtonLabel(lang), cardDraftBusy(lang));
+  pane.push(totalLine(84900, 91, lang), projectLine("site", 6000, 0.07, lang), projectLine("", 50, 0.001, lang));
+  pane.push(otherProjectsLine(4, 900, 0.01, lang), topProjectsText([{ project: "a", share: 0.4 }], lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
   for (const s of STEPS) {
     pane.push(stepLabel(s, lang));
@@ -774,7 +801,7 @@ for (const text of pane) {
 }
 // French puts a no-break space before : ; ! and ?, never a plain one
 for (const lang of ["fr"]) {
-  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), methodSwitchText(now, lang), cardDraftBusy(lang)];
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), methodSwitchText(now, lang), cardDraftBusy(lang), totalLine(900, 3, lang)];
   for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
 const plainText = (s) => s.replaceAll(NBSP, " ");

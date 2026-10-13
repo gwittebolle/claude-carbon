@@ -391,6 +391,49 @@ export function cardDraftBusy(lang: Lang): string {
     : "The prompt already holds a draft: clear it to prepare the card.";
 }
 
+// The stripes' range summed: "Sur la période : 84,9 kgCO₂ · 91 sessions"
+export function totalLine(grams: number, sessions: number, lang: Lang): string {
+  const head = lang === "fr" ? `Sur la période${NBSP}:` : "Over the period:";
+  return `${head} ${formatGrams(grams, lang)} · ${sessions} session${sessions > 1 ? "s" : ""}`;
+}
+
+function percent(share: number): string {
+  const p = Math.round(share * 100);
+  return p < 1 ? `<${NBSP}1${NBSP}%` : `${p}${NBSP}%`;
+}
+
+// One project's line in the desktop pane: "carbonara · 103 kgCO₂ · 41 %"
+export function projectLine(
+  project: string,
+  grams: number,
+  share: number,
+  lang: Lang,
+): string {
+  const name = project === "" ? (lang === "fr" ? "sans projet" : "no project") : project;
+  return `${name} · ${formatGrams(grams, lang)} · ${percent(share)}`;
+}
+
+// The rest after the projects listed
+export function otherProjectsLine(count: number, grams: number, share: number, lang: Lang): string {
+  const fr = lang === "fr";
+  const label = fr
+    ? `${count} autre${count > 1 ? "s" : ""} projet${count > 1 ? "s" : ""}`
+    : `${count} other project${count > 1 ? "s" : ""}`;
+  return `${label} · ${formatGrams(grams, lang)} · ${percent(share)}`;
+}
+
+// The terminal's single line: the heaviest projects and their shares
+export function topProjectsText(
+  projects: ReadonlyArray<{ project: string; share: number }>,
+  lang: Lang,
+): string {
+  const head = lang === "fr" ? "surtout" : "mostly";
+  const list = projects
+    .map((p) => `${p.project === "" ? "?" : p.project} ${percent(p.share)}`)
+    .join(", ");
+  return `${head} ${list}`;
+}
+
 // The labels before the two rows of buttons in the desktop app
 export function periodLabel(lang: Lang): string {
   return lang === "fr" ? "Période" : "Period";
