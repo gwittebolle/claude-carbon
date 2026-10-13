@@ -596,8 +596,8 @@ export function moneyValue(usd: number, lang: Lang): string {
 // usage, or sessions of several kinds. Which session was billed how is not recorded.
 export function apiValueNote(lang: Lang): string {
   return lang === "fr"
-    ? `Valeur au prix API${NBSP}: le prix de cet usage facturé à l'API${NBSP}; un abonnement Pro ou Max en couvre tout ou partie.`
-    : "API-price value: what this usage costs billed through the API; a Pro or Max subscription covers some or all of it.";
+    ? `Le prix de cet usage facturé à l'API${NBSP}; un abonnement Pro ou Max en couvre tout ou partie.`
+    : "What this usage costs billed through the API; a Pro or Max subscription covers some or all of it.";
 }
 
 // "12,34 $ au prix API", "$12.34 at API prices"

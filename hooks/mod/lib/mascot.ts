@@ -244,6 +244,18 @@ export function subagentsSvg(
   );
 }
 
+// A small (i) whose tooltip says what a figure means: a grey ring and an i, drawn in
+// pixels so no font is needed, the text in its <title>.
+export function infoIconSvg(text: string): string {
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" width="14" height="14">` +
+    `<title>${escapeXml(text)}</title>` +
+    `<circle cx="7" cy="7" r="6" fill="none" stroke="${OUTLINE}" stroke-width="1.2"/>` +
+    `<rect x="6.3" y="3.2" width="1.4" height="1.4" fill="${OUTLINE}"/>` +
+    `<rect x="6.3" y="5.6" width="1.4" height="5.2" fill="${OUTLINE}"/></svg>`
+  );
+}
+
 export const STRIPES_HEIGHT = 72;
 // The hovered stripe's label shows over the stripes' foot: no room kept for it
 export const STRIPES_SVG_HEIGHT = STRIPES_HEIGHT;

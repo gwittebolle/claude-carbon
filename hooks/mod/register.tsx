@@ -118,6 +118,7 @@ import {
   NEUTRAL,
   IDLE_STEP_MS,
   stepMs,
+  infoIconSvg,
   stripeCells,
   subagentsSvg,
   STRIPES_SVG_HEIGHT,
@@ -1052,7 +1053,16 @@ export const register: Register = (on, options) => {
         </Box>
       );
       // A tile of the desktop pane: a dim label over a bold figure, in a rounded frame
-      const tile = (kind: string, value: string, color?: "success" | "error") => (
+      // An (i) beside a tile's label, its explanation on hover
+      const info = (text: string) => (
+        <ui.Svg source={infoIconSvg(text)} alt={text} width={14} height={14} isInteractive />
+      );
+      const tile = (
+        kind: string,
+        value: string,
+        color?: "success" | "error",
+        note?: string,
+      ) => (
         <Box
           key={`tile-${kind}`}
           borderStyle="round"
@@ -1060,7 +1070,10 @@ export const register: Register = (on, options) => {
           flexDirection="column"
           flexGrow={1}
         >
-          <Text dimColor>{tileLabel(kind, lang)}</Text>
+          <Box flexDirection="row" columnGap={1} alignItems="center">
+            <Text dimColor>{tileLabel(kind, lang)}</Text>
+            {note !== undefined && info(note)}
+          </Box>
           <Text bold {...(color !== undefined ? { color } : {})}>
             {value}
           </Text>
@@ -1209,11 +1222,8 @@ export const register: Register = (on, options) => {
                   tile("change", changeValue(delta), delta > 0 ? "error" : delta < 0 ? "success" : undefined)}
                 {tile("sessions", String(totals.sessions))}
                 {blocks.cost && totals.usd !== null && totals.usd > 0 &&
-                  tile("cost", moneyValue(totals.usd, lang))}
+                  tile("cost", moneyValue(totals.usd, lang), undefined, apiValueNote(lang))}
               </Box>
-              {blocks.cost && totals.usd !== null && totals.usd > 0 && (
-                <Text dimColor>{apiValueNote(lang)}</Text>
-              )}
             </Box>
           )}
           {noHistory}

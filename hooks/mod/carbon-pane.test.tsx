@@ -535,9 +535,10 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain(
       "Sur la période\n300 gCO₂\nPar rapport à avant\n+50 %\nSessions\n2\nValeur au prix API\n3,00 $",
     );
-    // The value never says who paid it
-    expect(text).toContain(
-      "Valeur au prix API : le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.",
+    // The value never says who paid it: its (i) explains on hover, taking no line
+    expect(text).not.toContain("un abonnement Pro ou Max");
+    expect(JSON.stringify(await ui.drawn()).replaceAll("\u00a0", " ")).toContain(
+      "Le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.",
     );
     expect(text).toContain("En voiture (142 gCO₂/km, ADEME 2025)\n≈ 2 km");
     // A rise is drawn in the error colour

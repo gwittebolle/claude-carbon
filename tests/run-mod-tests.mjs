@@ -121,6 +121,7 @@ import {
   NEUTRAL,
   PALETTE,
   stepMs,
+  infoIconSvg,
   stripesSvg,
   stripeWords,
   subagentsSvg,
@@ -862,7 +863,8 @@ check("session stats en", sessionStatsText(2, 1, null, "en"), "2 answers · 1 su
 check("money value", moneyValue(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $");
 check("money value en", moneyValue(12.3, "en"), "$12.30");
 check("change value", changeValue(-18).replaceAll(NBSP, " "), "-18 %");
-check("api value note", apiValueNote("fr").replaceAll(NBSP, " "), "Valeur au prix API : le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.");
+check("api value note", apiValueNote("fr").replaceAll(NBSP, " "), "Le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.");
+check("info icon", /<title>a &amp; b<\/title>/.test(infoIconSvg("a & b")) && !/<script|on[a-z]+=/i.test(infoIconSvg("x")), true);
 check("bar median needs 3 full bars", barMedian([{ grams: 1 }, { grams: 0 }, { grams: 3 }]), null);
 check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams: 5 }]), 3);
 // Where midnight is skipped for summer time (Santiago, Sunday 6 Sep 2026), no session
