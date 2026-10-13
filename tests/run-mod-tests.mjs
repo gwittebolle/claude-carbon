@@ -63,7 +63,6 @@ import {
   showLabel,
   noHistoryText,
   otherProjectsLine,
-  topProjectsText,
   paneHint,
   paneTitle,
   paneUnplaced,
@@ -902,7 +901,7 @@ for (const lang of ["fr", "en"]) {
   for (const k of ["period", "change", "sessions", "cost"]) pane.push(tileLabel(k, lang));
   pane.push(favoriteModelText("opus", 0.5, lang), sessionStatsText(3, 2, "fable", lang), blockTitle("usage", lang), blockTitle("session", lang));
   pane.push(waitingText(lang), fromLabel(lang), toLabel(lang), datePlaceholder(lang), dateInvalid(lang));
-  pane.push(otherProjectsLine(4, 900, 0.01, lang), topProjectsText([{ project: "a", share: 0.4 }], lang));
+  pane.push(otherProjectsLine(4, 900, 0.01, lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
   for (const s of ["day", "week", "month"]) {
     pane.push(stripesCaption(s, 1234, lang), stripesCaption(s, null, lang));

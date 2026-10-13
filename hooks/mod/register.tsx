@@ -96,7 +96,6 @@ import {
   stripesCaption,
   stripeTitle,
   toLabel,
-  topProjectsText,
   waitingText,
   welcomeText,
 } from "./lib/format.ts";
@@ -744,14 +743,14 @@ export const register: Register = (on, options) => {
       pane.rows = undefined;
       await loadPaneHistory($);
       // Inline above the prompt (the classic renderer, or a narrow terminal): tall
-      // enough for the molecule, the stripes and the buttons. Docked beside the
+      // enough for both blocks and the links, or what the layout spares (it scrolls). Docked beside the
       // transcript (fullscreen rendering, from 110 columns): a sidebar wide enough
       // for a line of buttons. A size the person gave the pane wins.
       const opened = await $.ui.open({
         id: PANE_ID,
         title: paneTitle(lang),
         closeOnEscape: true,
-        rows: 10,
+        rows: 20,
         columns: 48,
       });
       if (!opened.isPlaced) {
@@ -1100,49 +1099,108 @@ export const register: Register = (on, options) => {
       const empty =
         pane.rows !== null && !hasTotals && <Text dimColor>{emptyRangeText(lang)}</Text>;
 
-      // The terminal packs everything beside a small molecule, for a short block above the
-      // prompt; the desktop app's side pane stacks it, the period's figure first.
+      // The heaviest projects with their share and CO2, then the rest in one line
+      const projectsList = hasTotals && totals !== null && listed.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          {listed.map((p) => (
+            <Text key={`project-${p.project}`}>
+              {projectBarLine(p.project, p.grams, p.share, lang)}
+            </Text>
+          ))}
+          {rest.length > 0 && (
+            <Text dimColor>
+              {otherProjectsLine(
+                rest.length,
+                restGrams,
+                totals.grams > 0 ? restGrams / totals.grams : 0,
+                lang,
+              )}
+            </Text>
+          )}
+        </Box>
+      );
+      // Mods set no font size: the foot stays small by saying little
+      const foot = (
+        <Box flexDirection="column" marginTop={1}>
+          <ui.Link href={METHODOLOGY_URL} label={methodologyLabel(lang)} />
+          <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+            <Text dimColor>{builtByLabel(lang)}</Text>
+            <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />
+          </Box>
+          <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+            <Text dimColor>{forTeamLabel(lang)}</Text>
+            <ui.Link href={teamUrl(lang)} label="TokenClimate" />
+          </Box>
+        </Box>
+      );
+      // The session's subagents in a terminal: a dot each in its molecule's colour
+      const agentDots = shownAgents.length > 0 && (
+        <Box flexDirection="row" columnGap={1}>
+          {shownAgents.map((a, i) => (
+            <Text key={`agent-${i}`} color={a.color}>
+              ●
+            </Text>
+          ))}
+          {moreAgents > 0 && <Text dimColor>{moreAgentsText(moreAgents)}</Text>}
+        </Box>
+      );
+
+      // The terminal reads like the desktop pane, in lines: this session beside a small
+      // molecule, then "Mon usage" with its gear, the period's figures before the
+      // stripes, the card, and the links at the foot of the rows it is given.
       return isTerminal ? (
-        <Box flexDirection="column">
-          <Box flexDirection="row">
-            {mascot}
-            <Box flexDirection="column" marginLeft={2} flexShrink={1}>
-              <Text bold>{sessionText}</Text>
-              {sessionStats !== null && <Text dimColor>{sessionStats}</Text>}
-              {sessionMeta !== "" && <Text dimColor>{sessionMeta}</Text>}
-              {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
-              <Box flexDirection="row" columnGap={2} flexWrap="wrap">
-                {rangeButtons}
-                <Text dimColor>·</Text>
-                {cardButton}
-                {customizeButton}
+        <Box
+          flexDirection="column"
+          minHeight={Math.max(1, e.props.scroll.bodyRows)}
+          justifyContent="space-between"
+        >
+          <Box flexDirection="column">
+            <Box flexDirection="row">
+              {mascot}
+              <Box flexDirection="column" marginLeft={2} flexShrink={1}>
+                <Text bold>{sessionText}</Text>
+                {sessionStats !== null && <Text dimColor>{sessionStats}</Text>}
+                {agentDots}
+                {sessionMeta !== "" && <Text dimColor>{sessionMeta}</Text>}
+                {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
               </Box>
             </Box>
-          </Box>
-          {customRange}
-          {options}
-          {noHistory}
-          {empty}
-          {hasStripes && stripesDrawing}
-          {hasStripes && (
-            <Text dimColor>{`${dates} · ${stripesCaption(w.step, bm, lang)}`}</Text>
-          )}
-          {hasTotals && totals !== null && (
-            <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-              <Text bold>{periodHeadline(totals.grams, lang)}</Text>
-              {changeText}
-              <Text dimColor>
-                {[
-                  ...secondary,
-                  ...(blocks.projects
-                    ? [topProjectsText(totals.projects.slice(0, 3), lang)]
-                    : []),
-                ].join(" · ")}
-              </Text>
+            <Box flexDirection="column" marginTop={1}>
+              <Box flexDirection="row" columnGap={2}>
+                <Text bold>{blockTitle("usage", lang)}</Text>
+                {customizeButton}
+              </Box>
+              {options}
+              <Box flexDirection="row" columnGap={2} flexWrap="wrap">
+                {rangeButtons}
+              </Box>
+              {customRange}
             </Box>
-          )}
-          {modelLine !== null && <Text dimColor>{modelLine}</Text>}
-          {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
+            {noHistory}
+            {empty}
+            {hasTotals && totals !== null && (
+              <Box flexDirection="column" marginTop={1}>
+                <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+                  <Text bold>{periodHeadline(totals.grams, lang)}</Text>
+                  {changeText}
+                </Box>
+                <Text dimColor>{secondary.join(" · ")}</Text>
+              </Box>
+            )}
+            {hasStripes && (
+              <Box flexDirection="column" marginTop={1}>
+                {stripesDrawing}
+                <Text dimColor>{`${dates} · ${stripesCaption(w.step, bm, lang)}`}</Text>
+              </Box>
+            )}
+            {modelLine !== null && <Text dimColor>{modelLine}</Text>}
+            {projectsList}
+            <Box flexDirection="column" marginTop={1}>
+              <Box flexDirection="row">{cardButton}</Box>
+              {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
+            </Box>
+          </Box>
+          {foot}
         </Box>
       ) : (
         // The whole height of the side pane, the links held at its foot whatever shows
@@ -1221,46 +1279,13 @@ export const register: Register = (on, options) => {
               <Text dimColor>{modelLine}</Text>
             </Box>
           )}
-          {hasTotals && totals !== null && listed.length > 0 && (
-            <Box flexDirection="column" marginTop={1}>
-              {listed.length > 0 && (
-                <Box flexDirection="column" marginTop={1}>
-                  {listed.map((p) => (
-                    <Text key={`project-${p.project}`}>
-                      {projectBarLine(p.project, p.grams, p.share, lang)}
-                    </Text>
-                  ))}
-                  {rest.length > 0 && (
-                    <Text dimColor>
-                      {otherProjectsLine(
-                        rest.length,
-                        restGrams,
-                        totals.grams > 0 ? restGrams / totals.grams : 0,
-                        lang,
-                      )}
-                    </Text>
-                  )}
-                </Box>
-              )}
-            </Box>
-          )}
+          {projectsList}
           <Box flexDirection="column" rowGap={1}>
             <Box flexDirection="row">{cardButton}</Box>
             {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
           </Box>
         </Box>
-          {/* Mods set no font size: the foot stays small by saying little */}
-          <Box flexDirection="column" marginTop={1}>
-            <ui.Link href={METHODOLOGY_URL} label={methodologyLabel(lang)} />
-            <Box flexDirection="row" columnGap={1}>
-              <Text dimColor>{builtByLabel(lang)}</Text>
-              <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />
-            </Box>
-            <Box flexDirection="row" columnGap={1}>
-              <Text dimColor>{forTeamLabel(lang)}</Text>
-              <ui.Link href={teamUrl(lang)} label="TokenClimate" />
-            </Box>
-          </Box>
+          {foot}
         </Box>
       );
     } catch {

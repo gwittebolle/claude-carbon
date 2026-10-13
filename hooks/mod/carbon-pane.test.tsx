@@ -225,7 +225,7 @@ describe("the /carbon-panel pane", () => {
     expect(registered[0].immediate).toBe(true);
     await openPane($);
     expect(opened).toEqual([
-      { id: "carbon", title: "claude-carbon", closeOnEscape: true, rows: 10, columns: 48 },
+      { id: "carbon", title: "claude-carbon", closeOnEscape: true, rows: 20, columns: 48 },
     ]);
     await openPane($);
     expect(closed).toEqual(["carbon"]);
@@ -317,9 +317,32 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain("30 % studio · 300 gCO₂");
     expect(text.indexOf("% carbonara") < text.indexOf("% studio")).toBe(true);
     await desk.unmount();
+    // The terminal lists them the same way, a line each with its CO2
     const term = await $.ui.mount({ ...PANE, surface: "terminal" });
-    expect(await drawn(term)).toContain("surtout carbonara 70 %, studio 30 %");
+    const listedThere = await drawn(term);
+    expect(listedThere).toContain("70 % carbonara · 700 gCO₂");
+    expect(listedThere).toContain("30 % studio · 300 gCO₂");
     await term.unmount();
+  });
+
+  test("the terminal follows the desktop pane's order, in lines", async ($: any, on: any) => {
+    world(on, { history: historyText(40) });
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+    const text = await drawn(ui);
+    // "Mon usage" with its gear, the period's figures before the stripes' dates, then
+    // the model, the card and the links at the foot
+    const order = ["Mon usage", "sur la période", "une bande par", "Développé par"];
+    const at = order.map((t) => text.indexOf(t));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    const links = JSON.stringify(await ui.drawn());
+    expect(links).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
+    expect(links).toContain("https://tokenclimate.com/?ref=carbon-panel");
+    expect((await ui.find({ key: "customize" })).props.label).toBe("\u2699");
+    expect((await ui.find({ key: "card" })).props.label).toBe("Obtenir ma carte 2026");
+    await ui.unmount();
   });
 
   test("the main model under the stripes, the car in a tile", async ($: any, on: any) => {
@@ -412,6 +435,12 @@ describe("the /carbon-panel pane", () => {
     expect((row.props.source.match(/<g class="m\d+">/g) ?? []).length).toBe(8);
     expect(await drawn(ui)).toContain("+2");
     await ui.unmount();
+    // The terminal has no room for molecules: a coloured dot each, eight then "+2"
+    const term = await $.ui.mount({ ...PANE, surface: "terminal" });
+    const dots = texts(await term.drawn()).filter((t) => t === "●");
+    expect(dots.length).toBe(8);
+    expect(await drawn(term)).toContain("+2");
+    await term.unmount();
   });
 
   test("the card button puts /carbon-card in the prompt and never sends it", async ($: any, on: any) => {

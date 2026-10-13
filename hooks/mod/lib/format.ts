@@ -635,20 +635,6 @@ export function otherProjectsLine(count: number, grams: number, share: number, l
   return `${label} · ${formatGrams(grams, lang)} · ${percent(share)}`;
 }
 
-// The terminal's single line: the heaviest projects and their shares
-export function topProjectsText(
-  projects: ReadonlyArray<{ project: string; share: number }>,
-  lang: Lang,
-): string {
-  const head = lang === "fr" ? "surtout" : "mostly";
-  const list = projects
-    .map((p) => `${p.project === "" ? "?" : p.project} ${percent(p.share)}`)
-    .join(", ");
-  return `${head} ${list}`;
-}
-
-
-
 export function mascotAlt(lang: Lang): string {
   return lang === "fr"
     ? "Molécule de CO₂ en pixels, colorée selon cette session par rapport à votre médiane, du bleu (en dessous) au rouge (au-dessus)"
