@@ -13,6 +13,14 @@ STATUSLINE="${REPO_DIR}/scripts/statusline.sh"
 # Keep the demo line free of the update notice segment
 export CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1
 
+# The line names the folder and its git branch: a throwaway repo called claude-carbon on
+# main, so the recording never shows the branch it was made from
+DEMO_ROOT="$(mktemp -d)"
+DEMO_DIR="${DEMO_ROOT}/claude-carbon"
+mkdir -p "$DEMO_DIR"
+git -C "$DEMO_DIR" init -q -b main
+git -C "$DEMO_DIR" -c user.name=demo -c user.email=demo@example.invalid commit -q --allow-empty -m demo
+
 # resets_at 2h from now so the reset-time segment renders without a live API
 RESET_EPOCH=$(( $(date +%s) + 7200 ))
 ESC=$'\033'
@@ -32,7 +40,8 @@ STEPS=(
 
 # Wipe the typed vhs command and hide the cursor; restore on exit
 printf '\033[2J\033[H\033[?25l'
-trap 'printf "\033[?25h"' EXIT
+# The throwaway repo goes to the trash where there is one, else stays in the temp folder
+trap 'printf "\033[?25h"; command -v trash >/dev/null && trash "$DEMO_ROOT"' EXIT
 
 printf '\033[2m> fix the flaky integration test and open a PR\033[0m\n\n'
 
@@ -42,7 +51,7 @@ for step in "${STEPS[@]}"; do
   LINE="$(jq -n \
     --arg model_id "claude-opus-5" \
     --arg name "Opus 5" \
-    --arg dir "$REPO_DIR" \
+    --arg dir "$DEMO_DIR" \
     --argjson in "$IN" --argjson out "$OUT" \
     --argjson cost "$COST" --argjson ctx "$CTX" \
     --argjson use "$USE" --argjson reset "$RESET_EPOCH" \
@@ -52,8 +61,8 @@ for step in "${STEPS[@]}"; do
       cost: {total_cost_usd: $cost},
       rate_limits: {five_hour: {used_percentage: $use, resets_at: $reset}}}' \
     | bash "$STATUSLINE")"
-  # Recording-only highlight: "255g CO₂" / "1.2kg CO₂" in orange #f55c0f.
-  LINE="$(printf '%s' "$LINE" | sed -E "s/([0-9.]+(g|kg) CO₂)/${ESC}[38;2;245;92;15m\\1${ESC}[0m/")"
+  # Recording-only highlight: "255gCO₂" / "1.2kgCO₂" in orange #f55c0f.
+  LINE="$(printf '%s' "$LINE" | sed -E "s/([0-9.]+(g|kg)CO₂)/${ESC}[38;2;245;92;15m\\1${ESC}[0m/")"
   printf '\r\033[K%s' "$LINE"
   if [ "$FIRST" = "1" ]; then
     sleep 1.2

@@ -94,9 +94,9 @@ fi
 # A function because the monthly nudge prints its figure the same way.
 co2_display() {
   if [ "$1" -ge 1000 ] 2>/dev/null; then
-    echo "$(echo "$1" | LC_ALL=C awk '{printf "%.1fkg", $1/1000}') CO₂"
+    echo "$(echo "$1" | LC_ALL=C awk '{printf "%.1fkg", $1/1000}')CO₂"
   else
-    echo "${1}g CO₂"
+    echo "${1}gCO₂"
   fi
 }
 CO2_DISPLAY="$(co2_display "$CO2_G")"
@@ -305,7 +305,7 @@ if [ -z "${CLAUDE_CARBON_NO_DRIFT_CHECK:-}" ] && printf '1.0\n1.0.1\n' | sort -V
   fi
 fi
 
-# Monthly share nudge: "📊 September: 84.2kg CO₂ · /carbon-card", from the 1st
+# Monthly share nudge: "📊 September: 84.2kgCO₂ · /carbon-card", from the 1st
 # through the Nth of each month (N = CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY, default
 # 10). The figure is the month just closed, the bar the card draws for it, in the
 # same format as the session figure next to it. Generating a card clears the nudge

@@ -140,7 +140,7 @@ contains "CO2 rendered"           "CO₂"     "$SL_OUT"
 # The DB row exists, so the status line must report the stored session total rather
 # than the context-window fallback. Anything under a gram would mean it fell back.
 case "$SL_OUT" in
-  *" 0g CO₂"*) bad "status line read the stored row" "a non-zero total" "$SL_OUT" ;;
+  *" 0gCO₂"*) bad "status line read the stored row" "a non-zero total" "$SL_OUT" ;;
   *)           ok  "status line read the stored row" ;;
 esac
 

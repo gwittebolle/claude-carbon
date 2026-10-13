@@ -94,7 +94,7 @@ Same command to install and to update to the latest version (all three run the s
 **2. Restart Claude Code.** Your CO2 appears in the status line:
 
 ```
-claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 · 65g CO₂ | Use 24% ↻13:00
+claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 · 65gCO₂ | Use 24% ↻13:00
 ```
 
 Segments, left to right: project + git branch, model + context window %, API-equivalent session cost + CO2, 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
@@ -131,7 +131,7 @@ card is saved as an HTML page in the same folder and opens in your browser, scal
 window, and a screenshot of it does the job.
 The card's footer says where to find the tool, `claude-carbon sur GitHub` / `claude-carbon on GitHub`, with the address below it.
 
-From the 1st to the 10th of each month the status line ends with `📊 September: 84.2kg CO₂ · /carbon-card`:
+From the 1st to the 10th of each month the status line ends with `📊 September: 84.2kgCO₂ · /carbon-card`:
 the total of the month just closed, the bar the card draws for it, in the same format as the
 session figure. It is read from carbon.db once a day while the nudge shows, and kept in
 `~/.claude/claude-carbon/last-month-total`. A month with fewer than 7 days of sessions gets no
@@ -389,7 +389,7 @@ Claude Code accepts a single `statusLine` command, so claude-carbon's full statu
 ~/code/claude-carbon/scripts/statusline.sh --segment
 ```
 
-(adjust the path if you installed with `CLAUDE_CARBON_DIR`). The widget receives the same status JSON on stdin and prints just the cost + CO2 pair, e.g. `$0.68 · 35g CO₂`. Segment mode never touches the network. Recording to the local database is unaffected either way: persistence runs from hooks, not from the status line.
+(adjust the path if you installed with `CLAUDE_CARBON_DIR`). The widget receives the same status JSON on stdin and prints just the cost + CO2 pair, e.g. `$0.68 · 35gCO₂`. Segment mode never touches the network. Recording to the local database is unaffected either way: persistence runs from hooks, not from the status line.
 
 With the segment in ccstatusline, the [mod](#the-co2-of-each-answer-mod)'s session entry under the prompt shows the total a second time. Turn it off with the `showSessionTotal` option in `/config`; the desktop app, which has no status line, keeps it.
 

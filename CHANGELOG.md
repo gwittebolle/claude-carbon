@@ -15,6 +15,13 @@ it. The README's `/carbon-pr` note now speaks of the session's last folder.
 `tests/run-per-model-tests.sh` covers a session that changes folder mid-way,
 with and without a truncated last line.
 
+### fix: the status line writes gCO₂ and kgCO₂, as the mod and the reports do
+
+The status line printed `65g CO₂` and `84.2kg CO₂`; it now prints `65gCO₂` and
+`84.2kgCO₂`, the unit the mod, the pane and the cards use. The README's
+examples, the demo GIF and the social preview follow. The demo now records from a
+throwaway repository on `main`, so it never shows the branch it was made from.
+
 ### fix: the status line's first turn shows the session's CO2, not a context estimate
 
 On a session's first turn the status line draws before the Stop hook has written
