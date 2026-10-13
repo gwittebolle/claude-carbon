@@ -56,8 +56,12 @@ import {
   cardDraftBusy,
   cardFillFailed,
   cardReadyText,
-  methodSwitchNote,
-  methodSwitchText,
+  blockLabel,
+  compareText,
+  costText,
+  customizeLabel,
+  equivalenceText,
+  showLabel,
   noHistoryText,
   otherProjectsLine,
   projectLine,
@@ -88,7 +92,6 @@ import {
   NEUTRAL,
   PALETTE,
   stepMs,
-  stripeColumns,
   stripesSvg,
   stripeWords,
 } from "../hooks/mod/lib/mascot.ts";
@@ -98,14 +101,15 @@ import {
   historyPath,
   folderName,
   isView,
-  legacyMedian,
   periodTotal,
+  previousTotal,
   parseHistory,
   pastSessions,
   RANGES,
   sessionMedian,
   STEPS,
 } from "../hooks/mod/lib/sessions.ts";
+import { carEquivalence, equivalenceSet } from "../hooks/mod/lib/equiv.ts";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NBSP = " ";
@@ -639,15 +643,6 @@ check("mini frames same size", MINI_FRAMES.every((f) => f.length === CELL_ROWS *
 check("mini hop one pixel", MINI_FRAMES[0][2], MINI_FRAMES[1][1]);
 check("big hop one pixel", FRAMES[0][2], FRAMES[1][1]);
 check("stripe cells", stripeWords([{ color: "#ff0000", title: "" }, { color: null, title: "" }], 2).length, 12);
-const withDivider = [
-  { color: "#ff0000", title: "" },
-  { color: null, title: "x", divider: true },
-  { color: "#00ff00", title: "" },
-];
-check("divider takes one column", stripeColumns(withDivider, 3), 7);
-check("divider cells", stripeWords(withDivider, 1, 3).length, 21);
-check("divider glyph", stripeWords(withDivider, 1, 3)[9], 0x2503);
-check("divider in the svg", stripesSvg(withDivider, "t").includes('width="2"'), true);
 
 const svg = mascotSvg({ color: PALETTE[6], walking: true, step: 172, title: "t" });
 check("svg no script", /<script|on[a-z]+=/i.test(svg), false);
@@ -702,9 +697,10 @@ check("median from 10 sessions", sessionMedian(ten), 5.5);
 const mixed = parseHistory("old1\t10\t900\t1\nold2\t20\t700\t1\nold3\t30\t800\t1\nnew\t40\t5\t2\nbare\t50\t6\n");
 check("legacy version read", mixed.filter((r) => r.version === 1).length, 3);
 check("no version: current", mixed.find((r) => r.id === "bare").version, 2);
-check("legacy out of the session median", sessionMedian([...ten, ...mixed.filter((r) => r.version === 1)]), 5.5);
-check("legacy median", legacyMedian(mixed), 800);
-check("legacy median needs 3", legacyMedian(mixed.slice(0, 2)), null);
+// One series: legacy rows count in the median like the others
+check("legacy in the session median", sessionMedian([...ten, ...mixed.filter((r) => r.version === 1)]), 7);
+check("cost read", parseHistory("a\t10\t5\t2\tsite\t0.4565\n")[0].usd, 0.4565);
+check("no cost field", parseHistory("a\t10\t5\t2\tsite\n")[0].usd, null);
 check("project read", parseHistory("a\t10\t5\t2\tcarbonara\n")[0].project, "carbonara");
 check("no project field", parseHistory("a\t10\t5\t2\n")[0].project, "");
 check("folder name", folderName("/Users/g/code/claude-carbon/"), "claude-carbon");
@@ -728,9 +724,34 @@ const months = bars(rows, { range: "90d", step: "month" }, now);
 check("months: Sep, Oct", months.map((b) => b.grams).join(","), "10,60");
 check("month starts on the 1st", new Date(months[1].start).getDate(), 1);
 check("empty range", bars(rows, { range: "7d", step: "week" }, now - 30 * day).length, 0);
-// Legacy weeks stop at their last session, not at now
-const legacyWeeks = bars(rows.slice(0, 2), { range: "all", step: "week" }, now, rows[1].at);
-check("periods end at until", legacyWeeks.length, 1);
+// The same length of time before, for the comparison; none for the whole history
+{
+  const p = (id, at, grams, usd) => ({ id, at, grams, version: 2, project: "", usd });
+  const r = [p("a", now - 2 * day, 30, 1), p("b", now - 10 * day, 20, null), p("c", now - 9 * day, 10, 2)];
+  const prev = previousTotal(r, { range: "7d", step: "session" }, now);
+  check("previous window", prev.grams, 30);
+  check("previous cost, priced rows only", prev.usd, 2);
+  check("no previous for all", previousTotal(r, { range: "all", step: "session" }, now), null);
+  check("total cost", periodTotal(r, { range: "7d", step: "session" }, now).usd, 1);
+  check("no cost known", periodTotal([p("x", now - day, 5, null)], { range: "7d", step: "session" }, now).usd, null);
+}
+// The car equivalence, the reports' set and row
+const factorsDoc = JSON.parse(readFileSync(join(REPO, "data/factors.json"), "utf8"));
+check("equivalence set fr", equivalenceSet(["fr_FR.UTF-8"], "fr"), "fr");
+check("equivalence set us", equivalenceSet([undefined, "en_US.UTF-8"], "en"), "us");
+check("equivalence set world", equivalenceSet(["de_DE.UTF-8"], "en"), "world");
+check("equivalence set skips C", equivalenceSet(["C", "fr_FR"], "en"), "fr");
+check("equivalence no variable, French", equivalenceSet([undefined], "fr"), "fr");
+check("equivalence no variable, English", equivalenceSet([], "en"), "world");
+check("car fr divisor", carEquivalence(factorsDoc, "fr")?.divisor, 142);
+check("car us unit", carEquivalence(factorsDoc, "us")?.unit, "miles");
+check("car unknown set", carEquivalence(factorsDoc, "xx"), null);
+check("car no file", carEquivalence(null, "fr"), null);
+check("compare up", compareText(150, 100, "30d", "fr").replaceAll(NBSP, " "), "+50 % par rapport aux 30 jours d'avant");
+check("compare down en", compareText(80, 100, "1y", "en").replaceAll(NBSP, " "), "-20 % vs the 12 months before");
+check("compare nothing before", compareText(80, 0, "30d", "fr"), null);
+check("compare all", compareText(80, 100, "all", "fr"), null);
+check("equivalence text", equivalenceText(240000, carEquivalence(factorsDoc, "fr"), "fr").replaceAll(NBSP, " "), "≈ 1 690 km en voiture (142 g/km, ADEME 2025)");
 check("bar median needs 3 full bars", barMedian(weeks), null);
 check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams: 5 }]), 3);
 // Whole periods: a 30-day range seen by month starts on the 1st of its first month
@@ -784,7 +805,11 @@ for (const lang of ["fr", "en"]) {
   pane.push(currentLine(52, 140, lang), currentLine(800, 140, lang), currentLine(52, null, lang));
   pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang), uncolouredText(lang));
   pane.push(mascotAlt(lang), stripesAlt(lang));
-  pane.push(methodSwitchText(now, lang), methodSwitchNote(now, lang), periodLabel(lang), stripePerLabel(lang), cardButtonLabel(lang), cardDraftBusy(lang), cardReadyText(lang), cardFillFailed(lang));
+  pane.push(periodLabel(lang), stripePerLabel(lang), cardButtonLabel(lang), cardDraftBusy(lang), cardReadyText(lang), cardFillFailed(lang));
+  pane.push(compareText(120, 100, "30d", lang), compareText(80, 100, "1y", lang), costText(12.3, lang), showLabel(lang));
+  pane.push(equivalenceText(240000, carEquivalence(factorsDoc, lang === "fr" ? "fr" : "us"), lang));
+  pane.push(customizeLabel(true, lang), customizeLabel(false, lang));
+  for (const b of ["compare", "cost", "equivalence", "projects"]) pane.push(blockLabel(b, lang));
   pane.push(totalLine(84900, 91, lang), projectLine("site", 6000, 0.07, lang), projectLine("", 50, 0.001, lang));
   pane.push(otherProjectsLine(4, 900, 0.01, lang), topProjectsText([{ project: "a", share: 0.4 }], lang));
   for (const r of RANGES) pane.push(rangeLabel(r, lang));
@@ -799,11 +824,12 @@ for (const text of pane) {
   check(`pane no plugin name: ${text}`, text.includes("claude-carbon"), false);
   check(`pane no em dash: ${text}`, text.includes("\u2014"), false);
   check(`pane no receipt: ${text}`, text.toLowerCase().includes("receipt"), false);
-  check(`pane unit: ${text}`, / g(?!CO₂)\b/.test(text.replaceAll(NBSP, " ")), false);
+  // A factor caption ("142 g/km") is a rate, not a footprint
+  check(`pane unit: ${text}`, / g(?!CO₂|\/)\b/.test(text.replaceAll(NBSP, " ")), false);
 }
 // French puts a no-break space before : ; ! and ?, never a plain one
 for (const lang of ["fr"]) {
-  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), methodSwitchText(now, lang), cardDraftBusy(lang), totalLine(900, 3, lang), cardReadyText(lang), cardFillFailed(lang)];
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), totalLine(900, 3, lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang)];
   for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
 const plainText = (s) => s.replaceAll(NBSP, " ");

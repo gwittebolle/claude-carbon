@@ -31,6 +31,14 @@ export type PaneView = {
   step: "session" | "week" | "month";
 };
 
+// The blocks the /carbon-panel pane shows under the stripes, besides the total
+export type PaneBlocks = {
+  compare: boolean;
+  cost: boolean;
+  equivalence: boolean;
+  projects: boolean;
+};
+
 declare module "claude-code" {
   interface PluginState {
     "claude-carbon": {
@@ -39,6 +47,7 @@ declare module "claude-code" {
       // True from a main-loop turn's start to its end: the molecule walks.
       working: boolean;
       view: PaneView;
+      blocks: PaneBlocks;
     };
   }
 }

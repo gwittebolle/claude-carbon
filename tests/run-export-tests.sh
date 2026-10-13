@@ -2,7 +2,8 @@
 # run-export-tests.sh: assert cc_export_sessions (scripts/portable-lib.sh), which writes
 # sessions-history.tsv next to carbon.db for the mod's /carbon-panel pane: sessions not
 # excluded and with CO2, legacy (v1) ones included, oldest first, as
-# id<TAB>epoch seconds<TAB>grams<TAB>methodology version; an empty file for no rows; the
+# id<TAB>epoch seconds<TAB>grams<TAB>methodology version<TAB>project<TAB>cost; an empty
+# file for no rows; the
 # DB left untouched; no temp file left behind; a failed query keeping the previous file.
 #
 # Runs against a throwaway DB under a temp root; the real ~/.claude is never read.
@@ -40,15 +41,15 @@ check() {
 
 DB="${TMPROOT}/carbon.db"
 OUT="${TMPROOT}/sessions-history.tsv"
-sqlite3 "$DB" "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, co2_grams REAL, started_at TEXT, methodology_version INTEGER DEFAULT 1, excluded INTEGER DEFAULT 0, project TEXT);
+sqlite3 "$DB" "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, co2_grams REAL, started_at TEXT, methodology_version INTEGER DEFAULT 1, excluded INTEGER DEFAULT 0, project TEXT, cost_usd REAL);
 INSERT INTO sessions VALUES
-  ('v2-late', 12.3456, '2026-10-12T19:09:55Z', 2, 0, 'my' || char(9) || 'app'),
-  ('v2-early', 7, '2026-09-01T08:00:00.123Z', 2, 0, 'site'),
-  ('v1', 99, '2026-08-01T08:00:00Z', 1, 0, NULL),
-  ('excluded', 50, '2026-09-02T08:00:00Z', 2, 1, 'x'),
-  ('null-excluded', 5, '2026-09-03T08:00:00Z', 2, NULL, 'x'),
-  ('no-co2', 0, '2026-09-04T08:00:00Z', 2, 0, 'x'),
-  ('bad-date', 3, 'not a date', 2, 0, 'x');"
+  ('v2-late', 12.3456, '2026-10-12T19:09:55Z', 2, 0, 'my' || char(9) || 'app', 0.45678),
+  ('v2-early', 7, '2026-09-01T08:00:00.123Z', 2, 0, 'site', NULL),
+  ('v1', 99, '2026-08-01T08:00:00Z', 1, 0, NULL, NULL),
+  ('excluded', 50, '2026-09-02T08:00:00Z', 2, 1, 'x', NULL),
+  ('null-excluded', 5, '2026-09-03T08:00:00Z', 2, NULL, 'x', NULL),
+  ('no-co2', 0, '2026-09-04T08:00:00Z', 2, 0, 'x', NULL),
+  ('bad-date', 3, 'not a date', 2, 0, 'x', NULL);"
 BEFORE="$(cksum <"$DB")"
 
 cc_export_sessions "$DB"
@@ -59,7 +60,9 @@ check "methodology version" "$(cut -f4 "$OUT" | tr '\n' ' ')" "1 2 2 2 "
 check "epoch seconds" "$(grep '^v2-late' "$OUT" | cut -f2)" "1791832195"
 check "milliseconds in the date" "$(grep '^v2-early' "$OUT" | cut -f2)" "1788249600"
 check "grams to the milligram" "$(grep '^v2-late' "$OUT" | cut -f3)" "12.346"
-check "tab-separated, five fields" "$(awk -F"$TAB" 'NF != 5' "$OUT" | wc -l | tr -d ' ')" "0"
+check "tab-separated, six fields" "$(awk -F"$TAB" 'NF != 6' "$OUT" | wc -l | tr -d ' ')" "0"
+check "cost to four decimals" "$(grep '^v2-late' "$OUT" | cut -f6)" "0.4568"
+check "no cost: empty field" "$(grep '^v1' "$OUT" | cut -f6)" ""
 check "project, a tab in its name made a space" "$(grep '^v2-late' "$OUT" | cut -f5)" "my app"
 check "no project: empty field" "$(grep '^v1' "$OUT" | cut -f5)" ""
 check "database untouched" "$(cksum <"$DB")" "$BEFORE"

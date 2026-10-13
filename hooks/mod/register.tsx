@@ -18,7 +18,12 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register } from "claude-code";
 
-import type { AnswerCo2Entry, PaneView, SessionTotal } from "../../types";
+import type {
+  AnswerCo2Entry,
+  PaneBlocks,
+  PaneView,
+  SessionTotal,
+} from "../../types";
 import {
   co2Grams,
   DEFAULT_FACTORS,
@@ -42,13 +47,17 @@ import {
   isCarbonStatusLine,
   cardButtonLabel,
   cardDraftBusy,
+  blockLabel,
   cardFillFailed,
   cardReadyText,
-  methodSwitchNote,
-  methodSwitchText,
+  compareText,
+  costText,
+  customizeLabel,
+  equivalenceText,
   otherProjectsLine,
   periodLabel,
   projectLine,
+  showLabel,
   stripePerLabel,
   topProjectsText,
   totalLine,
@@ -80,7 +89,6 @@ import {
   NEUTRAL,
   stepMs,
   stripeCells,
-  stripeColumns,
   stripesSvg,
 } from "./lib/mascot.ts";
 import type { Stripe } from "./lib/mascot.ts";
@@ -91,17 +99,18 @@ import {
   DEFAULT_VIEW,
   folderName,
   historyPath,
-  isCurrent,
   isView,
-  legacyMedian,
   parseHistory,
   pastSessions,
   periodTotal,
+  previousTotal,
   RANGES,
   sessionMedian,
   STEPS,
 } from "./lib/sessions.ts";
 import type { Bar, SessionRow } from "./lib/sessions.ts";
+import { carEquivalence, equivalenceSet } from "./lib/equiv.ts";
+import type { CarEquivalence } from "./lib/equiv.ts";
 
 // One entry per main-loop turn, oldest first, uncounted turns included (co2 null) so
 // a duration line never borrows another turn's figure (lib/lines.ts).
@@ -122,11 +131,24 @@ const paneView = atom(
   { plugin: "claude-carbon", key: "view" } as const,
   DEFAULT_VIEW as PaneView,
 );
+// What the pane shows under the stripes, besides the total: the person's choice
+const DEFAULT_BLOCKS: PaneBlocks = {
+  compare: true,
+  cost: true,
+  equivalence: true,
+  projects: false,
+};
+const BLOCKS = ["compare", "cost", "equivalence", "projects"] as const;
+const paneBlocks = atom(
+  { plugin: "claude-carbon", key: "blocks" } as const,
+  DEFAULT_BLOCKS,
+);
 
 const PANE_ID = "carbon";
 const COMMAND = "carbon-panel";
-// The pane's last range and step, kept for the next session
+// The pane's last range and step, and the blocks shown, kept for the next session
 const VIEW_KEY = "pane.view";
+const BLOCKS_KEY = "pane.blocks";
 // The one-time "/carbon-panel" hint, for someone welcomed before the pane existed
 const HINT_KEY = "pane.hinted";
 // The middle of the palette, for a walk with no colour to set its pace
@@ -212,6 +234,8 @@ const pane: {
   project: string;
   // Until when the pane confirms that /carbon-card waits in the prompt (ms)
   cardReadyUntil: number;
+  // The row of block switches is open
+  customizing: boolean;
 } = {
   historyFile: null,
   sessionId: null,
@@ -221,6 +245,7 @@ const pane: {
   walkRun: 0,
   project: "",
   cardReadyUntil: 0,
+  customizing: false,
 };
 
 async function loadPaneHistory($: EngineInterface) {
@@ -250,6 +275,15 @@ async function currentClass($: EngineInterface): Promise<number | null> {
   const total = await read($, session);
   const m = sessionMedian(pastSessions(pane.rows ?? [], pane.sessionId));
   return m === null ? null : classOf(total.grams, m);
+}
+
+function isBlocks(value: unknown): value is PaneBlocks {
+  const v = value as Partial<Record<string, unknown>> | null | undefined;
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    BLOCKS.every((block) => typeof v[block] === "boolean")
+  );
 }
 
 function stopWalk() {
@@ -313,6 +347,9 @@ export const register: Register = (on, options) => {
   // desktop app, which draws no status line, keeps it.
   const showSessionTotal = options.showSessionTotal !== false;
   let factors: Factors = DEFAULT_FACTORS;
+  // The car equivalence of the pane, from the same file and set as the reports
+  let factorsJson: unknown = null;
+  let car: CarEquivalence | null = null;
   // Null when data/prices.json cannot be read: the entry then shows the CO2 alone.
   let prices: Prices | null = null;
   let lang: Lang = "fr";
@@ -338,10 +375,9 @@ export const register: Register = (on, options) => {
   on("session.start", async ($, e, next) => {
     try {
       const text = await $.fs.read(`${$.plugin.root}/data/factors.json`);
+      factorsJson = typeof text === "string" ? JSON.parse(text) : null;
       factors =
-        typeof text === "string"
-          ? parseFactors(JSON.parse(text))
-          : DEFAULT_FACTORS;
+        factorsJson !== null ? parseFactors(factorsJson) : DEFAULT_FACTORS;
     } catch {
       factors = DEFAULT_FACTORS;
     }
@@ -375,6 +411,7 @@ export const register: Register = (on, options) => {
         ? undefined
         : languageSetting(settings.language),
     );
+    car = carEquivalence(factorsJson, equivalenceSet(envValues, lang));
 
     // Once per machine. A session nothing draws yet is welcomed at its first
     // answer instead.
@@ -405,6 +442,10 @@ export const register: Register = (on, options) => {
       const kept = await $.store.get(VIEW_KEY);
       if (isView(kept)) {
         await $.state.set({ plugin: "claude-carbon", key: "view" }, kept);
+      }
+      const keptBlocks = await $.store.get(BLOCKS_KEY);
+      if (isBlocks(keptBlocks)) {
+        await $.state.set({ plugin: "claude-carbon", key: "blocks" }, keptBlocks);
       }
     } catch {
       // The pane opens on what could be read.
@@ -691,52 +732,27 @@ export const register: Register = (on, options) => {
               grams: total.grams,
               version: CURRENT_VERSION,
               project: own?.project ?? pane.project,
+              usd: total.usd ?? null,
             },
           ]
         : past;
-      // Legacy rows (an older methodology) and current ones are two series: each is
-      // coloured against its own median, and a divider marks where the method changed.
-      const legacyRows = rows.filter((r) => !isCurrent(r));
-      const currentRows = rows.filter(isCurrent);
-      const lastLegacy = legacyRows.at(-1)?.at;
-      const oldBars =
-        pane.rows === null || lastLegacy === undefined
-          ? []
-          : bars(legacyRows, view, now, lastLegacy);
-      const newBars = pane.rows === null ? [] : bars(currentRows, view, now);
-      // By session, current stripes are coloured against the molecule's own median, that
-      // of past sessions: one median on screen. By week or month, against the median of
+      const list = pane.rows === null ? [] : bars(rows, view, now);
+      // By session, the stripes are coloured against the molecule's own median, that of
+      // past sessions: one median on screen. By week or month, against the median of
       // the periods, the one still filling (this week, this month) left out.
-      const bm = view.step === "session" ? sm : barMedian(newBars.slice(0, -1));
-      const oldMedian = view.step === "session" ? legacyMedian(past) : barMedian(oldBars);
-      const switchAt = currentRows[0]?.at;
-      const paint = (b: Bar, m: number | null): Stripe => ({
-        color: b.grams > 0 ? (m === null ? NEUTRAL : colorOf(classOf(b.grams, m))) : null,
-        title: stripeTitle(b.start, view.step, b.grams, b.sessions, lang),
-        start: b.start,
-      });
-      const items: Stripe[] = [
-        ...oldBars.map((b) => paint(b, oldMedian)),
-        ...(oldBars.length > 0 && newBars.length > 0 && switchAt !== undefined
-          ? [
-              {
-                color: null,
-                divider: true as const,
-                title: methodSwitchText(switchAt, lang),
-                start: switchAt,
-              },
-            ]
-          : []),
-        ...newBars.map((b) => paint(b, bm)),
-      ];
-      const barCount = oldBars.length + newBars.length;
+      const bm = view.step === "session" ? sm : barMedian(list.slice(0, -1));
+      const barCount = list.length;
       const isTerminal = e.surface === "terminal";
       const room = isTerminal
         ? Math.min(RASTER_MAX_COLUMNS, Math.max(10, e.props.bodyColumns - 2))
         : DESKTOP_MAX_STRIPES;
-      const stripes = items.slice(-room);
-      const shown = stripes.filter((s) => s.divider !== true);
-      const hasDivider = stripes.some((s) => s.divider === true);
+      const shown = list.slice(-room);
+      const blocks = await read($, paneBlocks);
+      const stripes: Stripe[] = shown.map((b) => ({
+        color: b.grams > 0 ? (bm === null ? NEUTRAL : colorOf(classOf(b.grams, bm))) : null,
+        title: stripeTitle(b.start, view.step, b.grams, b.sessions, lang),
+        start: b.start,
+      }));
       const setView = (chosen: PaneView) => {
         void (async () => {
           await $.state.set({ plugin: "claude-carbon", key: "view" }, chosen);
@@ -791,11 +807,7 @@ export const register: Register = (on, options) => {
           : first.start === last.start
             ? dateLabel(first.start, view.step, lang)
             : `${dateLabel(first.start, view.step, lang)} → ${dateLabel(last.start, view.step, lang)}`;
-      // Under the stripes: their dates, and where the method changed when it shows
-      const span =
-        hasDivider && switchAt !== undefined
-          ? `${dates} · ${methodSwitchNote(switchAt, lang)}`
-          : dates;
+      const span = dates;
       // In a terminal each stripe widens to fill the line: three months read as three
       // wide bands, not three cells.
       const stripeWidth = Math.max(1, Math.min(8, Math.floor(room / Math.max(1, stripes.length))));
@@ -854,7 +866,7 @@ export const register: Register = (on, options) => {
       const stripesDrawing = isTerminal ? (
         <ui.Raster
           key="stripes"
-          columns={stripeColumns(stripes, stripeWidth)}
+          columns={stripes.length * stripeWidth}
           rows={2}
           cells={stripeCells(stripes, 2, stripeWidth)}
         />
@@ -868,12 +880,56 @@ export const register: Register = (on, options) => {
         />
       );
       const head = sm === null ? colorNote(past.length, lang) : summary;
-      // The range summed, and where it went: the heaviest projects first
+      // The range summed, and what the person chose to see with it: the change against
+      // the same length of time before, the API-price cost, a car equivalence, the
+      // projects it went to.
       const totals = pane.rows === null ? null : periodTotal(rows, view, now);
       const hasTotals = totals !== null && totals.sessions > 0;
-      const listed = totals?.projects.slice(0, 5) ?? [];
-      const rest = totals?.projects.slice(5) ?? [];
+      const previous = blocks.compare ? previousTotal(rows, view, now) : null;
+      const extras: string[] = [];
+      if (hasTotals && totals !== null) {
+        const change =
+          previous !== null ? compareText(totals.grams, previous.grams, view.range, lang) : null;
+        if (change !== null) extras.push(change);
+        if (blocks.cost && totals.usd !== null && totals.usd > 0)
+          extras.push(costText(totals.usd, lang));
+        if (blocks.equivalence && car !== null)
+          extras.push(equivalenceText(totals.grams, car, lang));
+      }
+      const listed = blocks.projects ? (totals?.projects.slice(0, 5) ?? []) : [];
+      const rest = blocks.projects ? (totals?.projects.slice(5) ?? []) : [];
       const restGrams = rest.reduce((s, p) => s + p.grams, 0);
+      const setBlocks = (chosen: PaneBlocks) => {
+        void (async () => {
+          await $.state.set({ plugin: "claude-carbon", key: "blocks" }, chosen);
+          await $.store.set(BLOCKS_KEY, chosen);
+        })().catch(() => undefined);
+      };
+      const customizeButton = (
+        <Button
+          key="customize"
+          label={customizeLabel(pane.customizing, lang)}
+          {...(isTerminal ? { hotkey: "o", plain: true as const, dimColor: true } : {})}
+          onPress={() => {
+            pane.customizing = !pane.customizing;
+            $.ui.invalidate("ui.render");
+          }}
+        />
+      );
+      const blockButtons = BLOCKS.map((block) => (
+        <Button
+          key={`block-${block}`}
+          label={blockLabel(block, lang)}
+          {...choice(blocks[block])}
+          onPress={() => setBlocks({ ...blocks, [block]: !blocks[block] })}
+        />
+      ));
+      const options = pane.customizing && (
+        <Box flexDirection="row" columnGap={1} flexWrap="wrap" alignItems="center">
+          <Text dimColor>{showLabel(lang)}</Text>
+          {blockButtons}
+        </Box>
+      );
       // The terminal packs everything beside a small molecule, for a short block above the
       // prompt; the desktop app's side pane stacks it, one control group per line.
       return isTerminal ? (
@@ -889,15 +945,23 @@ export const register: Register = (on, options) => {
                 {stepButtons}
                 <Text dimColor>·</Text>
                 {cardButton}
+                {customizeButton}
               </Box>
             </Box>
           </Box>
+          {options}
           {sm === null && <Text dimColor={!hasStripes}>{summary}</Text>}
           {hasStripes && stripesDrawing}
           {hasStripes && <Text dimColor>{span}</Text>}
           {hasTotals && totals !== null && (
             <Text dimColor>
-              {`${totalLine(totals.grams, totals.sessions, lang)} · ${topProjectsText(totals.projects.slice(0, 3), lang)}`}
+              {[
+                totalLine(totals.grams, totals.sessions, lang),
+                ...extras,
+                ...(blocks.projects
+                  ? [topProjectsText(totals.projects.slice(0, 3), lang)]
+                  : []),
+              ].join(" · ")}
             </Text>
           )}
           {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
@@ -929,26 +993,37 @@ export const register: Register = (on, options) => {
           {hasTotals && totals !== null && (
             <Box flexDirection="column">
               <Text bold>{totalLine(totals.grams, totals.sessions, lang)}</Text>
-              {listed.map((p) => (
-                <Text key={`project-${p.project}`}>
-                  {projectLine(p.project, p.grams, p.share, lang)}
-                </Text>
+              {extras.map((line) => (
+                <Text key={line}>{line}</Text>
               ))}
-              {rest.length > 0 && (
-                <Text dimColor>
-                  {otherProjectsLine(
-                    rest.length,
-                    restGrams,
-                    totals.grams > 0 ? restGrams / totals.grams : 0,
-                    lang,
+              {listed.length > 0 && (
+                <Box flexDirection="column" marginTop={1}>
+                  {listed.map((p) => (
+                    <Text key={`project-${p.project}`}>
+                      {projectLine(p.project, p.grams, p.share, lang)}
+                    </Text>
+                  ))}
+                  {rest.length > 0 && (
+                    <Text dimColor>
+                      {otherProjectsLine(
+                        rest.length,
+                        restGrams,
+                        totals.grams > 0 ? restGrams / totals.grams : 0,
+                        lang,
+                      )}
+                    </Text>
                   )}
-                </Text>
+                </Box>
               )}
             </Box>
           )}
-          <Box flexDirection="column">
-            <Box flexDirection="row">{cardButton}</Box>
+          <Box flexDirection="column" rowGap={1}>
+            <Box flexDirection="row" columnGap={1}>
+              {cardButton}
+              {customizeButton}
+            </Box>
             {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
+            {options}
           </Box>
         </Box>
       );

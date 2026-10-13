@@ -35,9 +35,11 @@ under three), the one still filling left out of it; at most
 180 stripes in the desktop app's side pane and 512 in the terminal, the most recent. Range and
 step are buttons; the choice is kept in
 `$.store` for the next session. The pane opens without the keyboard, so typing
-and Escape stay with the prompt. Under the stripes, the period's total and its
-split by project (the history file now carries the project, the folder name the
-hooks record). A "Prepare my card" button puts `/carbon-card` in
+and Escape stay with the prompt. Under the stripes, the period's total, then
+the blocks the person chooses under "Customize", kept in `$.store`: the change
+against the same length of time before, the API-price cost, the car equivalence
+of the reports (`hooks/mod/lib/equiv.ts`), and the split by project (off until
+turned on). A "Prepare my card" button puts `/carbon-card` in
 an empty prompt (`$.prompt.fill`) and never sends it; a draft in progress is left
 alone.
 
@@ -45,10 +47,8 @@ The history comes from `sessions-history.tsv`, which the Stop hook now writes ne
 to `carbon.db` after each answer, and the SessionStart hook at the start of each
 session, detached (`cc_export_sessions` in `scripts/portable-lib.sh`):
 sessions not excluded and with CO2, oldest first, as id, start in epoch seconds,
-grams, methodology version and project. Legacy (v1) sessions are drawn apart: a divider
-(`┃` in the terminal, a grey line in the desktop app) marks where the method
-changed, each side is coloured against its own median, and the molecule's median
-takes current-methodology sessions only. The rows come from a `sqlite3 -readonly` query written
+grams, methodology version, project and API-price cost. Legacy (v1) rows are in
+it as stored and count like the others, as in `/carbon-report`. The rows come from a `sqlite3 -readonly` query written
 to a temp file and renamed into place. The mod resolves the file as the hooks
 resolve the database (`CLAUDE_CARBON_DB`, `CLAUDE_CONFIG_DIR`, then `HOME` or
 `USERPROFILE`) and still writes no database, starts no process and makes no

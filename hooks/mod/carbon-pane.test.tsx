@@ -8,6 +8,19 @@ const NOW = Date.UTC(2026, 9, 12, 12);
 const SESSION_ID = "session-now";
 
 const FACTORS = JSON.stringify({
+  equivalences: {
+    fr: [
+      {
+        id: "car",
+        divisor: 142,
+        unit: "km",
+        tag: "142 g/km, ADEME 2025",
+        decimals: 0,
+        label: "km en voiture",
+        source: "142 gCO2e/km, ADEME 2025",
+      },
+    ],
+  },
   models: {
     fable: { input: 156, output: 3304 },
     opus: { input: 78, output: 1652 },
@@ -286,10 +299,15 @@ describe("the /carbon-panel pane", () => {
       const at = Math.floor((NOW - (days as number) * DAY) / 1000);
       return `${id}\t${at}\t${g}\t2\t${project}`;
     });
-    world(on, { history: `${lines.join("\n")}\n` });
+    const { store } = world(on, { history: `${lines.join("\n")}\n` });
     await startSession($);
     await openPane($);
     const desk = await $.ui.mount({ ...PANE, surface: "desktop" });
+    // Projects are off until the person turns them on
+    expect(await drawn(desk)).not.toContain("carbonara ·");
+    await desk.press({ key: "customize" });
+    await desk.press({ key: "block-projects" });
+    expect((store.get("pane.blocks") as any).projects).toBe(true);
     const text = await drawn(desk);
     expect(text).toContain("Sur la période : 1,0 kgCO₂ · 3 sessions");
     expect(text).toContain("carbonara · 700 gCO₂ · 70 %");
@@ -386,7 +404,7 @@ describe("the /carbon-panel pane", () => {
     await ui.unmount();
   });
 
-  test("legacy sessions show apart, after a divider, with their own median", async ($: any, on: any) => {
+  test("legacy sessions join the one series, with no divider", async ($: any, on: any) => {
     // 5 legacy sessions 60 to 56 days back, then the 20 current ones
     const legacy = Array.from({ length: 5 }, (_, i) => {
       const at = Math.floor((NOW - (60 - i) * DAY) / 1000);
@@ -398,13 +416,32 @@ describe("the /carbon-panel pane", () => {
     const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
     await ui.press({ key: "range-90d" });
     const text = await drawn(ui);
-    // The molecule's median is the current sessions' alone: 300, not pulled by 1-5 kg
-    expect(text).toContain("médiane 300 gCO₂");
-    expect(text).toContain("25 sessions");
-    expect(text).toContain("┃ changement de méthode");
-    const stripes = await ui.find({ key: "stripes" });
-    // 25 stripes and a divider in 58 columns: two columns each, one for the divider
-    expect(stripes.props.columns).toBe(51);
+    expect(text).toContain("25 sessions · médiane 400 gCO₂");
+    expect(text).not.toContain("méthode");
+    // 25 stripes in 58 columns: two each
+    expect((await ui.find({ key: "stripes" })).props.columns).toBe(50);
+    await ui.unmount();
+  });
+
+  test("the comparison, the API cost and the car equivalence under the total", async ($: any, on: any) => {
+    // 300 g with $3 in the last 30 days, 200 g in the 30 days before
+    const line = (id: string, days: number, g: number, usd: number) =>
+      `${id}\t${Math.floor((NOW - days * DAY) / 1000)}\t${g}\t2\tsite\t${usd}`;
+    world(on, {
+      history: [line("a", 3, 200, 2), line("b", 2, 100, 1), line("c", 40, 200, 1)].join("\n"),
+    });
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    const text = await drawn(ui);
+    expect(text).toContain("Sur la période : 300 gCO₂ · 2 sessions");
+    expect(text).toContain("+50 % par rapport aux 30 jours d'avant");
+    expect(text).toContain("3,00 $ au prix API");
+    expect(text).toContain("≈ 2 km en voiture (142 g/km, ADEME 2025)");
+    // Each one can be turned off
+    await ui.press({ key: "customize" });
+    await ui.press({ key: "block-cost" });
+    expect(await drawn(ui)).not.toContain("au prix API");
     await ui.unmount();
   });
 

@@ -363,21 +363,72 @@ export function stripeTitle(
     : `${when} · ${amount} · ${countOf(sessions, "session", lang)}`;
 }
 
-// The divider's tooltip, where the method changed
-export function methodSwitchText(at: number, lang: Lang): string {
-  const day = dateLabel(at, "session", lang);
+// Against the same length of time just before: "+12 % par rapport aux 30 jours
+// d'avant". Nothing when there is nothing before to compare with.
+const BEFORE: Record<string, [string, string]> = {
+  "7d": ["aux 7 jours d'avant", "the 7 days before"],
+  "30d": ["aux 30 jours d'avant", "the 30 days before"],
+  "90d": ["aux 90 jours d'avant", "the 90 days before"],
+  "1y": ["aux 12 mois d'avant", "the 12 months before"],
+};
+export function compareText(
+  grams: number,
+  previous: number,
+  range: string,
+  lang: Lang,
+): string | null {
+  const before = BEFORE[range];
+  if (before === undefined || !(previous > 0)) return null;
+  const change = Math.round(((grams - previous) / previous) * 100);
+  const sign = change > 0 ? "+" : change < 0 ? "-" : "";
+  const amount = `${sign}${Math.abs(change)}${NBSP}%`;
   return lang === "fr"
-    ? `${day}${NBSP}: changement de méthode de calcul, chaque côté est coloré contre sa propre médiane`
-    : `${day}: the calculation method changed; each side is coloured against its own median`;
+    ? `${amount} par rapport ${before[0]}`
+    : `${amount} vs ${before[1]}`;
 }
 
-// Under the stripes, beside their dates, when the divider shows
-export function methodSwitchNote(at: number, lang: Lang): string {
-  const day = dateLabel(at, "session", lang);
+// "12,34 $ au prix API", "$12.34 at API prices"
+export function costText(usd: number, lang: Lang): string {
   return lang === "fr"
-    ? `┃ changement de méthode le ${day}`
-    : `┃ method changed on ${day}`;
+    ? `${formatUsd(usd, lang)} au prix API`
+    : `${formatUsd(usd, lang)} at API prices`;
 }
+
+function thousands(n: number, lang: Lang): string {
+  const whole = String(Math.round(n));
+  const sep = lang === "fr" ? NBSP : ",";
+  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, sep);
+}
+
+// "≈ 1 680 km en voiture (142 g/km, ADEME 2025)", the reports' and cards' car line
+export function equivalenceText(
+  grams: number,
+  car: { divisor: number; label: string; tag: string },
+  lang: Lang,
+): string {
+  return `≈${NBSP}${thousands(grams / car.divisor, lang)} ${car.label} (${car.tag})`;
+}
+
+// The blocks a person can show or hide in the pane
+export function customizeLabel(isOpen: boolean, lang: Lang): string {
+  if (lang === "fr") return isOpen ? "Fermer les options" : "Personnaliser";
+  return isOpen ? "Close options" : "Customize";
+}
+
+const BLOCK_LABELS: Record<string, [string, string]> = {
+  compare: ["Comparaison", "Comparison"],
+  cost: ["Coût API", "API cost"],
+  equivalence: ["Équivalence", "Equivalence"],
+  projects: ["Projets", "Projects"],
+};
+export function blockLabel(block: string, lang: Lang): string {
+  return pick(BLOCK_LABELS[block], lang);
+}
+
+export function showLabel(lang: Lang): string {
+  return lang === "fr" ? "Afficher" : "Show";
+}
+
 
 // The button that puts /carbon-card in the prompt, for the person to send
 export function cardButtonLabel(lang: Lang): string {

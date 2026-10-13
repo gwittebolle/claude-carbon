@@ -10,18 +10,16 @@ export type SessionRow = {
   // Start of the session, ms since the epoch
   at: number;
   grams: number;
-  // Methodology version: 1 for legacy rows, not comparable with the current one
+  // Methodology version: 1 for legacy rows, kept as they were stored (never recomputed)
   version: number;
   // The project's folder name, as the hooks record it; "" when unknown
   project: string;
+  // The API-price cost, null when the file does not carry it
+  usd: number | null;
 };
 
 // The current methodology: what the running session is measured with
 export const CURRENT_VERSION = 2;
-
-export function isCurrent(row: SessionRow): boolean {
-  return row.version >= CURRENT_VERSION;
-}
 
 export type Range = "7d" | "30d" | "90d" | "1y" | "all";
 export type Step = "session" | "week" | "month";
@@ -85,12 +83,13 @@ export function historyPath(env: {
 }
 
 // One line per session: id, start in epoch seconds, grams, methodology version, project,
-// tab-separated (a file without the version, from an older hook, is the current one).
+// API-price cost, tab-separated. Fields an older hook did not write read as the current
+// version, no project, no cost.
 // A line that does not read as that is skipped, never guessed.
 export function parseHistory(text: string): SessionRow[] {
   const rows: SessionRow[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const [id, start, grams, version, project] = line.split("\t");
+    const [id, start, grams, version, project, cost] = line.split("\t");
     if (
       id === undefined ||
       id === "" ||
@@ -108,6 +107,10 @@ export function parseHistory(text: string): SessionRow[] {
       grams: g,
       version: Number.isFinite(v) ? v : CURRENT_VERSION,
       project: project ?? "",
+      usd:
+        cost === undefined || cost === "" || !Number.isFinite(Number(cost))
+          ? null
+          : Number(cost),
     });
   }
   return rows.sort((a, b) => a.at - b.at);
@@ -124,12 +127,11 @@ export function pastSessions(
     : rows.filter((r) => r.id !== currentId);
 }
 
-// The median the molecule's colour is measured against: past sessions of the current
-// methodology, or null with too few of them.
+// The median the molecule's colour is measured against: all past sessions, as the
+// reports and the published figures count them, or null with too few of them.
 export function sessionMedian(past: readonly SessionRow[]): number | null {
-  const comparable = past.filter(isCurrent);
-  if (comparable.length < MIN_SESSIONS) return null;
-  const m = median(comparable.map((r) => r.grams));
+  if (past.length < MIN_SESSIONS) return null;
+  const m = median(past.map((r) => r.grams));
   return m > 0 ? m : null;
 }
 
@@ -143,41 +145,56 @@ export type ProjectTotal = { project: string; grams: number; share: number };
 export type PeriodTotal = {
   grams: number;
   sessions: number;
+  // The API-price cost of the sessions that carry one, null when none does
+  usd: number | null;
   // Heaviest first
   projects: ProjectTotal[];
 };
 
+// Where the view's range starts: whole weeks or months for those steps.
+function viewStart(view: View, now: number): number {
+  const from = rangeStart(view.range, now);
+  return view.step === "session" || !Number.isFinite(from)
+    ? from
+    : view.step === "week"
+      ? weekStart(from)
+      : monthStart(from);
+}
+
+function sumOf(rows: readonly SessionRow[]): PeriodTotal {
+  const grams = rows.reduce((s, r) => s + r.grams, 0);
+  const priced = rows.filter((r) => r.usd !== null);
+  const usd = priced.length > 0 ? priced.reduce((s, r) => s + (r.usd ?? 0), 0) : null;
+  const byProject = new Map<string, number>();
+  for (const r of rows)
+    byProject.set(r.project, (byProject.get(r.project) ?? 0) + r.grams);
+  const projects = [...byProject.entries()]
+    .map(([project, g]) => ({ project, grams: g, share: grams > 0 ? g / grams : 0 }))
+    .sort((a, b) => b.grams - a.grams);
+  return { grams, sessions: rows.length, usd, projects };
+}
+
 // What the stripes cover, summed: the range of the view (whole weeks or months for
-// those steps), both methodologies, as the reports sum them.
+// those steps), as the reports sum it.
 export function periodTotal(
   rows: readonly SessionRow[],
   view: View,
   now: number,
 ): PeriodTotal {
-  const from = rangeStart(view.range, now);
-  const start =
-    view.step === "session" || !Number.isFinite(from)
-      ? from
-      : view.step === "week"
-        ? weekStart(from)
-        : monthStart(from);
-  const inRange = rows.filter((r) => r.at >= start && r.at <= now);
-  const grams = inRange.reduce((s, r) => s + r.grams, 0);
-  const byProject = new Map<string, number>();
-  for (const r of inRange)
-    byProject.set(r.project, (byProject.get(r.project) ?? 0) + r.grams);
-  const projects = [...byProject.entries()]
-    .map(([project, g]) => ({ project, grams: g, share: grams > 0 ? g / grams : 0 }))
-    .sort((a, b) => b.grams - a.grams);
-  return { grams, sessions: inRange.length, projects };
+  const start = viewStart(view, now);
+  return sumOf(rows.filter((r) => r.at >= start && r.at <= now));
 }
 
-// The median of legacy sessions, which colours them against each other only.
-export function legacyMedian(past: readonly SessionRow[]): number | null {
-  const legacy = past.filter((r) => !isCurrent(r));
-  if (legacy.length < MIN_STRIPES) return null;
-  const m = median(legacy.map((r) => r.grams));
-  return m > 0 ? m : null;
+// The same length of time just before, for the comparison; null for the whole history.
+export function previousTotal(
+  rows: readonly SessionRow[],
+  view: View,
+  now: number,
+): PeriodTotal | null {
+  const start = viewStart(view, now);
+  if (!Number.isFinite(start)) return null;
+  const before = start - (now - start);
+  return sumOf(rows.filter((r) => r.at >= before && r.at < start));
 }
 
 export type Bar = {
@@ -215,13 +232,10 @@ export function rangeStart(range: Range, now: number): number {
 // of its sessions. Weeks and months are whole: the range starts at the start of the
 // period it falls in. Periods are continuous from the first one with a session to the
 // one holding `now`, empty ones included (0 g), so a quiet week shows as a gap.
-// `until` ends the periods earlier than now: the legacy rows stop where the current
-// methodology starts.
 export function bars(
   rows: readonly SessionRow[],
   view: View,
   now: number,
-  until: number = now,
 ): Bar[] {
   const from = rangeStart(view.range, now);
   if (view.step === "session")
@@ -242,7 +256,7 @@ export function bars(
   }
   if (totals.size === 0) return [];
   const first = Math.min(...totals.keys());
-  const last = startOf(Math.min(until, now));
+  const last = startOf(now);
   const out: Bar[] = [];
   for (let s = first; s <= last; s = nextPeriod(s, step))
     out.push(totals.get(s) ?? { start: s, grams: 0, sessions: 0 });

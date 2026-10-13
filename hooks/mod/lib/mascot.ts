@@ -201,21 +201,17 @@ export type Stripe = {
   title: string;
   // Start of the period, ms since the epoch
   start?: number;
-  // The line where the calculation method changed, between two series
-  divider?: true;
 };
 
-// One rect per stripe, oldest on the left, each with its own tooltip; a divider is a
-// thin grey line.
+// One rect per stripe, oldest on the left, each with its own tooltip; an empty period
+// is a faint grey.
 export function stripesSvg(stripes: readonly Stripe[], title: string): string {
   const n = Math.max(1, stripes.length);
   const w = n * 10;
   const h = 60;
   const bars = stripes
     .map((s, i) =>
-      s.divider === true
-        ? `<rect x="${i * 10 + 4}" y="0" width="2" height="${h}" fill="${OUTLINE}"><title>${escapeXml(s.title)}</title></rect>`
-        : s.color === null
+      s.color === null
           ? `<rect x="${i * 10}" y="0" width="10" height="${h}" fill="${OUTLINE}" fill-opacity="0.2"><title>${escapeXml(s.title)}</title></rect>`
           : `<rect x="${i * 10}" y="0" width="10" height="${h}" fill="${s.color}"><title>${escapeXml(s.title)}</title></rect>`,
     )
@@ -232,7 +228,6 @@ const DEFAULT_COLOR = 0x01000000;
 const UPPER_HALF = 0x2580; // ▀
 const LOWER_HALF = 0x2584; // ▄
 const FULL_BLOCK = 0x2588; // █
-const HEAVY_VERTICAL = 0x2503; // ┃
 const SPACE = 0x20;
 
 function rgb(hex: string): number {
@@ -275,13 +270,7 @@ export function mascotCells(frame: readonly string[], color: string): string {
   return encodeCells(mascotWords(frame, color));
 }
 
-// The Raster's width: `width` columns per stripe, one for a divider.
-export function stripeColumns(stripes: readonly Stripe[], width = 1): number {
-  return stripes.reduce((n, s) => n + (s.divider === true ? 1 : width), 0);
-}
-
-// `width` columns per stripe, `rows` tall, full blocks in the stripe's colour; a
-// divider is one column of a heavy vertical line.
+// `width` columns per stripe, `rows` tall, full blocks in the stripe's colour.
 export function stripeWords(
   stripes: readonly Stripe[],
   rows: number,
@@ -289,14 +278,9 @@ export function stripeWords(
 ): number[] {
   const words: number[] = [];
   for (let r = 0; r < rows; r++)
-    for (const s of stripes) {
-      if (s.divider === true) {
-        words.push(HEAVY_VERTICAL, rgb(OUTLINE), DEFAULT_COLOR);
-        continue;
-      }
+    for (const s of stripes)
       for (let w = 0; w < width; w++)
         words.push(FULL_BLOCK, rgb(s.color ?? EMPTY), DEFAULT_COLOR);
-    }
   return words;
 }
 

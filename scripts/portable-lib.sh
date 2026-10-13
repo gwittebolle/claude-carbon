@@ -323,18 +323,19 @@ cc_ensure_schema() {
 
 # cc_export_sessions <db>: write sessions-history.tsv next to the DB, one line per
 # session with CO2, oldest first: session id, start time in epoch seconds, grams of CO2,
-# methodology version, project (its folder's name, tabs and line breaks made spaces). Legacy (v1) rows are in it: the pane draws them apart, against
-# their own median, since they are not comparable with v2. The mod's /carbon-panel pane
-# reads it; the mod itself never opens the DB. Read-only (-readonly), so a frozen series cannot be written from
-# here. A unique temp name and a rename: two sessions ending a turn at once never leave
-# a half-written file, and a failed query leaves the previous file in place. No rows
-# gives an empty file, which the pane reads as an empty history.
+# methodology version, project (its folder's name, tabs and line breaks made spaces),
+# API-price cost in dollars (empty when unknown). Legacy (v1) rows are in it, as stored.
+# The mod's /carbon-panel pane reads it; the mod itself never opens the DB. Read-only
+# (-readonly), so a frozen series cannot be written from here. A unique temp name and a
+# rename: two sessions ending a turn at once never leave a half-written file, and a
+# failed query leaves the previous file in place. No rows gives an empty file, which the
+# pane reads as an empty history.
 cc_export_sessions() {
   local db="$1" out tmp
   out="$(dirname "$db")/sessions-history.tsv"
   tmp="${out}.tmp.$$"
   if sqlite3 -readonly -cmd ".timeout 5000" -separator "$(printf '\t')" "$db" \
-    "SELECT session_id, CAST(strftime('%s', started_at) AS INTEGER), ROUND(co2_grams, 3), COALESCE(methodology_version, 1), REPLACE(REPLACE(REPLACE(COALESCE(project, ''), char(9), ' '), char(10), ' '), char(13), ' ') FROM sessions WHERE COALESCE(excluded, 0) = 0 AND co2_grams > 0 AND strftime('%s', started_at) IS NOT NULL ORDER BY started_at;" \
+    "SELECT session_id, CAST(strftime('%s', started_at) AS INTEGER), ROUND(co2_grams, 3), COALESCE(methodology_version, 1), REPLACE(REPLACE(REPLACE(COALESCE(project, ''), char(9), ' '), char(10), ' '), char(13), ' '), COALESCE(ROUND(cost_usd, 4), '') FROM sessions WHERE COALESCE(excluded, 0) = 0 AND co2_grams > 0 AND strftime('%s', started_at) IS NOT NULL ORDER BY started_at;" \
     >"$tmp" 2>/dev/null; then
     mv -f "$tmp" "$out" 2>/dev/null || rm -f "$tmp"
   else
