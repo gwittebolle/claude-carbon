@@ -223,6 +223,11 @@ cat > "${CFG}/projects/-tmp-root/${MOVED}.jsonl" <<'EOF'
 EOF
 CLAUDE_CONFIG_DIR="$CFG" bash "$BACKFILL" >/dev/null 2>&1
 check "backfill: project is the last cwd, as the Stop hook sees it" "subproj" "$(q "SELECT project FROM sessions WHERE session_id='${MOVED}';")"
+# The same transcript cut mid-line by a crash: the cwd before the cut still names it.
+q "DELETE FROM sessions WHERE session_id='${MOVED}'; DELETE FROM session_models WHERE session_id='${MOVED}';"
+printf '%s' '{"type":"assistant","cwd":"/tmp/ro' >> "${CFG}/projects/-tmp-root/${MOVED}.jsonl"
+CLAUDE_CONFIG_DIR="$CFG" bash "$BACKFILL" >/dev/null 2>&1
+check "backfill: a truncated last line keeps the last whole cwd" "subproj" "$(q "SELECT project FROM sessions WHERE session_id='${MOVED}';")"
 q "DELETE FROM sessions WHERE session_id='${MOVED}'; DELETE FROM session_models WHERE session_id='${MOVED}';"
 rm -f "${CFG}/projects/-tmp-root/${MOVED}.jsonl"
 

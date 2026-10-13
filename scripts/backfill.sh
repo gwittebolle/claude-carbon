@@ -183,9 +183,10 @@ COMMIT;" >/dev/null 2>&1; then
   # Project name = basename of the session's last cwd, matching persist-session.sh,
   # whose Stop hook sees the cwd of the latest turn: a session opened in a parent folder
   # that moves into a sub-project is named after the sub-project on both paths.
-  # The transcript directory name encodes the full path with hyphens, so real
-  # hyphens in project names cannot be recovered from it.
-  PROJECT_CWD="$(jq -rn 'reduce (inputs | .cwd? // empty) as $c (""; $c)' "$JSONL_FILE" 2>/dev/null || true)"
+  # Read line by line (-R, fromjson?) so a line cut by a crash or a concurrent write
+  # does not lose the cwd of the lines before it. The transcript directory name encodes
+  # the full path with hyphens, so real hyphens in project names cannot be recovered from it.
+  PROJECT_CWD="$(jq -Rrn 'reduce (inputs | fromjson? | .cwd? | select(type == "string" and length > 0)) as $c (""; $c)' "$JSONL_FILE" 2>/dev/null || true)"
   PROJECT_CWD="$(cc_path "$PROJECT_CWD")"
   if [ -n "$PROJECT_CWD" ]; then
     PROJECT="$(basename "$PROJECT_CWD")"

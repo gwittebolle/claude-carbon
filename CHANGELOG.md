@@ -9,8 +9,11 @@ after the sub-project by the Stop hook, which reads the cwd of the latest turn,
 and after the parent folder by `backfill.sh`, which read the transcript's first
 cwd. A row rebuilt by backfill could therefore move from `my-app` to the parent
 folder. Backfill now takes the transcript's last cwd, through the same path
-conversion as the hook on Windows, so both paths give the same project.
-`tests/run-per-model-tests.sh` covers a session that changes folder mid-way.
+conversion as the hook on Windows, so both paths give the same project. A
+transcript whose last line was cut by a crash keeps the cwd of the lines before
+it. The README's `/carbon-pr` note now speaks of the session's last folder.
+`tests/run-per-model-tests.sh` covers a session that changes folder mid-way,
+with and without a truncated last line.
 
 ## 2026-10-12
 
