@@ -265,7 +265,7 @@ The number reviewers rarely see is what the PR cost to develop: your local Claud
 124 g CO2e · $3.00 · 180k tokens · 1.5M cache reads · 2 sessions
 ```
 
-How the sessions are attributed: the Stop hook stores each session's git branch (read from the transcript), and the report selects `project + branch`. Sessions recorded before this column existed carry no branch; `scripts/backfill.sh` repairs them while their transcripts are still on disk (about 30 days). Sessions started from a subdirectory of the repo are stored under the subdirectory's name and stay out of the sum. A session that ends on another branch than it started is attributed to where it finished.
+How the sessions are attributed: the Stop hook stores each session's git branch (read from the transcript), and the report selects `project + branch`. Sessions recorded before this column existed carry no branch; `scripts/backfill.sh` repairs them while their transcripts are still on disk (about 30 days). A session whose last folder is a subdirectory of the repo is stored under the subdirectory's name and stays out of the sum. A session that ends on another branch than it started is attributed to where it finished.
 
 Turning it off is the default: nothing is posted unless you run it. `--dry-run` previews the comment, `--pr <number>` targets a specific PR, and deleting the comment on GitHub is the full cleanup.
 

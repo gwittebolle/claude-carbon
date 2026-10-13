@@ -212,6 +212,25 @@ check "backfill: same CO2 as the Stop hook"  "$LIVE_CO2"  "$(q "SELECT printf('%
 check "backfill: same cost as the Stop hook" "$LIVE_COST" "$(q "SELECT printf('%.6f', cost_usd) FROM sessions WHERE session_id='${SESSION}';")"
 check "invariant after backfill" "0" "$(q "$INVARIANT")"
 
+# A session opened in a parent folder that moves into a sub-project: the Stop hook names
+# the project after the cwd it last sees, and backfill must name it the same way.
+MOVED="bbbbbbbb-1111-2222-3333-444444444444"
+mkdir -p "${CFG}/projects/-tmp-root"
+cat > "${CFG}/projects/-tmp-root/${MOVED}.jsonl" <<'EOF'
+{"type":"user","cwd":"/tmp/root","timestamp":"2026-09-22T11:00:00Z","message":{"role":"user","content":"go"}}
+{"type":"assistant","cwd":"/tmp/root","requestId":"x1","timestamp":"2026-09-22T11:00:01Z","message":{"id":"x1","model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5}}}
+{"type":"assistant","cwd":"/tmp/root/subproj","requestId":"x2","timestamp":"2026-09-22T11:00:02Z","message":{"id":"x2","model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5}}}
+EOF
+CLAUDE_CONFIG_DIR="$CFG" bash "$BACKFILL" >/dev/null 2>&1
+check "backfill: project is the last cwd, as the Stop hook sees it" "subproj" "$(q "SELECT project FROM sessions WHERE session_id='${MOVED}';")"
+# The same transcript cut mid-line by a crash: the cwd before the cut still names it.
+q "DELETE FROM sessions WHERE session_id='${MOVED}'; DELETE FROM session_models WHERE session_id='${MOVED}';"
+printf '%s' '{"type":"assistant","cwd":"/tmp/ro' >> "${CFG}/projects/-tmp-root/${MOVED}.jsonl"
+CLAUDE_CONFIG_DIR="$CFG" bash "$BACKFILL" >/dev/null 2>&1
+check "backfill: a truncated last line keeps the last whole cwd" "subproj" "$(q "SELECT project FROM sessions WHERE session_id='${MOVED}';")"
+q "DELETE FROM sessions WHERE session_id='${MOVED}'; DELETE FROM session_models WHERE session_id='${MOVED}';"
+rm -f "${CFG}/projects/-tmp-root/${MOVED}.jsonl"
+
 # Split pass: the row as a pre-session_models Stop hook left it (same totals, CO2 and cost
 # computed per file at the file's dominant model, no children, up to date).
 q "DELETE FROM session_models WHERE session_id='${SESSION}'; UPDATE sessions SET co2_grams = 1.0, cost_usd = 1.0, ended_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE session_id='${SESSION}';"

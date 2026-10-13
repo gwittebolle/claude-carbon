@@ -58,7 +58,7 @@ if [ -z "$BRANCH" ]; then
   exit 1
 fi
 # Project name = basename of the repo root, matching how the Stop hook derives
-# it from the session cwd (sessions started in subdirectories store the
+# it from the session's last cwd (sessions that end in a subdirectory store the
 # subdirectory's basename and will not be attributed; see README).
 PROJECT="$(basename "$TOPLEVEL")"
 
