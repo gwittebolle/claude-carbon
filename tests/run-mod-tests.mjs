@@ -120,7 +120,6 @@ import {
   PALETTE,
   stepMs,
   stripesSvg,
-  stripeWords,
   subagentsSvg,
 } from "../hooks/mod/lib/mascot.ts";
 import {
@@ -672,7 +671,6 @@ check("mini frames same size", MINI_FRAMES.every((f) => f.length === CELL_ROWS *
 // The hop is one pixel: frame B is frame A one pixel up, legs aside
 check("mini hop one pixel", MINI_FRAMES[0][2], MINI_FRAMES[1][1]);
 check("big hop one pixel", FRAMES[0][2], FRAMES[1][1]);
-check("stripe cells", stripeWords([{ color: "#ff0000", title: "" }, { color: null, title: "" }], 2).length, 12);
 
 const svg = mascotSvg({ color: PALETTE[6], walking: true, step: 172, title: "t" });
 check("svg no script", /<script|on[a-z]+=/i.test(svg), false);

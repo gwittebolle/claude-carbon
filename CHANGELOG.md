@@ -35,14 +35,14 @@ glances aside while at work, smiles through a light session and sweats through a
 heavy one, smiles or startles for a moment after each answer, winks and looks up
 at rest, and falls asleep with a z after five minutes without a turn. In the
 desktop app each face is a layer of the Svg shown in turn by CSS; in the terminal
-the picture follows the clock, a blit at each hop and each change of face. Below it, warming
+the picture follows the clock, a blit at each hop and each change of face. In the desktop app, below it, warming
 stripes of past sessions, the running one included with its live total, covering
 exactly the period picked: 7 or 30 days by day, 12 months by week (from Monday),
 everything or a custom range of two typed dates by day, week or month after its
 length (`windowOf` in `hooks/mod/lib/sessions.ts`), empty periods included as
 gaps. They are coloured against the median of the periods shown with sessions in
 them (uncoloured under three), the one still filling left out of it; at most 180
-stripes in the desktop app's side pane and 512 in the terminal, the most recent.
+stripes in the desktop app's side pane, the most recent.
 The range is a row of buttons, the custom dates two `Input` fields read at Enter
 (`parseDay`: day first or ISO, a date that does not exist refused); the choice is
 kept in `$.store` for the next session. The stripe under the pointer lights up and
@@ -53,8 +53,7 @@ The tab is titled "claude-carbon", and a few short lines held at the pane's foot
 link to the methodology, to Ed Hawkins' warming stripes (showyourstripes.info), to
 the author's site and to TokenClimate (`?ref=carbon-panel`). The pane opens without the keyboard, so typing
 and Escape stay with the prompt. The period's figures (CO2, change, sessions,
-API-price value, car) are tiles under the range buttons in the desktop app, two
-lines above the stripes in the terminal; then the blocks the person chooses under the gear beside "My usage", kept in
+API-price value, car) are tiles under the range buttons; then the blocks the person chooses under the gear beside "My usage", kept in
 `$.store`: the change
 against the same length of time before, the API-price value (worded so it holds
 whoever pays: a Pro or Max subscription covers some or all of it), the car
@@ -67,11 +66,10 @@ note under the tiles: a hover group of the surface (`hover.scope`, a Box drawn
 answers, subagents and model, its context window's fill (`$.session.usage()`)
 and API-price value, and in the desktop app a small molecule per subagent
 (`subagentsSvg`, eight then "+N"), coloured by the CO2 of its own requests, and
-walking, breathing and blinking like the big one; in the terminal a dot each in
-its colour. The terminal pane follows the desktop's order in lines: this session
-and the card beside the small molecule, "My usage" with its gear and ranges on
-one line, the period's figures, the stripes, the projects, and the links on one
-line at the foot. The history file now also carries each session's model. A "Get my 2026 card" button (the card covers the
+walking, breathing and blinking like the big one. In the terminal the pane shows
+this session alone, a few rows above the prompt: the small molecule, its lines
+beside it, a dot per subagent in its colour; the period, the stripes, the card and
+the links are the desktop app's. The history file now also carries each session's model. A "Get my 2026 card" button (the card covers the
 calendar year so far, whatever range the pane shows) puts `/carbon-card` in
 an empty prompt (`$.prompt.fill`) and never sends it; a draft in progress is left
 alone.

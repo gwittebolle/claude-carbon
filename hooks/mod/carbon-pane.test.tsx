@@ -225,13 +225,13 @@ describe("the /carbon-panel pane", () => {
     expect(registered[0].immediate).toBe(true);
     await openPane($);
     expect(opened).toEqual([
-      { id: "carbon", title: "claude-carbon", closeOnEscape: true, rows: 20, columns: 48 },
+      { id: "carbon", title: "claude-carbon", closeOnEscape: true, rows: 5, columns: 48 },
     ]);
     await openPane($);
     expect(closed).toEqual(["carbon"]);
   });
 
-  test("the terminal draws the molecule and the stripes as cells", async ($: any, on: any) => {
+  test("the terminal shows this session alone, beside its small molecule", async ($: any, on: any) => {
     world(on);
     await startSession($);
     await openPane($);
@@ -240,17 +240,14 @@ describe("the /carbon-panel pane", () => {
     expect(mascot.type).toBe("Raster");
     expect(mascot.props.columns).toBe(13);
     expect(mascot.props.rows).toBe(4);
-    const stripes = await ui.find({ key: "stripes" });
-    expect(stripes.type).toBe("Raster");
-    // From the first session, 20 days back, to today: 21 days, two columns each
-    expect(stripes.props.columns).toBe(42);
-    expect(stripes.props.rows).toBe(2);
     const text = await drawn(ui);
     expect(text).toContain("Cette session : en attente de la première réponse");
-    expect(text).toContain("22 sept. → 12 oct. · une bande par jour · médiane 300 gCO₂ par jour");
-    // 20 past sessions; the running one's own row is not counted twice
-    expect(text).toContain("6,0 kgCO₂ sur la période");
-    expect(text).toContain("20 sessions");
+    // Nothing of the period: no stripes, no figures, no buttons, no links
+    expect(await ui.find({ key: "stripes" })).toBeUndefined();
+    expect(await ui.find({ type: "Button" })).toBeUndefined();
+    expect(await ui.find({ type: "Link" })).toBeUndefined();
+    expect(text).not.toContain("sur la période");
+    expect(text).not.toContain("Mon usage");
     await ui.unmount();
   });
   test("the desktop app draws SVGs and no cells", async ($: any, on: any) => {
@@ -289,9 +286,6 @@ describe("the /carbon-panel pane", () => {
     // The stripes' caption stays short: what one stripe is and its median
     expect(await drawn(ui)).toContain("une bande par jour · médiane 300 gCO₂ par jour");
     await ui.unmount();
-    const term = await $.ui.mount({ ...PANE, surface: "terminal" });
-    expect((await term.find({ key: "range-30d" })).props.hotkey).toBe("2");
-    await term.unmount();
   });
   test("the pane sums the period and names the heaviest projects", async ($: any, on: any) => {
     const lines = [
@@ -317,32 +311,6 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain("30 % studio · 300 gCO₂");
     expect(text.indexOf("% carbonara") < text.indexOf("% studio")).toBe(true);
     await desk.unmount();
-    // The terminal lists them the same way, a line each with its CO2
-    const term = await $.ui.mount({ ...PANE, surface: "terminal" });
-    const listedThere = await drawn(term);
-    expect(listedThere).toContain("70 % carbonara · 700 gCO₂");
-    expect(listedThere).toContain("30 % studio · 300 gCO₂");
-    await term.unmount();
-  });
-
-  test("the terminal follows the desktop pane's order, in lines", async ($: any, on: any) => {
-    world(on, { history: historyText(40) });
-    await startSession($);
-    await openPane($);
-    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-    const text = await drawn(ui);
-    // "Mon usage" with its gear, the period's figures before the stripes' dates, then
-    // the model, the card and the links at the foot
-    const order = ["Mon usage", "sur la période", "une bande par", "Développé par"];
-    const at = order.map((t) => text.indexOf(t));
-    expect(at.every((i) => i >= 0)).toBe(true);
-    expect([...at].sort((a, b) => a - b)).toEqual(at);
-    const links = JSON.stringify(await ui.drawn());
-    expect(links).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
-    expect(links).toContain("https://tokenclimate.com/?ref=carbon-panel");
-    expect((await ui.find({ key: "customize" })).props.label).toBe("\u2699");
-    expect((await ui.find({ key: "card" })).props.label).toBe("Obtenir ma carte 2026");
-    await ui.unmount();
   });
 
   test("no main-model line, the car in a tile", async ($: any, on: any) => {
@@ -444,13 +412,11 @@ describe("the /carbon-panel pane", () => {
     const { fills, submits } = world(on);
     await startSession($);
     await openPane($);
-    for (const surface of ["terminal", "desktop"] as const) {
-      const ui = await $.ui.mount({ ...PANE, surface });
-      await ui.press({ key: "card" });
-      await clock.settle();
-      await ui.unmount();
-    }
-    expect(fills.map((f) => f.text)).toEqual(["/carbon-card", "/carbon-card"]);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    await ui.press({ key: "card" });
+    await clock.settle();
+    await ui.unmount();
+    expect(fills.map((f) => f.text)).toEqual(["/carbon-card"]);
     expect(submits).toEqual([]);
   });
 
@@ -476,7 +442,7 @@ describe("the /carbon-panel pane", () => {
     const { fills, toasts } = world(on, { draft: "half a thought" });
     await startSession($);
     await openPane($);
-    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     await ui.press({ key: "card" });
     await clock.settle();
     await ui.unmount();
@@ -502,7 +468,7 @@ describe("the /carbon-panel pane", () => {
     world(on, { history: null });
     await startSession($);
     await openPane($);
-    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     const text = await drawn(ui);
     expect(text).toContain(
       "L'historique de vos sessions vient avec l'installation complète",
@@ -510,8 +476,13 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain(
       "La couleur arrive après 10 sessions (0 pour l'instant).",
     );
-    expect(await ui.find({ key: "stripes" })).toBeUndefined();
     await ui.unmount();
+    // The terminal says why the molecule stays grey: no history, not a count of none
+    const term = await $.ui.mount({ ...PANE, surface: "terminal" });
+    const told = await drawn(term);
+    expect(told).toContain("L'historique de vos sessions vient avec l'installation complète");
+    expect(told).not.toContain("(0 pour l'instant)");
+    await term.unmount();
   });
 
   test("under 10 past sessions the molecule waits for its colour", async ($: any, on: any) => {
@@ -534,11 +505,11 @@ describe("the /carbon-panel pane", () => {
     world(on, { history: `${legacy.join("\n")}\n${historyText(20)}` });
     await startSession($);
     await openPane($);
-    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     await ui.press({ key: "range-1y" });
     const text = await drawn(ui);
-    expect(text).toContain("21,0 kgCO₂ sur la période");
-    expect(text).toContain("25 sessions");
+    expect(text).toContain("Sur la période\n21,0 kgCO₂");
+    expect(text).toContain("Sessions\n25");
     expect(text).toContain("une bande par semaine");
     expect(text).not.toContain("méthode");
     await ui.unmount();
@@ -752,20 +723,6 @@ describe("the /carbon-panel pane", () => {
     expect(await drawn(ui)).toContain("une bande par mois");
     await ui.unmount();
   });
-  test("a terminal Raster never goes past 512 columns", async ($: any, on: any) => {
-    // Some 55 years of daily sessions: 660 months
-    world(on, { history: historyText(20000) });
-    await startSession($);
-    await openPane($);
-    const ui = await $.ui.mount({
-      ...PANE,
-      surface: "terminal",
-      props: { ...PANE.props, bodyColumns: 900 },
-    });
-    await ui.press({ key: "range-all" });
-    expect((await ui.find({ key: "stripes" })).props.columns).toBe(512);
-    await ui.unmount();
-  });
   test("a first welcome comes alone: the hint waits for the next session", async ($: any, on: any) => {
     const { toasts } = world(on, { welcomed: false, hinted: false });
     await startSession($);
@@ -778,13 +735,15 @@ describe("the /carbon-panel pane", () => {
     const { writes, fetches, processes } = world(on);
     await startSession($);
     await openPane($);
-    const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     await ui.press({ key: "range-all" });
     await ui.press({ key: "customize" });
     await ui.press({ key: "block-projects" });
+    await ui.unmount();
+    const term = await $.ui.mount({ ...PANE, surface: "terminal" });
     await $.turn.start({ text: "go", turnId: "turn-1" });
     await clock.advance(2000);
-    await ui.unmount();
+    await term.unmount();
     expect(writes).toEqual([]);
     expect(fetches).toEqual([]);
     expect(processes).toEqual([]);

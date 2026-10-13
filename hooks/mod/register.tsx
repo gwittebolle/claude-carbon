@@ -119,7 +119,6 @@ import {
   NEUTRAL,
   IDLE_STEP_MS,
   stepMs,
-  stripeCells,
   subagentsSvg,
   STRIPES_SVG_HEIGHT,
   stripesSvg,
@@ -197,7 +196,6 @@ const GEAR = "\u2699";
 const DESKTOP_MAX_STRIPES = 180;
 // The subagent molecules shown under the big one before "+N"
 const MAX_AGENT_MOLECULES = 8;
-const RASTER_MAX_COLUMNS = 512;
 // How long the pane says that /carbon-card waits in the prompt
 const CARD_NOTE_MS = 10_000;
 
@@ -805,15 +803,15 @@ export const register: Register = (on, options) => {
       }
       pane.rows = undefined;
       await loadPaneHistory($);
-      // Inline above the prompt (the classic renderer, or a narrow terminal): tall
-      // enough for both blocks and the links, or what the layout spares (it scrolls). Docked beside the
-      // transcript (fullscreen rendering, from 110 columns): a sidebar wide enough
-      // for a line of buttons. A size the person gave the pane wins.
+      // Inline above the prompt (the classic renderer, or a narrow terminal): the
+      // molecule's four rows and a spare. Docked beside the transcript (fullscreen
+      // rendering, from 110 columns): a sidebar wide enough for the session's lines.
+      // A size the person gave the pane wins.
       const opened = await $.ui.open({
         id: PANE_ID,
         title: paneTitle(lang),
         closeOnEscape: true,
-        rows: 20,
+        rows: 5,
         columns: 48,
       });
       if (!opened.isPlaced) {
@@ -873,12 +871,8 @@ export const register: Register = (on, options) => {
       // this week, this month) left out of the median.
       const bm = barMedian(list.slice(0, -1));
       const isTerminal = e.surface === "terminal";
-      const room = isTerminal
-        ? Math.min(RASTER_MAX_COLUMNS, Math.max(10, e.props.bodyColumns - 2))
-        : DESKTOP_MAX_STRIPES;
-      // A window longer than the room (years by month in a narrow terminal) keeps its
-      // most recent periods
-      const shown = list.slice(-room);
+      // A window longer than the room (years by month) keeps its most recent periods
+      const shown = list.slice(-DESKTOP_MAX_STRIPES);
       const stripes: Stripe[] = shown.map((b) => ({
         color: b.grams > 0 ? (bm === null ? NEUTRAL : colorOf(classOf(b.grams, bm))) : null,
         title: stripeTitle(b.start, w.step, b.grams, b.sessions, lang),
@@ -916,14 +910,9 @@ export const register: Register = (on, options) => {
           isInteractive
         />
       );
-      // A terminal draws a plain button as its label alone: the choice in full
-      // strength, the others dim. The desktop app draws its own buttons.
+      // The chosen button in the app's main style, the others dim
       const choice = (isChosen: boolean) =>
-        isTerminal
-          ? { plain: true as const, ...(isChosen ? {} : { dimColor: true }) }
-          : isChosen
-            ? { variant: "primary" as const }
-            : { dimColor: true };
+        isChosen ? { variant: "primary" as const } : { dimColor: true };
       const sessionText = total.grams > 0 ? currentLine(total.grams, sm, lang) : waitingText(lang);
       const hasStripes = pane.rows !== null && stripes.length > 0;
       const withYear = w.end - w.start > 300 * 86_400_000;
@@ -933,13 +922,10 @@ export const register: Register = (on, options) => {
           ? ""
           : `${dateLabel(Math.max(w.start, firstShown.start), w.step, lang, withYear)} → ${dateLabel(w.end, w.step, lang, withYear)}`;
 
-      const rangeButtons = RANGES.map((range, i) => (
+      const rangeButtons = RANGES.map((range) => (
         <Button
           key={`range-${range}`}
           label={rangeLabel(range, lang)}
-          // A terminal shows the digit before a plain label; the desktop app would draw
-          // a key badge on every button, so it gets none.
-          {...(isTerminal ? { hotkey: String(i + 1) } : {})}
           {...choice(view.range === range)}
           onPress={() => {
             if (range !== "custom") return setView({ range });
@@ -1015,24 +1001,14 @@ export const register: Register = (on, options) => {
         <Button
           key="card"
           label={cardButtonLabel(new Date(now).getFullYear(), lang)}
-          {...(isTerminal ? { hotkey: "c", plain: true as const } : { variant: "primary" as const })}
+          variant="primary"
           onPress={prepareCard}
         />
       );
 
-      // In a terminal each stripe widens to fill the line: three months read as three
-      // wide bands, not three cells.
-      const stripeWidth = Math.max(1, Math.min(8, Math.floor(room / Math.max(1, stripes.length))));
-      // The desktop drawing's width in CSS pixels, from the pane's columns
+      // The drawing's width in CSS pixels, from the pane's columns
       const stripesWidth = Math.min(720, Math.max(200, e.props.bodyColumns * 8));
-      const stripesDrawing = isTerminal ? (
-        <ui.Raster
-          key="stripes"
-          columns={stripes.length * stripeWidth}
-          rows={2}
-          cells={stripeCells(stripes, 2, stripeWidth)}
-        />
-      ) : (
+      const stripesDrawing = (
         <ui.Svg
           source={stripesSvg(stripes, stripesAlt(lang), stripesWidth)}
           alt={stripesAlt(lang)}
@@ -1083,7 +1059,6 @@ export const register: Register = (on, options) => {
           // A gear, a control by itself: the block switches of "Mon usage"
           label={GEAR}
           plain
-          {...(isTerminal ? { hotkey: "o" } : {})}
           {...(pane.customizing ? {} : { dimColor: true })}
           onPress={() => {
             pane.customizing = !pane.customizing;
@@ -1218,69 +1193,22 @@ export const register: Register = (on, options) => {
         </Box>
       );
 
-      // The terminal reads like the desktop pane, in lines: this session and the card
-      // beside a small molecule, then "Mon usage" with its gear and ranges, the period's
-      // figures before the stripes, and the links at the foot of the rows it is given.
+      // The terminal shows this session alone, beside its small molecule: a few rows above
+      // the prompt. The period, the stripes and the links are the desktop's.
       return isTerminal ? (
-        <Box
-          flexDirection="column"
-          minHeight={Math.max(1, e.props.scroll.bodyRows)}
-          justifyContent="space-between"
-        >
-          <Box flexDirection="column">
-            <Box flexDirection="row">
-              {mascot}
-              <Box flexDirection="column" marginLeft={2} flexShrink={1}>
-                <Text bold>{sessionText}</Text>
-                {sessionStats !== null && <Text dimColor>{sessionStats}</Text>}
-                {agentDots}
-                {sessionMeta !== "" && <Text dimColor>{sessionMeta}</Text>}
-                {sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>}
-                {/* Beside the molecule, where the rows are free: the card stays in view
-                    when the pane scrolls */}
-                <Box flexDirection="row">{cardButton}</Box>
-              </Box>
-            </Box>
-            {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}
-            <Box flexDirection="column" marginTop={1}>
-              <Box flexDirection="row" columnGap={2} flexWrap="wrap">
-                <Text bold>{blockTitle("usage", lang)}</Text>
-                {customizeButton}
-                {rangeButtons}
-              </Box>
-              {options}
-              {customRange}
-            </Box>
-            {noHistory}
-            {empty}
-            {hasTotals && totals !== null && (
-              <Box flexDirection="column">
-                <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-                  <Text bold>{periodHeadline(totals.grams, lang)}</Text>
-                  {changeText}
-                </Box>
-                <Text dimColor>{secondary.join(" · ")}</Text>
-              </Box>
+        <Box flexDirection="row">
+          {mascot}
+          <Box flexDirection="column" marginLeft={2} flexShrink={1}>
+            <Text bold>{sessionText}</Text>
+            {sessionStats !== null && <Text dimColor>{sessionStats}</Text>}
+            {agentDots}
+            {sessionMeta !== "" && <Text dimColor>{sessionMeta}</Text>}
+            {/* Grey for want of history: the pane says which */}
+            {pane.rows === null ? (
+              <Text dimColor>{noHistoryText(lang)}</Text>
+            ) : (
+              sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>
             )}
-            {hasStripes && stripesDrawing}
-            {hasStripes && (
-              <Text dimColor>{`${dates} · ${stripesCaption(w.step, bm, lang)}`}</Text>
-            )}
-            {projectsList}
-          </Box>
-          {/* The same links as the desktop's foot, on one line that wraps */}
-          <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-            <ui.Link href={METHODOLOGY_URL} label={methodologyLabel(lang)} />
-            <Text dimColor>·</Text>
-            <Text dimColor>{credit.before}</Text>
-            <ui.Link href={STRIPES_URL} label={credit.label} />
-            {credit.after !== "" && <Text dimColor>{credit.after}</Text>}
-            <Text dimColor>·</Text>
-            <Text dimColor>{builtByLabel(lang)}</Text>
-            <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />
-            <Text dimColor>·</Text>
-            <Text dimColor>{forTeamLabel(lang)}</Text>
-            <ui.Link href={teamUrl(lang)} label="TokenClimate" />
           </Box>
         </Box>
       ) : (

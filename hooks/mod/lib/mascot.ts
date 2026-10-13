@@ -1,6 +1,6 @@
 // The mascot, a pixel CO2 molecule (O=C=O: the carbon in the middle carries the eyes),
-// and the warming stripes, drawn for the /carbon-panel pane: an SVG where the surface has one
-// (the desktop app), terminal cells (Raster) where it does not. docs/mascot-stripes.svg,
+// and the warming stripes, drawn for the /carbon-panel pane: SVGs in the desktop app, the
+// molecule alone in terminal cells (Raster) in a terminal. docs/mascot-stripes.svg,
 // the README banner, is drawn from the same frames and palette (scripts/render-mascot.mjs).
 // Pure: no Claude Code API, so Node runs it directly (tests/run-mod-tests.mjs).
 
@@ -239,8 +239,6 @@ export const NEUTRAL = "#8b949e";
 export const OUTLINE = "#8b949e";
 const EYES_DARK = "#0b0b0b";
 const EYES_LIGHT = "#d9dce3";
-// An empty period on the stripes (no session that week or month)
-export const EMPTY = "#30363d";
 
 export const SPRITE_WIDTH = 20;
 export const SPRITE_HEIGHT = 16;
@@ -517,7 +515,6 @@ export function stripesSvg(
 const DEFAULT_COLOR = 0x01000000;
 const UPPER_HALF = 0x2580; // ▀
 const LOWER_HALF = 0x2584; // ▄
-const FULL_BLOCK = 0x2588; // █
 const LETTER_Z = 0x7a; // z
 const SPACE = 0x20;
 
@@ -571,26 +568,4 @@ export function mascotWords(frame: readonly string[], color: string): number[] {
 
 export function mascotCells(frame: readonly string[], color: string): string {
   return encodeCells(mascotWords(frame, color));
-}
-
-// `width` columns per stripe, `rows` tall, full blocks in the stripe's colour.
-export function stripeWords(
-  stripes: readonly Stripe[],
-  rows: number,
-  width = 1,
-): number[] {
-  const words: number[] = [];
-  for (let r = 0; r < rows; r++)
-    for (const s of stripes)
-      for (let w = 0; w < width; w++)
-        words.push(FULL_BLOCK, rgb(s.color ?? EMPTY), DEFAULT_COLOR);
-  return words;
-}
-
-export function stripeCells(
-  stripes: readonly Stripe[],
-  rows: number,
-  width = 1,
-): string {
-  return encodeCells(stripeWords(stripes, rows, width));
 }
