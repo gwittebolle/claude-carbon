@@ -33,7 +33,7 @@ Already installed? See [Updating](#updating).
 
 ### Option 1: from the Claude desktop app (no terminal)
 
-![Illustration of claude-carbon in the Code tab of the Claude desktop app: "This session: 4.9 gCO₂ · $0.47" under the prompt](docs/desktop-app.png)
+![Illustration of the Claude desktop app with the claude-carbon pane open: a blue pixel molecule, "This session: 8.2 gCO₂ · 0.04× your median", the last 30 days as tiles and warming stripes, a "Get my 2026 card" button, and "This session: 8.2 gCO₂" under the prompt](docs/desktop-app.png)
 
 1. Open the **Code** tab of the Claude desktop app and start a session, in any folder.
 2. Paste the message for your system. It works in any language. Claude runs the installer for you and asks before running the command: accept.

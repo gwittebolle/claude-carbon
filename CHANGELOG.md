@@ -11,6 +11,15 @@ with the person's own median from the 10th session on (`colourMedian` in
 pane says so under the session while the reference applies. The ratio "× your median"
 still shows only once the median is the person's own.
 
+### docs: the README's desktop illustration and the social preview show the pane
+
+`docs/desktop-app.png` now shows the Claude desktop app with the `/carbon-panel` pane
+open (the molecule, the session, the period's tiles and stripes, the card button), and
+`docs/social-preview.png` (1280x640, uploaded by hand in the repository's settings)
+sets the name, the eight molecules and the stripes beside that window. Both are drawn
+from the launch film's app scene, in English. The animated preview built from the
+status-line demo and its two scripts are gone.
+
 ### docs: Ed Hawkins' stripes credit at the end of the README and on the pane's last line
 
 The credit left the top of the README for its "Open source" section, and in the pane it
