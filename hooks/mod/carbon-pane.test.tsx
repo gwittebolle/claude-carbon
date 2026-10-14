@@ -412,7 +412,8 @@ describe("the /carbon-panel pane", () => {
     // The main model is not shown; the car is a tile of the period
     expect(text).not.toContain("Surtout");
     expect(text).toContain("En voiture\n≈ 7 km");
-    expect(text).toContain("Développé par");
+    expect(text).toContain("Développé par :");
+    expect(text).toContain("Découvrez la version entreprise :");
     const links = JSON.stringify(await ui.drawn());
     expect(links).toContain("https://gaetanwittebolle.com/?ref=carbon-panel");
     expect(links).toContain("https://tokenclimate.com/?ref=carbon-panel");

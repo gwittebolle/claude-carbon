@@ -493,12 +493,12 @@ export function methodologyLabel(lang: Lang): string {
   return lang === "fr" ? "Comment c'est calculé" : "How it is calculated";
 }
 
+// The foot's two credit lines, a label and a colon each, the link after it
 export function builtByLabel(lang: Lang): string {
-  return lang === "fr" ? "Développé par" : "Built by";
+  return lang === "fr" ? `Développé par${NBSP}:` : "Built by:";
 }
-// Phrased like "Développé par": the link ends the sentence, no colon
 export function forTeamLabel(lang: Lang): string {
-  return lang === "fr" ? "En équipe avec" : "As a team with";
+  return lang === "fr" ? `Découvrez la version entreprise${NBSP}:` : "Discover the business version:";
 }
 
 export function blockTitle(kind: "session" | "usage", lang: Lang): string {

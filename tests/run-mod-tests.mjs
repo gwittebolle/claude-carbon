@@ -1007,7 +1007,7 @@ check("pane title", paneTitle("fr"), "claude-carbon");
 check("team url fr", teamUrl("fr"), "https://tokenclimate.com/?ref=carbon-panel");
 check("team url en", teamUrl("en"), "https://tokenclimate.com/en?ref=carbon-panel");
 check("author url", AUTHOR_URL, "https://gaetanwittebolle.com/?ref=carbon-panel");
-check("built by", builtByLabel("fr"), "Développé par");
+check("built by", plainText(builtByLabel("fr")), "Développé par :");
 check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
 // The colour scale under the molecule
 {
@@ -1040,7 +1040,7 @@ check("context", plainText(contextText(41.6, "fr")), "Contexte 42 %");
   check("subagents: titles escaped", row.includes("&lt;b&gt;"), true);
   check("subagent title", plainText(subagentTitle(2, 12, "fr")), "Sous-agent 2 · 12 gCO₂");
 }
-check("for a team", plainText(forTeamLabel("fr")), "En équipe avec");
+check("for a team", plainText(forTeamLabel("fr")), "Découvrez la version entreprise :");
 check("car under a unit", plainText(carValue(100, { divisor: 142, unit: "km" }, "fr")), "< 1 km");
 check("car from a unit", plainText(carValue(1000, { divisor: 142, unit: "km" }, "fr")), "≈ 7 km");
 check("stripes wait by week", plainText(stripesWaitText("week", 1, "en")), "Your colour stripes show after 3 weeks of use (1 so far): one per period, blue to red by its CO₂.");
