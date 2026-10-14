@@ -492,6 +492,14 @@ export function repoLabel(lang: Lang): string {
   return lang === "fr" ? "En savoir plus sur claude-carbon" : "Learn more about claude-carbon";
 }
 
+// A newer release, at the top of the foot: what to ask Claude, the plugin command
+export const UPDATE_COMMAND = "claude plugin update claude-carbon@claude-carbon";
+export function updateText(version: string, lang: Lang): string {
+  return lang === "fr"
+    ? `Version ${version} disponible${NBSP}: demandez à Claude de lancer «${NBSP}${UPDATE_COMMAND}${NBSP}», puis redémarrez.`
+    : `Version ${version} is out: ask Claude to run "${UPDATE_COMMAND}", then restart.`;
+}
+
 // The foot's two credit lines, a label and a colon each, the link after it
 export function builtByLabel(lang: Lang): string {
   return lang === "fr" ? `Développé par${NBSP}:` : "Built by:";

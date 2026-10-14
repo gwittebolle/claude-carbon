@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# check-update.sh — backgrounded, throttled remote version check. Writes a cached flag
-# (~/.claude/claude-carbon/update-check.json) that statusline.sh reads locally. NEVER run
+# check-update.sh — backgrounded, throttled remote version check. Writes a cached flag:
+# ~/.claude/claude-carbon/update-check.json for a git clone, read by statusline.sh, or
+# plugin-update-check.json for a marketplace install, read by the mod's pane. NEVER run
 # this from the statusline: it does network I/O. It is launched detached by the SessionStart
 # hook (safety-rescan.sh), at most once/day. Swallows every error; safe to kill anytime.
 
@@ -14,12 +15,20 @@ OUT="${STATE_DIR}/update-check.json"
 # Opt-out (mirrors npm/gh NO_UPDATE_NOTIFIER convention)
 [ -n "${CLAUDE_CARBON_NO_UPDATE_NOTIFIER:-}" ] && exit 0
 
-# Only a real git-clone install, and NOT Claude Code's managed marketplace cache clone
-# (we must never mutate that clone; marketplace installs update via `claude plugin update`,
-# auto-update being OPT-IN for third-party marketplaces — a stale cache is detected by the
-# statusline's install-sync check instead).
-[ -d "${REPO_DIR}/.git" ] || exit 0
-case "$REPO_DIR" in */.claude/plugins/*) exit 0 ;; esac
+# Two kinds of install. A git clone fetches its origin and writes update-check.json, which
+# the status line reads. A marketplace install lives in Claude Code's managed cache: never
+# fetch into that clone (it updates via `claude plugin update`, auto-update being OPT-IN
+# for third-party marketplaces); ask GitHub for the release tags instead, read-only, and
+# write plugin-update-check.json, which only the mod's pane reads (the status line's
+# /carbon-update hint would be the wrong command there).
+IS_PLUGIN=0
+if cc_is_plugin_cache "$REPO_DIR"; then
+  # Only this plugin's own marketplace follows the releases: a listing pinned elsewhere
+  # (another marketplace's copy) cannot reach them with the command the pane gives.
+  case "$REPO_DIR" in */plugins/cache/claude-carbon/claude-carbon/*) IS_PLUGIN=1 ;; *) exit 0 ;; esac
+fi
+[ "$IS_PLUGIN" = "1" ] || [ -d "${REPO_DIR}/.git" ] || exit 0
+[ "$IS_PLUGIN" = "1" ] && OUT="${STATE_DIR}/plugin-update-check.json"
 command -v jq  >/dev/null 2>&1 || exit 0
 command -v git >/dev/null 2>&1 || exit 0
 # Version-sort is required to compare semver; ancient BusyBox lacks `sort -V` and would
@@ -37,16 +46,22 @@ TO=""
 if command -v timeout  >/dev/null 2>&1; then TO="timeout 25"
 elif command -v gtimeout >/dev/null 2>&1; then TO="gtimeout 25"; fi
 
-# Detect origin's default branch; fall back to main.
-DEF_BRANCH="$(git -C "$REPO_DIR" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
-[ -n "$DEF_BRANCH" ] || DEF_BRANCH=main
+if [ "$IS_PLUGIN" = "1" ]; then
+  # The newest vX.Y.Z tag: release.sh tags each release once the manifests are bumped.
+  REMOTE_V="$($TO git ls-remote --tags --refs https://github.com/gwittebolle/claude-carbon.git 2>/dev/null \
+              | sed -n 's#.*refs/tags/v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$#\1#p' | sort -V | tail -1)"
+else
+  # Detect origin's default branch; fall back to main.
+  DEF_BRANCH="$(git -C "$REPO_DIR" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+  [ -n "$DEF_BRANCH" ] || DEF_BRANCH=main
 
-# Fetch the ref only (no checkout, no merge, no working-tree change).
-$TO git -C "$REPO_DIR" fetch --quiet origin "$DEF_BRANCH" 2>/dev/null || exit 0
+  # Fetch the ref only (no checkout, no merge, no working-tree change).
+  $TO git -C "$REPO_DIR" fetch --quiet origin "$DEF_BRANCH" 2>/dev/null || exit 0
 
-# Compare versions (a string field), not raw HEAD SHA — so docs/CI commits never nag.
-REMOTE_V="$(git -C "$REPO_DIR" show "origin/${DEF_BRANCH}:.claude-plugin/plugin.json" 2>/dev/null \
-            | jq -r '.version // empty' 2>/dev/null)"
+  # Compare versions (a string field), not raw HEAD SHA — so docs/CI commits never nag.
+  REMOTE_V="$(git -C "$REPO_DIR" show "origin/${DEF_BRANCH}:.claude-plugin/plugin.json" 2>/dev/null \
+              | jq -r '.version // empty' 2>/dev/null)"
+fi
 [ -n "$REMOTE_V" ] || exit 0
 
 # behind = remote is strictly newer (semver via sort -V).

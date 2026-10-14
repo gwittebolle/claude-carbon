@@ -375,7 +375,7 @@ The curl, PowerShell and npm installers set up the status line, the database and
 
 To turn it off, run `claude plugin disable claude-carbon@skills-dir`. To remove it, run the installer with `CLAUDE_CARBON_NO_MOD=1` on the `bash` side (`curl … | CLAUDE_CARBON_NO_MOD=1 bash`); keep the variable set, in your shell or in the `env` block of `settings.json`, or the next `/carbon-update` puts it back. The installer leaves alone a `skills/claude-carbon/` folder it did not make, and skips the copy while the claude-carbon plugin is enabled. Pick one of the two: the plugin added on top of an installer runs the hooks twice.
 
-Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, starts no process, makes no network call and never changes what Claude does; besides its own data files, it reads only `sessions-history.tsv`. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then French.
+Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, starts no process, makes no network call and never changes what Claude does; besides its own data files, it reads only `sessions-history.tsv` and `plugin-update-check.json`. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then French.
 
 The mod's own tests run with `bash tests/run-mod-kit.sh`, under `claude plugin test`, which mocks the engine: no login needed. CI runs them on every push with Claude Code 2.1.296.
 
@@ -425,8 +425,9 @@ The methodology is pinned by golden test vectors in [`tests/methodology-vectors.
 
 When a newer version is available, the status line shows a discreet `⬆ /carbon-update` hint. The check runs in the background (at most once a day, never on the status line's hot path); opt out with `CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1`.
 
-- **In a terminal**, that hint appears at the end of the status line, naming the new version.
-- **In the desktop app** there is no status line, so no hint: type `/carbon-update` in the Code tab now and then, or ask Claude to update claude-carbon.
+- **In a terminal with a git-clone install**, that hint appears at the end of the status line, naming the new version.
+- **Installed from the plugin marketplace** (the terminal or the desktop app): the hint is in the `/carbon-panel` pane, at the top of its foot, with the command to ask Claude to run, `claude plugin update claude-carbon@claude-carbon`, then restart. The same daily background check asks GitHub for the release tags only and never touches Claude Code's plugin cache.
+- **In the desktop app with a git-clone install** there is no status line, so no hint: type `/carbon-update` in the Code tab now and then, or ask Claude to update claude-carbon.
 - **Installed before the summer of 2026** (version 1.0, no hint at all)? Run the install again, from the app or the terminal, as in [Install](#install).
 
 To update, run `/carbon-update` in Claude Code, or re-run the installer:

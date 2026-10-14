@@ -25,8 +25,10 @@ cc_detach bash -c '. "$1/portable-lib.sh" && cc_export_sessions "$2"' _ "$SCRIPT
 
 # Daily "update available" check, fully detached. Its own throttle (keyed on the flag file's
 # own age) so a failed/offline run self-heals next SessionStart, and it runs even on days the
-# backfill below is throttled. The statusline only ever reads the flag this writes.
+# backfill below is throttled. A clone's flag is read by the statusline, a marketplace
+# install's by the mod's pane.
 UPD_FILE="${DB_DIR}/update-check.json"
+cc_is_plugin_cache "$SCRIPT_DIR" && UPD_FILE="${DB_DIR}/plugin-update-check.json"
 NEED_CHECK=1
 if [ -f "$UPD_FILE" ] && command -v jq >/dev/null 2>&1; then
   CA="$(jq -r '.checked_at // 0' "$UPD_FILE" 2>/dev/null || echo 0)"
