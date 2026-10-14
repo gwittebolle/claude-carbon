@@ -13,7 +13,7 @@ still shows only once the median is the person's own.
 
 ### docs: the README's desktop illustration and the social preview show the pane
 
-`docs/desktop-app.png` now shows the Claude desktop app with the `/carbon-panel` pane
+`docs/desktop-pane.png` now shows the Claude desktop app with the `/carbon-panel` pane
 open (the molecule, the session, the period's tiles and stripes, the card button), and
 `docs/social-preview.png` (1280x640, uploaded by hand in the repository's settings)
 sets the name, the eight molecules and the stripes beside that window. Both are drawn
@@ -21,7 +21,7 @@ from the launch film's app scene, in English. The animated preview built from th
 status-line demo and its two scripts are gone. The README's first paragraph names the pane,
 its list puts `/carbon-panel` first, the desktop illustration sits in "Option 1" and the
 status-line demo in "Option 2", and its mod section is now "The mod: /carbon-panel and the CO2 of each answer". The
-banner at its top is now `docs/readme-banner.png`, the preview's layout on a light
+banner at its top is now `docs/banner.png`, the preview's layout on a light
 ground: the name, the eight molecules and a terminal with its status line beside the pane; the walking
 molecules move to the "Open source" section, next to the stripes' credit. The preview
 and the banner show the pane alone, in a card.
