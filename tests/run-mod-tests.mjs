@@ -85,6 +85,7 @@ import {
   datePlaceholder,
   dayInputValue,
   stripesCaption,
+  stripesWaitText,
   apiValueNote,
   AUTHOR_URL,
   builtByLabel,
@@ -996,7 +997,7 @@ for (const text of pane) {
 }
 // French puts a no-break space before : ; ! and ?, never a plain one
 for (const lang of ["fr"]) {
-  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), dateInvalid(lang)];
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), stripesWaitText("day", 2, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), dateInvalid(lang)];
   for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
 }
 check("current line", plainText(currentLine(52, 140, "fr")), "Cette session : 52 gCO₂ · 0,37× votre médiane");
@@ -1039,7 +1040,10 @@ check("context", plainText(contextText(41.6, "fr")), "Contexte 42 %");
   check("subagents: titles escaped", row.includes("&lt;b&gt;"), true);
   check("subagent title", plainText(subagentTitle(2, 12, "fr")), "Sous-agent 2 · 12 gCO₂");
 }
-check("for a team", plainText(forTeamLabel("fr")), "Pour une équipe :");
+check("for a team", plainText(forTeamLabel("fr")), "En équipe avec");
+check("car under a unit", plainText(carValue(100, { divisor: 142, unit: "km" }, "fr")), "< 1 km");
+check("car from a unit", plainText(carValue(1000, { divisor: 142, unit: "km" }, "fr")), "≈ 7 km");
+check("stripes wait by week", plainText(stripesWaitText("week", 1, "en")), "Your colour stripes show after 3 weeks of use (1 so far): one per period, blue to red by its CO₂.");
 check("caption", plainText(stripesCaption("week", 1200, "fr")), "une bande par semaine · médiane 1,2 kgCO₂ par semaine");
 check("caption en", plainText(stripesCaption("day", null, "en")), "one stripe per day");
 check("headline", plainText(periodHeadline(901200, "fr")), "901,2 kgCO₂ sur la période");
