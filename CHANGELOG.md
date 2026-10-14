@@ -18,9 +18,9 @@ open (the molecule, the session, the period's tiles and stripes, the card button
 `docs/social-preview.png` (1280x640, uploaded by hand in the repository's settings)
 sets the name, the eight molecules and the stripes beside that window. Both are drawn
 from the launch film's app scene, in English. The animated preview built from the
-status-line demo and its two scripts are gone. The README opens on the pane, right
-after its first paragraph and before the terminal's status line, lists `/carbon-panel`
-first, and its mod section is now "The mod: /carbon-panel and the CO2 of each answer". The
+status-line demo and its two scripts are gone. The README's first paragraph names the pane,
+its list puts `/carbon-panel` first, the desktop illustration sits in "Option 1" and the
+status-line demo in "Option 2", and its mod section is now "The mod: /carbon-panel and the CO2 of each answer". The
 banner at its top is now `docs/readme-banner.png`, the preview's layout on a light
 ground: the name, the eight molecules and a terminal with its status line beside the pane; the walking
 molecules move to the "Open source" section, next to the stripes' credit. The preview

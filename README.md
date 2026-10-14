@@ -8,15 +8,7 @@
 [![npm](https://img.shields.io/npm/v/claude-carbon)](https://www.npmjs.com/package/claude-carbon)
 [![CI](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml/badge.svg)](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml)
 
-claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate computed locally from your token usage, in the terminal status line and in the Code tab of the Claude desktop app, next to the session's API-equivalent cost.
-
-**In the Claude desktop app**, `/carbon-panel` opens a pane: a pixel molecule coloured by this session's CO2 against the median of your past sessions, your usage over the period you pick, its warming stripes, and a button for your yearly card.
-
-![Illustration of the Claude desktop app with the claude-carbon pane open: a blue pixel molecule, "This session: 8.2 gCO₂ · 0.04× your median", the last 30 days as tiles and warming stripes, a "Get my 2026 card" button, and "This session: 8.2 gCO₂" under the prompt](docs/desktop-app.png)
-
-**In the terminal**, the status line gives the session's CO2 as it goes.
-
-![Live CO2 in the Claude Code status line](docs/demo.gif)
+claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate computed locally from your token usage, in the terminal status line and in the Code tab of the Claude desktop app, next to the session's API-equivalent cost. In the desktop app, `/carbon-panel` opens a pane with a pixel molecule coloured by this session's CO2 against the median of your past sessions, your usage over the period you pick, its warming stripes, and a button for your yearly card.
 
 ## What claude-carbon does
 
@@ -39,6 +31,8 @@ Two ways, same result. Pick the one that fits you:
 Already installed? See [Updating](#updating).
 
 ### Option 1: from the Claude desktop app (no terminal)
+
+![Illustration of the Claude desktop app with the claude-carbon pane open: a blue pixel molecule, "This session: 8.2 gCO₂ · 0.04× your median", the last 30 days as tiles and warming stripes, a "Get my 2026 card" button, and "This session: 8.2 gCO₂" under the prompt](docs/desktop-app.png)
 
 1. Open the **Code** tab of the Claude desktop app and start a session, in any folder.
 2. Paste the message for your system. It works in any language. Claude runs the installer for you and asks before running the command: accept.
@@ -70,6 +64,8 @@ Already installed? See [Updating](#updating).
 The chat and Cowork tabs are not covered: their sessions run on Anthropic's servers, so nothing reaches your machine to count.
 
 ### Option 2: from a terminal (developers)
+
+![Live CO2 in the Claude Code status line](docs/demo.gif)
 
 **1. Install (or update):**
 
