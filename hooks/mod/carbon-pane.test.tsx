@@ -417,7 +417,7 @@ describe("the /carbon-panel pane", () => {
     const links = JSON.stringify(await ui.drawn());
     expect(links).toContain("https://www.linkedin.com/in/gwittebolle/");
     expect(links).toContain("https://tokenclimate.com/?ref=carbon-panel");
-    expect(links).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
+    expect(links).toContain("https://github.com/gwittebolle/claude-carbon\"");
     // The stripes' credit lives in the README only
     expect(links).not.toContain("showyourstripes.info");
     expect(text).not.toContain("Ed Hawkins");

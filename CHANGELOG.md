@@ -2,6 +2,11 @@
 
 ## 2026-10-14
 
+### fix: the pane's first link opens the repository's home
+
+"Comment c'est calculé" linked to METHODOLOGY.md; the line now reads "claude-carbon sur
+GitHub" and opens the repository, whose README leads to the methodology.
+
 ### fix: the pane's author link opens the author's LinkedIn profile
 
 "Développé par : Gaëtan Wittebolle" now links to linkedin.com/in/gwittebolle instead of
