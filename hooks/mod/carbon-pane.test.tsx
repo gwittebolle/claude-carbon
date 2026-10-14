@@ -43,8 +43,11 @@ function historyText(count: number): string {
 }
 
 type World = {
-  // The history file's text; null: no file (an install without the database)
-  history?: string | null;
+  // The history file's text, or what it holds when read; null: no file (an install
+  // without the database)
+  history?: string | null | (() => string);
+  // This session's id when read (/clear changes it in the same process)
+  sessionId?: () => string;
   welcomed?: boolean;
   hinted?: boolean;
   // Another extension already took /carbon-panel
@@ -118,7 +121,11 @@ function world(on: any, options: World = {}) {
         "/home/test/.claude/claude-carbon/sessions-history.tsv",
       );
       const text =
-        options.history === undefined ? historyText(20) : options.history;
+        options.history === undefined
+          ? historyText(20)
+          : typeof options.history === "function"
+            ? options.history()
+            : options.history;
       return text === null ? { deny: "not found" } : { value: text };
     }
     if (path.endsWith("/data/prices.json")) return { deny: "not found" };
@@ -143,7 +150,7 @@ function world(on: any, options: World = {}) {
     const { Box } = $.ui.resolve(e);
     return <Box key="engine-band" />;
   });
-  on("session.id", () => ({ value: SESSION_ID }));
+  on("session.id", () => ({ value: options.sessionId?.() ?? SESSION_ID }));
   on("command.register", ($: any, e: any) => {
     if (options.commandTaken) return { deny: "taken" };
     registered.push(e);
@@ -189,6 +196,7 @@ function world(on: any, options: World = {}) {
     return { value: {} };
   });
   on("session.start", ($: any, e: any) => ({ cwd: e.cwd }));
+  on("session.end", ($: any, e: any) => ({ sessionId: e.sessionId }));
   on("turn.start", ($: any, e: any) => ({ turnId: e.turnId }));
   on("turn.complete", ($: any, e: any) => ({ text: e.answer }));
   on("turn.step", async function* ($: any, e: any) {
@@ -242,6 +250,29 @@ async function drawn(ui: any): Promise<string> {
 }
 
 describe("the /carbon-panel pane", () => {
+  test("after /clear the pane follows the new conversation, the one before counted as past", async ($: any, on: any) => {
+    const at = (hours: number) => Math.floor((NOW - hours * 3_600_000) / 1000);
+    const before = [`past\t${at(30)}\t300`, `${SESSION_ID}\t${at(2)}\t1000`];
+    let id = SESSION_ID;
+    let history = `${before.join("\n")}\n`;
+    world(on, { history: () => history, sessionId: () => id });
+    await startSession($);
+    await openPane($);
+    let ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    // The running conversation's own row is left out (its total is live, none yet)
+    expect(await drawn(ui)).toContain("Sur la période\n300 gCO₂\nSessions\n1");
+    await ui.unmount();
+    // /clear: the same process goes on under a new id; the Stop hook has written the new
+    // conversation's first answer
+    await $.session.end({ sessionId: SESSION_ID, reason: "clear" });
+    id = "session-new";
+    history = `${[...before, `session-new\t${at(0)}\t30`].join("\n")}\n`;
+    ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    const text = await drawn(ui);
+    // The conversation before /clear is now a past session; the new one's row is its own
+    expect(text).toContain("Sur la période\n1,3 kgCO₂\nSessions\n2");
+    await ui.unmount();
+  });
   test("/carbon-panel is registered, opens the pane without the keyboard, and closes it", async ($: any, on: any) => {
     const { opened, closed, registered } = world(on);
     await startSession($);

@@ -853,6 +853,14 @@ const rows = [
   check("not a real date", parseDay("31/02/2026"), null);
   check("not a date", parseDay("mai 2026"), null);
   check("date back in its field", dayInputValue("2026-05-01"), "01/05/2026");
+  // A custom range by week counts from its first day, not from that week's Monday
+  const byWeek = [row("before", new Date(2026, 3, 28, 10).getTime(), 7), row("in", new Date(2026, 4, 2, 10).getTime(), 5)];
+  const weekly = windowOf({ range: "custom", from: "2026-05-01", to: "2026-08-31" }, byWeek, now);
+  check("a custom range by week", weekly.step, "week");
+  check("a custom range starts on its first day", dayKey(weekly.start), "2026-05-01");
+  check("a custom range leaves out the days before it", periodTotal(byWeek, weekly).grams, 5);
+  check("its first stripe is the week it starts in", new Date(bars(byWeek, weekly)[0].start).getDay(), 1);
+  check("its first stripe holds only its own days", bars(byWeek, weekly)[0].grams, 5);
 }
 // The same length of time before, for the comparison; none for the whole history
 {
@@ -920,6 +928,17 @@ check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams
   check("DST days keep every session", days.reduce((s, b) => s + b.grams, 0), 30);
   // From the first session (6 Sep) to the day of `at` (20 Sep)
   check("DST days from the first session", days.length, 15);
+  if (tz === undefined) delete process.env.TZ;
+  else process.env.TZ = tz;
+}
+// Just after the clocks go forward (Paris, Sunday 29 Mar 2026), 7 days are 7 stripes
+{
+  const tz = process.env.TZ;
+  process.env.TZ = "Europe/Paris";
+  const at = new Date(2026, 3, 2, 0, 30).getTime(); // Thursday 2 Apr, 00:30
+  const w = windowOf({ range: "7d" }, [row("a", at - 20 * day, 1)], at);
+  check("DST: 7 days start 6 days back", dayKey(w.start), "2026-03-27");
+  check("DST: 7 days, 7 stripes", bars([], w).length, 7);
   if (tz === undefined) delete process.env.TZ;
   else process.env.TZ = tz;
 }

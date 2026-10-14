@@ -148,7 +148,6 @@ export function sessionMedian(past: readonly SessionRow[]): number | null {
   return m > 0 ? m : null;
 }
 
-// A folder's name from a path, as the hooks' basename gives it
 // Where /carbon-panel shows: the band above a terminal's prompt when it was typed there,
 // the side pane otherwise. A session run in a terminal and driven from the desktop app
 // or a phone (Remote Control, origin "bridge") opens the pane where it was asked for.
@@ -159,6 +158,7 @@ export function panelSite(
   return surfaces.includes("terminal") && originKind !== "bridge" ? "band" : "pane";
 }
 
+// A folder's name from a path, as the hooks' basename gives it
 export function folderName(path: string): string {
   const parts = path.split(/[\\/]/).filter((p) => p !== "");
   return parts.at(-1) ?? "";
@@ -248,7 +248,8 @@ export type Window = { start: number; end: number; step: Step };
 
 // The period a view covers and its stripe: a day for up to 45 days, a week for up to
 // 400, a month beyond. The presets end now; the whole history starts at the first
-// session's period; a custom range covers its days whole, up to now.
+// session's period; a custom range covers its days whole, up to now, from its first day
+// exactly (its first stripe, a week or a month, is then partial).
 export function windowOf(
   view: View,
   rows: readonly SessionRow[],
@@ -259,8 +260,7 @@ export function windowOf(
   if (view.range === "custom" && view.from !== undefined && view.to !== undefined) {
     const from = dayOf(view.from);
     const end = Math.min(now, nextPeriod(dayOf(view.to), "day") - 1);
-    const step = stepFor(end - from);
-    return { start: startOf(step, from), end, step };
+    return { start: from, end, step: stepFor(end - from) };
   }
   if (view.range === "all" || view.range === "custom") {
     const first = rows[0]?.at ?? now;
@@ -273,7 +273,13 @@ export function windowOf(
   // history younger than the range starts the stripes at its first session: before it
   // there is no data, not a pause.
   const first = rows[0]?.at;
-  const from = startOf(step, now - (days - 1) * DAY_MS);
+  // Back by calendar days, not by 24-hour spans: a change of clock in between moves
+  // neither the first day nor the count of stripes.
+  const today = new Date(now);
+  const from = startOf(
+    step,
+    new Date(today.getFullYear(), today.getMonth(), today.getDate() - (days - 1)).getTime(),
+  );
   return {
     start: first === undefined ? from : Math.max(from, startOf(step, first)),
     end: now,
@@ -325,7 +331,7 @@ export function bars(rows: readonly SessionRow[], w: Window): Bar[] {
   }
   const out: Bar[] = [];
   const last = startOf(w.step, w.end);
-  for (let s = w.start; s <= last; s = nextPeriod(s, w.step))
+  for (let s = startOf(w.step, w.start); s <= last; s = nextPeriod(s, w.step))
     out.push(totals.get(s) ?? { start: s, grams: 0, sessions: 0 });
   return out;
 }

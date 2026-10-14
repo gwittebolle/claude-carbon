@@ -650,7 +650,7 @@ export function scaleAlt(cls: number | null, lang: Lang): string {
       ? "Échelle des couleurs, du bleu (sous votre médiane) au rouge (au-dessus)"
       : "Colour scale, from blue (under your median) to red (over it)";
   return fr
-    ? `Échelle des couleurs, du bleu au rouge : cette session est en ${cls + 1}e position sur 8`
+    ? `Échelle des couleurs, du bleu au rouge : cette session est en ${cls + 1}e position sur 8`
     : `Colour scale, from blue to red: this session is ${cls + 1} of 8`;
 }
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-10-14
+
+### fix: the /carbon-panel pane after /clear, on a phone, and around a clock change
+
+After `/clear` or `/resume` the pane kept the conversation before as the running one:
+it left that conversation out of the period and counted the new one twice. It now
+reads the new conversation's id and the history again, the one before counted as a
+past session. On a phone (Remote Control), which has no text field, a custom range no
+longer leaves the pane blank: its two dates show as text. A custom range drawn by week
+or by month counts from its first day, not from the Monday or the 1st before it (its
+first stripe is then partial), and "7 days" or "30 days" go back by calendar days, so
+the week after a change of clock no longer gets an extra stripe. The pane reads the
+history again after each answer, so other sessions running at the same time show
+without reopening it. The test of the export counts its temp files with a glob, as
+shellcheck asks.
+
 ## 2026-10-13
 
 ### fix: backfill names a session's project after its last folder, as the live hook does
@@ -128,7 +144,7 @@ plugin installed alone) the pane shows the molecule and says where the history
 comes from. Someone welcomed by an earlier version sees a one-time toast naming
 `/carbon-panel`. The README banner is now drawn from the mod's frames and palette by
 `scripts/render-mascot.mjs`. Tests: `tests/run-export-tests.sh` (in CI on Linux
-and Windows), 13 kit tests for the pane, and checks of the frames, the half-block
+and Windows), kit tests for the pane, and checks of the frames, the half-block
 cells, the history file, the stripes by week and month and the pane's texts in
 `tests/run-mod-tests.mjs`.
 

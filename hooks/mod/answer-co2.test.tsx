@@ -53,7 +53,7 @@ type World = {
   welcomed?: boolean;
   // data/prices.json as the mod reads it; null: the file cannot be read
   prices?: string | null;
-  // The one-time /carbon hint already shown (its own tests are in carbon-pane.test.tsx)
+  // The one-time /carbon-panel hint already shown (its own tests are in carbon-pane.test.tsx)
   hinted?: boolean;
 };
 

@@ -69,7 +69,6 @@ import {
   dateLabel,
   detectLang,
   emptyRangeText,
-  equivalenceText,
   carValue,
   carTag,
   fromLabel,
@@ -87,12 +86,10 @@ import {
   paneHint,
   paneTitle,
   paneUnplaced,
-  periodHeadline,
   projectBarLine,
   pushHistory,
   rangeLabel,
   sessionLine,
-  sessionsCount,
   showLabel,
   stripesAlt,
   stripesCaption,
@@ -266,6 +263,13 @@ async function resetSessionState($: EngineInterface) {
   pane.subagents = 0;
   pane.agents = new Map();
   pane.sessionFamily = null;
+  // The pane follows the new conversation: its id is read again at the next drawing, and
+  // the history with it, where the conversation before is now a past session
+  pane.sessionId = null;
+  pane.rows = undefined;
+  pane.mood = null;
+  pane.lastActive = 0;
+  pane.reactUntil = 0;
 }
 
 // The pane. Where the history file is, this session's id (its own row in the file holds
@@ -774,9 +778,10 @@ export const register: Register = (on, options) => {
     if (e.agentId !== undefined) return next(e);
     // Before anything that may return early: a module reloaded during the turn has no
     // open answer, and the molecule must still slow down (its next step reads `working`).
-    // No history file yet (an update installed in this very session): the Stop hook
-    // writes one after this answer, and the pane's next drawing reads it again.
-    if (pane.rows === null) pane.rows = undefined;
+    // The Stop hook writes the history again after this answer, other sessions running at
+    // the same time included: the pane's next drawing reads it again (and finds it, when
+    // an update installed in this very session had none yet).
+    pane.rows = undefined;
     try {
       await $.state.set({ plugin: "claude-carbon", key: "working" }, false);
     } catch {
@@ -1077,26 +1082,33 @@ export const register: Register = (on, options) => {
         const to = field === "to" ? key : (view.to ?? key);
         setView({ range: "custom", from: from <= to ? from : to, to: from <= to ? to : from });
       };
-      const customRange = view.range === "custom" && (
-        <Box flexDirection="row" columnGap={1} flexWrap="wrap" alignItems="center">
-          <ui.Input
-            key="from"
-            label={fromLabel(lang)}
-            placeholder={datePlaceholder(lang)}
-            value={view.from !== undefined ? dayInputValue(view.from) : ""}
-            submitLabel="ok"
-            onSubmit={(value: string) => setDay("from", value)}
-          />
-          <ui.Input
-            key="to"
-            label={toLabel(lang)}
-            placeholder={datePlaceholder(lang)}
-            value={view.to !== undefined ? dayInputValue(view.to) : ""}
-            submitLabel="ok"
-            onSubmit={(value: string) => setDay("to", value)}
-          />
-        </Box>
-      );
+      // A phone has no text field (Remote Control): the two dates show as text there.
+      const customRange =
+        view.range === "custom" &&
+        ("Input" in ui ? (
+          <Box flexDirection="row" columnGap={1} flexWrap="wrap" alignItems="center">
+            <ui.Input
+              key="from"
+              label={fromLabel(lang)}
+              placeholder={datePlaceholder(lang)}
+              value={view.from !== undefined ? dayInputValue(view.from) : ""}
+              submitLabel="ok"
+              onSubmit={(value: string) => setDay("from", value)}
+            />
+            <ui.Input
+              key="to"
+              label={toLabel(lang)}
+              placeholder={datePlaceholder(lang)}
+              value={view.to !== undefined ? dayInputValue(view.to) : ""}
+              submitLabel="ok"
+              onSubmit={(value: string) => setDay("to", value)}
+            />
+          </Box>
+        ) : (
+          <Text dimColor>
+            {`${dayInputValue(view.from ?? dayKey(now))} → ${dayInputValue(view.to ?? dayKey(now))}`}
+          </Text>
+        ));
 
       // Puts /carbon-card in an empty prompt, never sends it: the card is a skill, a
       // model turn the person starts themselves. A draft in progress is left alone.
@@ -1155,23 +1167,9 @@ export const register: Register = (on, options) => {
           : null;
       const delta =
         totals !== null && previous !== null ? changePercent(totals.grams, previous.grams) : null;
-      const secondary: string[] = [];
-      if (hasTotals && totals !== null) {
-        secondary.push(sessionsCount(totals.sessions, lang));
-        if (blocks.cost && totals.usd !== null && totals.usd > 0)
-          secondary.push(costText(totals.usd, lang));
-        if (blocks.equivalence && car !== null)
-          secondary.push(equivalenceText(totals.grams, car, lang));
-      }
       const listed = blocks.projects ? (totals?.projects.slice(0, 5) ?? []) : [];
       const rest = blocks.projects ? (totals?.projects.slice(5) ?? []) : [];
       const restGrams = rest.reduce((s, p) => s + p.grams, 0);
-      const changeText =
-        change === null ? null : (
-          <Text color={delta !== null && delta > 0 ? "error" : delta !== null && delta < 0 ? "success" : "inactive"}>
-            {change}
-          </Text>
-        );
 
       const setBlocks = (chosen: PaneBlocks) => {
         void (async () => {

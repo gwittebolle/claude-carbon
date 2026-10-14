@@ -28,7 +28,7 @@ export type SessionTotal = {
 // What the /carbon-panel pane covers: a preset range, or months picked by the person
 // ("2026-05"); one stripe per day, week or month follows from its length.
 export type PaneView = {
-  range: "7d" | "30d" | "90d" | "1y" | "all" | "custom";
+  range: "7d" | "30d" | "1y" | "all" | "custom";
   from?: string;
   to?: string;
 };
