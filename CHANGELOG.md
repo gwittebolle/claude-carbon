@@ -22,7 +22,7 @@ status-line demo and its two scripts are gone. The README opens on the pane, rig
 after its first paragraph and before the terminal's status line, lists `/carbon-panel`
 first, and its mod section is now "The mod: /carbon-panel and the CO2 of each answer". The
 banner at its top is now `docs/readme-banner.png`, the preview's layout on a light
-ground: the name, the eight molecules and the stripes beside the pane; the walking
+ground: the name, the eight molecules and a terminal with its status line beside the pane; the walking
 molecules move to the "Open source" section, next to the stripes' credit. The preview
 and the banner show the pane alone, in a card.
 
