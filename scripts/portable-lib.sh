@@ -83,6 +83,18 @@ cc_path() {
   esac
 }
 
+# ── A private jq ────────────────────────────────────────────────────────────
+# macOS ships jq from 15 (Sequoia) on. On an older Mac with none, install.sh fetches
+# the official binary into the data folder; every script finds it there, while a jq of
+# the system, when there is one, keeps precedence.
+if ! command -v jq >/dev/null 2>&1; then
+  CC_JQ_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")/claude-carbon/bin"
+  if [ -x "${CC_JQ_DIR}/jq" ]; then
+    PATH="${CC_JQ_DIR}:${PATH}"
+    export PATH
+  fi
+fi
+
 # cc_native_path <path> — the inverse of cc_path: echoes a path that the native
 # Windows side understands, in the "mixed" spelling ("C:/Users/me/x"). Forward
 # slashes, so bash can also open it verbatim without escaping. Used for the paths

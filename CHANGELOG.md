@@ -2,6 +2,19 @@
 
 ## 2026-10-14
 
+### feat: a Mac without jq gets the official one at install, and CI runs on macOS
+
+macOS ships `jq` from 15 (Sequoia) on; on an older Mac with no Homebrew the installer
+stopped at "jq is not installed", with no simple way out for someone who only uses the
+desktop app. `install.sh` now fetches the official jq 1.8.1 binary for the Mac's
+processor, checks it against the SHA-256 the jq project publishes for that release, and
+puts it in `~/.claude/claude-carbon/bin/`. `scripts/portable-lib.sh` and the slash
+commands put that folder on `PATH` only when no `jq` is found, so a `jq` of the system
+keeps precedence. A download whose checksum does not match installs nothing.
+`tests/run-jq-fetch-tests.sh` covers the refusal, the `PATH` order and, on macOS, the
+real download. CI gains a macOS job that runs every bash suite under the system's own
+`/bin/bash` 3.2, the version a Mac user's hooks run with.
+
 ### fix: the /carbon-panel pane after /clear, on a phone, and around a clock change
 
 After `/clear` or `/resume` the pane kept the conversation before as the running one:
