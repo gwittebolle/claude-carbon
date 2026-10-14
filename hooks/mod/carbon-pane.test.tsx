@@ -25,7 +25,7 @@ const FACTORS = JSON.stringify({
     fable: { input: 156, output: 3304 },
     opus: { input: 78, output: 1652 },
     sonnet: { input: 39, output: 826 },
-    haiku: { input: 20, output: 413 },
+    haiku: { input: 10, output: 207 },
   },
   cache_read_factor: 0.08,
   exclude_models: [],

@@ -1,5 +1,5 @@
 {
-  "_methodology": "Jegham et al. 2025 (v6) - AWS PUE 1.14, AWS region grid CIF 0.287 kgCO2e/kWh (location-based; US average is ~380). Sonnet input/output are a 3-point OLS fit to the three measured Claude 3.7 Sonnet per-query energies (0.950 / 2.989 / 5.671 Wh); marginal ratio ~21:1 output:input. Cross-validated against EcoLogits (GenAI Impact), bracketing the same range. Opus = 2x Sonnet (EcoLogits Opus 4.5+ params and the Anthropic price ratio both imply ~1.7-2x; band 2x-5x), Haiku = 0.5x, Fable = 2x Opus. Order-of-magnitude estimates.",
+  "_methodology": "Jegham et al. 2025 (v6) - AWS PUE 1.14, AWS region grid CIF 0.287 kgCO2e/kWh (location-based; US average is ~380). Sonnet input/output are a 3-point OLS fit to the three measured Claude 3.7 Sonnet per-query energies (0.950 / 2.989 / 5.671 Wh); marginal ratio ~21:1 output:input. Cross-validated against EcoLogits (GenAI Impact), bracketing the same range. Opus = 2x Sonnet (EcoLogits Opus 4.5+ params and the Anthropic price ratio both imply ~1.7-2x; band 2x-5x), Haiku = 0.25x (between the EcoLogits estimate, ~0.07x, and the measured-speed ceiling, ~0.57x; see METHODOLOGY.md), Fable = 2x Opus. Order-of-magnitude estimates.",
   "_units": "gCO2e per million tokens",
   "_source": "https://arxiv.org/abs/2505.09598",
   "_cache_read_factor": "Energy of a cache_read token as a fraction of an uncached input token. This is a PREFILL residual, not the decode-phase KV re-read residual earlier versions described (that one is bilinear in context x generated tokens and sits absorbed in the output factor). 0.08, published range 0.05-0.20. Irminsul (arXiv:2605.05696, Table 1) measures 14/34/37% on GQA/MHA/MLA at 4096 prefix tokens; not adopted as-is because the median Claude Code step carries 126180 prefix tokens and Claude's attention architecture is unpublished. NOT Anthropic's 0.1x billing ratio (a price, not energy). See METHODOLOGY.md.",
@@ -9,7 +9,7 @@
     "fable": { "input": 156, "output": 3304 },
     "opus": { "input": 78, "output": 1652 },
     "sonnet": { "input": 39, "output": 826 },
-    "haiku": { "input": 20, "output": 413 }
+    "haiku": { "input": 10, "output": 207 }
   },
   "_exclude_models": "Sessions whose model string does not contain 'claude' (e.g. local models served behind ANTHROPIC_BASE_URL) are always stored with cost_usd=0, co2_grams=0 and excluded=1, and left out of report aggregates. Add case-insensitive grep -E patterns here to exclude additional models by name.",
   "exclude_models": [],

@@ -8,7 +8,7 @@ const FACTORS = JSON.stringify({
     fable: { input: 156, output: 3304 },
     opus: { input: 78, output: 1652 },
     sonnet: { input: 39, output: 826 },
-    haiku: { input: 20, output: 413 },
+    haiku: { input: 10, output: 207 },
   },
   cache_read_factor: 0.08,
   exclude_models: [],
@@ -299,8 +299,8 @@ describe("terminal", () => {
       $,
       [
         HEAVY,
-        { model: "claude-haiku-5-5", output: 4000, agentId: "agent-1" },
-        { model: "claude-haiku-5-5", output: 4000, agentId: "agent-2" },
+        { model: "claude-haiku-5-5", output: 8000, agentId: "agent-1" },
+        { model: "claude-haiku-5-5", output: 8000, agentId: "agent-2" },
       ],
       372000,
       async () => {
@@ -309,7 +309,7 @@ describe("terminal", () => {
       },
     );
     const drawn = await durationLine($, 372000);
-    // 10.068 + 1.652 + 1.652 = 13.372 g, 13× a 1 g median
+    // 10.068 + 1.656 + 1.656 = 13.38 g, 13× a 1 g median
     expect(drawn).toContain("13 gCO₂ · 13× votre médiane");
     expect(drawn).toContain("warning");
     expect(drawn).toContain("dont 2 sous-agents : 3,3 gCO₂");
@@ -323,7 +323,7 @@ describe("terminal", () => {
       $,
       [
         HEAVY,
-        { model: "claude-haiku-5-5", output: 4000, agentId: "compact-1" },
+        { model: "claude-haiku-5-5", output: 8000, agentId: "compact-1" },
       ],
       90000,
     );
@@ -376,7 +376,7 @@ describe("terminal", () => {
     await $.turn.start({ text: "go", turnId: "t1" });
     await spawn($, "fg-1");
     await step($, ORDINARY, "t1", 0);
-    await step($, { model: "claude-haiku-5-5", output: 4000, agentId: "fg-1" }, "a1", 0);
+    await step($, { model: "claude-haiku-5-5", output: 8000, agentId: "fg-1" }, "a1", 0);
     // ctrl+b: the Agent call returns, the agent runs on
     await asyncLaunched($, "fg-1");
     await step($, opusAgent, "a1", 1);
@@ -387,17 +387,17 @@ describe("terminal", () => {
       turnId: "t1",
       reason: "answer",
     });
-    // 4.006 + 1.652 g before ctrl+b, 4.006 g alone in the next answer
+    // 4.006 + 1.656 g before ctrl+b, 4.006 g alone in the next answer
     expect(await durationLine($, 38000)).toContain("5,7 gCO₂");
     await runTurn($, [ORDINARY, opusAgent], 21000);
     expect(await durationLine($, 38000)).toContain("5,7 gCO₂");
     const drawn = await durationLine($, 21000);
     expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("sous-agent");
-    // 5.658 + 9.912 + 4.006 + 9.912 = 29.488 g in the session
+    // 5.662 + 9.912 + 4.006 + 9.912 = 29.492 g in the session
     expect(plain(statuses.at(-1))).toBe("Cette session : 29 gCO₂ · 0,37 $");
-    // 5.658 and 4.006 for the median, with no background request in them
-    expect(storedValues()).toEqual([5.658, 4.006]);
+    // 5.662 and 4.006 for the median, with no background request in them
+    expect(storedValues()).toEqual([5.662, 4.006]);
   });
 
   test("a subagent started in the background stays out of the next answer", async ($: any, on: any) => {
@@ -449,7 +449,7 @@ describe("terminal", () => {
       [
         ORDINARY,
         { model: "claude-opus-5-5", output: 6000, agentId: "slow-1" },
-        { model: "claude-haiku-5-5", output: 4000, agentId: "slow-child" },
+        { model: "claude-haiku-5-5", output: 8000, agentId: "slow-child" },
       ],
       21000,
       async () => spawn($, "slow-child", false, "slow-1"),
@@ -457,7 +457,7 @@ describe("terminal", () => {
     const drawn = await durationLine($, 21000);
     expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("sous-agent");
-    // 4.006 + 4.006 + 9.912 + 1.652 = 19.576 g in the session
+    // 4.006 + 4.006 + 9.912 + 1.656 = 19.58 g in the session
     expect(plain(statuses.at(-1))).toBe("Cette session : 20 gCO₂ · 0,25 $");
   });
 
@@ -467,14 +467,14 @@ describe("terminal", () => {
     await startSession($);
     await runTurn(
       $,
-      [HEAVY, { model: "claude-haiku-5-5", output: 4000, agentId: "child-2" }],
+      [HEAVY, { model: "claude-haiku-5-5", output: 8000, agentId: "child-2" }],
       90000,
       async () => {
         await spawn($, "fg-2");
         await spawn($, "child-2", false, "fg-2");
       },
     );
-    // 10.068 + 1.652 = 11.72 g, named as one subagent
+    // 10.068 + 1.656 = 11.724 g, named as one subagent
     const drawn = await durationLine($, 90000);
     expect(drawn).toContain("12 gCO₂ · 12× votre médiane");
     expect(drawn).toContain("dont 1 sous-agent : 1,7 gCO₂");
@@ -892,8 +892,8 @@ describe("desktop", () => {
     const { statuses } = world(on, { surfaces: ["desktop"] });
     engineSteps(on);
     await startSession($);
-    // 4 000 output on Haiku 5.5: 1.652 g, $0.002
-    await runTurn($, [{ model: "claude-haiku-5-5", output: 4000 }], 9000);
+    // 8 000 output on Haiku 5.5: 1.656 g, $0.004
+    await runTurn($, [{ model: "claude-haiku-5-5", output: 8000 }], 9000);
     expect(plain(statuses.at(-1))).toBe("Cette session : 1,7 gCO₂ · < 0,01 $");
   });
 

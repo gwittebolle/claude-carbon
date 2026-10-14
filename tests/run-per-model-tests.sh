@@ -129,9 +129,9 @@ near "stop hook: Opus 5.5 cost at its own price"  "0.254688" "$(q "SELECT cost_u
 near "stop hook: Opus 5.5 CO2 at the Opus factors" "6.017822" "$(q "SELECT co2_grams FROM session_models WHERE session_id='${SESSION}' AND model='claude-opus-5-5';")"
 # Sonnet 4.6 at 3/15: (50*3 + 1000*6 + 30000*0.3 + 200*15) / 1e6 = 0.01815
 near "stop hook: Sonnet 4.6 cost at 3/15"           "0.01815"  "$(q "SELECT cost_usd FROM session_models WHERE session_id='${SESSION}' AND model='claude-sonnet-4-6';")" 0.0000005
-# Haiku 4.5 at 1/5: (520 + 5000*2 + 10000*0.1 + 340*5) / 1e6 = 0.01322; co2 = 0.26682
+# Haiku 4.5 at 1/5: (520 + 5000*2 + 10000*0.1 + 340*5) / 1e6 = 0.01322; co2 = (520*10 + 5000*10 + 10000*10*0.08 + 340*207) / 1e6 = 0.13358
 near "stop hook: Haiku 4.5 cost"                    "0.01322"  "$(q "SELECT cost_usd FROM session_models WHERE session_id='${SESSION}' AND model='claude-haiku-4-5';")" 0.0000005
-near "stop hook: Haiku 4.5 CO2"                     "0.26682"  "$(q "SELECT co2_grams FROM session_models WHERE session_id='${SESSION}' AND model='claude-haiku-4-5';")"
+near "stop hook: Haiku 4.5 CO2"                     "0.13358"  "$(q "SELECT co2_grams FROM session_models WHERE session_id='${SESSION}' AND model='claude-haiku-4-5';")"
 # Fable 5.1, cache read 0.025x: (100 + 2000*20 + 50000*0.25 + 100*50) / 1e6 = 0.0576; co2 = 1.26796
 near "stop hook: Fable 5.1 cost, cache read 0.025x" "0.0576"   "$(q "SELECT cost_usd FROM session_models WHERE session_id='${SESSION}' AND model='claude-fable-5-1';")" 0.0000005
 near "stop hook: Fable 5.1 CO2"                     "1.26796"  "$(q "SELECT co2_grams FROM session_models WHERE session_id='${SESSION}' AND model='claude-fable-5-1';")"
