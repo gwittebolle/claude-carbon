@@ -1006,7 +1006,7 @@ check("pane title", paneTitle("fr"), "claude-carbon");
 // Pages checked live on 2026-10-13: the French site is at the root, /fr is a 404
 check("team url fr", teamUrl("fr"), "https://tokenclimate.com/?ref=carbon-panel");
 check("team url en", teamUrl("en"), "https://tokenclimate.com/en?ref=carbon-panel");
-check("author url", AUTHOR_URL, "https://gaetanwittebolle.com/?ref=carbon-panel");
+check("author url", AUTHOR_URL, "https://www.linkedin.com/in/gwittebolle/");
 check("built by", plainText(builtByLabel("fr")), "Développé par :");
 check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
 // The colour scale under the molecule
