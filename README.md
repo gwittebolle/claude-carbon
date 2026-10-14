@@ -10,14 +10,21 @@
 
 claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate computed locally from your token usage, in the terminal status line and in the Code tab of the Claude desktop app, next to the session's API-equivalent cost.
 
+**In the Claude desktop app**, `/carbon-panel` opens a pane: a pixel molecule coloured by this session's CO2 against the median of your past sessions, your usage over the period you pick, its warming stripes, and a button for your yearly card.
+
+![Illustration of the Claude desktop app with the claude-carbon pane open: a blue pixel molecule, "This session: 8.2 gCO₂ · 0.04× your median", the last 30 days as tiles and warming stripes, a "Get my 2026 card" button, and "This session: 8.2 gCO₂" under the prompt](docs/desktop-app.png)
+
+**In the terminal**, the status line gives the session's CO2 as it goes.
+
 ![Live CO2 in the Claude Code status line](docs/demo.gif)
 
 ## What claude-carbon does
 
+- `/carbon-panel`: a pane in the Claude desktop app with your CO2 molecule, your usage and the warming stripes of your sessions (in a terminal, the session in the band above the prompt). See [the mod](#the-mod-carbon-panel-and-the-co2-of-each-answer)
 - Adds a live CO2 estimate to the Claude Code status line, and the session's CO2 under the prompt in the Claude desktop app, each next to the session's API-equivalent cost
 - Persists each session to a local SQLite database, so history survives the 30-day transcript purge
 - Backfills historical data from existing `~/.claude` transcripts
-- Slash commands: `/carbon-panel` (a pane with your CO2 molecule and the warming stripes of your sessions), `/carbon-report` (text), `/carbon-card` (PNG), `/carbon-pr` (footprint of a pull request)
+- Slash commands: `/carbon-report` (text), `/carbon-card` (PNG), `/carbon-pr` (footprint of a pull request)
 - A README badge with your all-time total, and a public methodology with every factor sourced
 
 > **About the `$` figure.** It is an API equivalent: what your session would cost at Anthropic's pay-as-you-go API list prices. On a Pro or Max subscription you do not pay it; it shows the value of what you used, next to its CO2. See [How it works](#how-it-works).
@@ -32,8 +39,6 @@ Two ways, same result. Pick the one that fits you:
 Already installed? See [Updating](#updating).
 
 ### Option 1: from the Claude desktop app (no terminal)
-
-![Illustration of the Claude desktop app with the claude-carbon pane open: a blue pixel molecule, "This session: 8.2 gCO₂ · 0.04× your median", the last 30 days as tiles and warming stripes, a "Get my 2026 card" button, and "This session: 8.2 gCO₂" under the prompt](docs/desktop-app.png)
 
 1. Open the **Code** tab of the Claude desktop app and start a session, in any folder.
 2. Paste the message for your system. It works in any language. Claude runs the installer for you and asks before running the command: accept.
@@ -98,7 +103,7 @@ claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 
 
 Segments, left to right: project + git branch, model + context window %, API-equivalent session cost + CO2, 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
 
-> **Where the CO2 shows up.** The status line is a feature of the Claude Code terminal UI. It is displayed only when you run `claude` in a terminal, including the integrated terminal of VS Code or JetBrains. The IDE extensions' chat panel has no status line at all, so nothing is displayed there even though the hooks still run and your sessions are recorded: `/carbon-report` covers them. If you use the VS Code panel and want the live CO2, open a terminal in VS Code (`` Ctrl+` ``) and run `claude` from there. The web app (claude.ai/code) runs neither the status line nor the hooks, so nothing is displayed or recorded there. The desktop app does not display the status line either; the plugin's [mod](#the-co2-of-each-answer-mod) draws the CO2 in its Code tab.
+> **Where the CO2 shows up.** The status line is a feature of the Claude Code terminal UI. It is displayed only when you run `claude` in a terminal, including the integrated terminal of VS Code or JetBrains. The IDE extensions' chat panel has no status line at all, so nothing is displayed there even though the hooks still run and your sessions are recorded: `/carbon-report` covers them. If you use the VS Code panel and want the live CO2, open a terminal in VS Code (`` Ctrl+` ``) and run `claude` from there. The web app (claude.ai/code) runs neither the status line nor the hooks, so nothing is displayed or recorded there. The desktop app does not display the status line either; the plugin's [mod](#the-mod-carbon-panel-and-the-co2-of-each-answer) draws the CO2 in its Code tab.
 
 **5h quota source.** The percentage comes directly from Anthropic's `/api/oauth/usage` endpoint (the same data Claude Code displays in `/usage`). No heuristic, no token-limit file to seed. Two sources in order:
 
@@ -345,7 +350,7 @@ It is one developer's total, so it belongs in your profile README or a personal 
 
 Numbers follow the locale the report uses (`fr` prints `12,4 kg`, `us` and the world default print `12.4 kg`); `CLAUDE_CARBON_LOCALE` forces a set.
 
-## The CO2 of each answer (mod)
+## The mod: /carbon-panel and the CO2 of each answer
 
 The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that shows the CO2 of each answer when it ends, computed locally with the same formula and factors as the status line, and the session's total with its API-price cost.
 
@@ -390,7 +395,7 @@ Claude Code accepts a single `statusLine` command, so claude-carbon's full statu
 
 (adjust the path if you installed with `CLAUDE_CARBON_DIR`). The widget receives the same status JSON on stdin and prints just the cost + CO2 pair, e.g. `$0.68 · 35gCO₂`. Segment mode never touches the network. Recording to the local database is unaffected either way: persistence runs from hooks, not from the status line.
 
-With the segment in ccstatusline, the [mod](#the-co2-of-each-answer-mod)'s session entry under the prompt shows the total a second time. Turn it off with the `showSessionTotal` option in `/config`; the desktop app, which has no status line, keeps it.
+With the segment in ccstatusline, the [mod](#the-mod-carbon-panel-and-the-co2-of-each-answer)'s session entry under the prompt shows the total a second time. Turn it off with the `showSessionTotal` option in `/config`; the desktop app, which has no status line, keeps it.
 
 ## Emission factors
 
@@ -438,7 +443,7 @@ curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/inst
 
 - Updating re-prices your stored history with the new factors automatically (CO2 only; cost figures are left intact). Run `scripts/recompute.sh --with-cost` yourself only after a price change.
 - If you edited `data/factors.json` or `data/prices.json` locally, the update keeps your edits; on a conflict with upstream it saves yours to `*.local.bak` and tells you.
-- The update also refreshes the [mod](#the-co2-of-each-answer-mod)'s copy. When it asks for a restart (on Windows, a copy in use cannot be replaced), restart Claude Code and run it again; until then the previous copy stays.
+- The update also refreshes the [mod](#the-mod-carbon-panel-and-the-co2-of-each-answer)'s copy. When it asks for a restart (on Windows, a copy in use cannot be replaced), restart Claude Code and run it again; until then the previous copy stays.
 - Installed via the plugin marketplace? Update with Claude Code's built-in `/plugin update` instead.
 
 ## Dependencies
