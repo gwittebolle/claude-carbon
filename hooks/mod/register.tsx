@@ -91,6 +91,7 @@ import {
   showLabel,
   stripesAlt,
   stripesCaption,
+  stripesWaitText,
   stripeTitle,
   toLabel,
   waitingText,
@@ -139,6 +140,7 @@ import {
   periodTotal,
   previousTotal,
   RANGES,
+  MIN_STRIPES,
   colourMedian,
   sessionMedian,
   windowOf,
@@ -290,6 +292,8 @@ const pane: {
   cardReadyUntil: number;
   // The row of block switches is open
   customizing: boolean;
+  // The tile whose note is open, by its (i)
+  openNote: string | null;
   // The running session as the pane tells it: subagents started, the family of the last
   // model that answered
   subagents: number;
@@ -313,6 +317,7 @@ const pane: {
   project: "",
   cardReadyUntil: 0,
   customizing: false,
+  openNote: null,
   subagents: 0,
   agents: new Map<string, number>(),
   sessionFamily: null,
@@ -1047,6 +1052,8 @@ export const register: Register = (on, options) => {
         isChosen ? { variant: "primary" as const } : { dimColor: true };
       const sessionText = total.grams > 0 ? currentLine(total.grams, sm, lang) : waitingText(lang);
       const hasStripes = pane.rows !== null && stripes.length > 0;
+      // Periods with sessions in them: below three, the stripes say they are coming
+      const filledStripes = shown.filter((b) => b.sessions > 0).length;
       const withYear = w.end - w.start > 300 * 86_400_000;
       const firstShown = shown[0];
       const dates =
@@ -1205,8 +1212,12 @@ export const register: Register = (on, options) => {
         </Box>
       );
       // A tile of the desktop pane: a dim label over a bold figure, in a rounded frame.
-      // A tile with a note shows an (i), and the pointer on the tile reveals the note
-      // under the tiles: a hover group of the surface's, no hook, nothing drawn again.
+      // A tile with a note has an (i) button: a click shows the note under the tiles, a
+      // second hides it. (A hover reveal did not reach the desktop app.)
+      const toggleNote = (kind: string) => {
+        pane.openNote = pane.openNote === kind ? null : kind;
+        $.ui.invalidate("ui.render");
+      };
       const tile = (
         kind: string,
         value: string,
@@ -1219,27 +1230,27 @@ export const register: Register = (on, options) => {
           paddingX={1}
           flexDirection="column"
           flexGrow={1}
-          {...(note !== undefined ? { hover: { scope: `note-${kind}` } } : {})}
         >
           <Box flexDirection="row" columnGap={1} alignItems="center">
             <Text dimColor>{tileLabel(kind, lang)}</Text>
-            {note !== undefined && <Text dimColor>{"\u24d8"}</Text>}
+            {note !== undefined && (
+              <Button
+                key={`note-${kind}`}
+                label={"\u24d8"}
+                plain
+                {...(pane.openNote === kind ? {} : { dimColor: true })}
+                onPress={() => toggleNote(kind)}
+              />
+            )}
           </Box>
           <Text bold {...(color !== undefined ? { color } : {})}>
             {value}
           </Text>
         </Box>
       );
-      // A tile's note, hidden until the pointer is on its tile. No key: a keyed Box is a
-      // hover scope of its own, and one drawn hidden can never be under the pointer.
-      const tileNote = (kind: string, text: string) => (
-        <Box
-          display="none"
-          hover={{ display: "flex", scope: `note-${kind}` }}
-        >
-          <Text dimColor>{text}</Text>
-        </Box>
-      );
+      // A tile's note, shown while its (i) is open
+      const tileNote = (kind: string, text: string) =>
+        pane.openNote === kind && <Text key={`note-text-${kind}`} dimColor>{text}</Text>;
       // The session's subagents as small molecules, each coloured by its CO2 against the
       // median of past sessions (the starting reference before one): at most eight, then "+N"
       const agentList = [...pane.agents.values()];
@@ -1366,7 +1377,10 @@ export const register: Register = (on, options) => {
           )}
           {noHistory}
           {empty}
-          {hasStripes && (
+          {hasStripes && filledStripes < MIN_STRIPES && (
+            <Text dimColor>{stripesWaitText(w.step, filledStripes, lang)}</Text>
+          )}
+          {hasStripes && filledStripes >= MIN_STRIPES && (
             // The desktop app does not space an Svg from its siblings: a margin above it,
             // the dates right under it
             <Box flexDirection="column" marginTop={1}>

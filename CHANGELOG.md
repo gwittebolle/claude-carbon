@@ -2,6 +2,17 @@
 
 ## 2026-10-14
 
+### fix: the /carbon-panel pane reads right on a first install
+
+Seen on a fresh install. The (i) of the API-price and car tiles revealed their note on
+hover, which the desktop app did not do: each (i) is now a button, a click shows the note
+under the tiles and a second hides it. Before three periods with sessions in them, the
+stripes drew one grey block; they now say they are coming ("Vos bandes de couleur
+apparaissent après 3 jours d'usage (1 pour l'instant)"). The car tile reads "< 1 km"
+instead of "≈ 0 km". The note under a new molecule says it plainly: "Couleur provisoire :
+elle s'ajustera à vos habitudes après 10 sessions". The foot's last line reads like the
+one above it: "En équipe avec TokenClimate".
+
 ### fix: Haiku's emission factors halve, to 0.25x Sonnet
 
 Haiku was estimated at 0.5x Sonnet (20 / 413 gCO2e per million tokens), a middle

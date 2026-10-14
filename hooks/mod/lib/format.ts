@@ -235,11 +235,12 @@ export function currentLine(
   return `${total} · ${ratio}×${NBSP}${fr ? "votre médiane" : "your median"}`;
 }
 
-// Before 10 past sessions the colour compares with the starting reference, 0.5 kgCO₂
+// Before 10 past sessions the colour compares with a starting reference (0.5 kgCO₂),
+// said simply to someone who just arrived
 export function colorNote(pastSessions: number, lang: Lang): string {
   return lang === "fr"
-    ? `Couleur comparée à 0,5${NBSP}kgCO₂ jusqu'à 10 sessions (${pastSessions} pour l'instant), puis à votre médiane.`
-    : `Colour compared with 0.5${NBSP}kgCO₂ until 10 sessions (${pastSessions} so far), then with your median.`;
+    ? `Couleur provisoire${NBSP}: elle s'ajustera à vos habitudes après 10 sessions (${pastSessions} pour l'instant).`
+    : `Provisional colour: it adjusts to your habits after 10 sessions (${pastSessions} so far).`;
 }
 
 export function noHistoryText(lang: Lang): string {
@@ -284,6 +285,21 @@ const PER: Record<string, [string, string]> = {
   week: ["semaine", "week"],
   month: ["mois", "month"],
 };
+// Before three periods with sessions in them there is nothing to colour: the stripes
+// wait, and say what they will show
+export function stripesWaitText(step: string, filled: number, lang: Lang): string {
+  const fr = lang === "fr";
+  const units: Record<string, [string, string]> = {
+    day: ["jours", "days"],
+    week: ["semaines", "weeks"],
+    month: ["mois", "months"],
+  };
+  const unit = pick(units[step], lang);
+  return fr
+    ? `Vos bandes de couleur apparaissent après 3 ${unit} d'usage (${filled} pour l'instant)${NBSP}: une par période, du bleu au rouge selon son CO₂.`
+    : `Your colour stripes show after 3 ${unit} of use (${filled} so far): one per period, blue to red by its CO₂.`;
+}
+
 export function stripesCaption(step: string, stripeMedian: number | null, lang: Lang): string {
   const fr = lang === "fr";
   const unit = pick(PER[step], lang);
@@ -480,8 +496,9 @@ export function methodologyLabel(lang: Lang): string {
 export function builtByLabel(lang: Lang): string {
   return lang === "fr" ? "Développé par" : "Built by";
 }
+// Phrased like "Développé par": the link ends the sentence, no colon
 export function forTeamLabel(lang: Lang): string {
-  return lang === "fr" ? `Pour une équipe${NBSP}:` : "For a team:";
+  return lang === "fr" ? "En équipe avec" : "As a team with";
 }
 
 export function blockTitle(kind: "session" | "usage", lang: Lang): string {
@@ -553,7 +570,10 @@ export function carValue(
   car: { divisor: number; unit: string },
   lang: Lang,
 ): string {
-  return `≈${NBSP}${thousands(grams / car.divisor, lang)} ${car.unit}`;
+  const distance = grams / car.divisor;
+  // Under a unit, "≈ 0 km" reads as nothing at all
+  if (distance < 1) return `<${NBSP}1 ${car.unit}`;
+  return `≈${NBSP}${thousands(distance, lang)} ${car.unit}`;
 }
 
 // The blocks a person can show or hide in the pane, under the gear

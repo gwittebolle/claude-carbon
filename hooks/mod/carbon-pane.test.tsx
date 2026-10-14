@@ -411,7 +411,7 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain("Mon usage");
     // The main model is not shown; the car is a tile of the period
     expect(text).not.toContain("Surtout");
-    expect(text).toContain("En voiture\nⓘ\n≈ 7 km");
+    expect(text).toContain("En voiture\n≈ 7 km");
     expect(text).toContain("Développé par");
     const links = JSON.stringify(await ui.drawn());
     expect(links).toContain("https://gaetanwittebolle.com/?ref=carbon-panel");
@@ -555,7 +555,7 @@ describe("the /carbon-panel pane", () => {
       "L'historique de vos sessions vient avec l'installation complète",
     );
     expect(text).toContain(
-      "Couleur comparée à 0,5 kgCO₂ jusqu'à 10 sessions (0 pour l'instant), puis à votre médiane.",
+      "Couleur provisoire : elle s'ajustera à vos habitudes après 10 sessions (0 pour l'instant).",
     );
     await ui.unmount();
     // The terminal says there is no history, not a count of none
@@ -572,7 +572,7 @@ describe("the /carbon-panel pane", () => {
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
     expect(await drawn(ui)).toContain(
-      "Couleur comparée à 0,5 kgCO₂ jusqu'à 10 sessions (4 pour l'instant), puis à votre médiane.",
+      "Couleur provisoire : elle s'ajustera à vos habitudes après 10 sessions (4 pour l'instant).",
     );
     await ui.unmount();
   });
@@ -608,36 +608,26 @@ describe("the /carbon-panel pane", () => {
     const text = await drawn(ui);
     // The tiles: the period, its change, its sessions, its API-price value
     expect(text).toContain(
-      "Sur la période\n300 gCO₂\nPar rapport à avant\n+50 %\nSessions\n2\nValeur au prix API\nⓘ\n3,00 $",
+      "Sur la période\n300 gCO₂\nPar rapport à avant\n+50 %\nSessions\n2\nValeur au prix API\n3,00 $",
     );
-    expect(text).toContain("En voiture\nⓘ\n≈ 2 km");
-    // The value never says who paid it: an (i) on its tile, and its note hidden until
-    // the pointer is on the tile, taking no line
-    const nodes: any[] = [];
-    const walkAll = (node: any) => {
-      if (node === null || typeof node !== "object") return;
-      if (Array.isArray(node)) return node.forEach(walkAll);
-      nodes.push(node);
-      walkAll(node.children);
-    };
-    walkAll(await ui.drawn());
-    const tileOf = (kind: string) => nodes.find((n) => n.props?.key === `tile-${kind}`)?.hover;
-    for (const kind of ["cost", "car"]) {
-      const hidden = nodes.find(
-        (n) => n.type === "Box" && n.props?.display === "none" && n.hover?.scope === `note-${kind}`,
-      );
-      expect(hidden?.hover).toEqual({ display: "flex", scope: `note-${kind}` });
-      // No key of its own: a keyed Box drawn hidden would be a scope no pointer reaches
-      expect(hidden?.props.key).toBeUndefined();
-      expect(tileOf(kind)).toEqual({ scope: `note-${kind}` });
-    }
-    const notes = JSON.stringify(await ui.drawn()).replaceAll("\u00a0", " ");
-    expect(notes).toContain(
-      "Le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.",
-    );
-    expect(notes).toContain("142 gCO₂/km, ADEME 2025");
-    // A tile with nothing to explain has no (i) and lights nothing
-    expect(tileOf("sessions")).toBeUndefined();
+    expect(text).toContain("En voiture\n≈ 2 km");
+    // The value never says who paid it: its tile has an (i) button, and a click shows
+    // the note under the tiles, a second hides it
+    const API_NOTE = "Le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.";
+    expect(text).not.toContain(API_NOTE);
+    expect(await ui.find({ key: "note-cost" })).toBeDefined();
+    expect(await ui.find({ key: "note-car" })).toBeDefined();
+    await ui.press({ key: "note-cost" });
+    expect(await drawn(ui)).toContain(API_NOTE);
+    await ui.press({ key: "note-car" });
+    expect(await drawn(ui)).toContain("142 gCO₂/km, ADEME 2025");
+    expect(await drawn(ui)).not.toContain(API_NOTE);
+    await ui.press({ key: "note-car" });
+    expect(await drawn(ui)).not.toContain("142 gCO₂/km, ADEME 2025");
+    // A tile with nothing to explain has no (i)
+    expect(await ui.find({ key: "note-sessions" })).toBeUndefined();
+    // Two days with sessions: the stripes wait for a third, and say so
+    expect(text).toContain("Vos bandes de couleur apparaissent après 3 jours d'usage (2 pour l'instant)");
     // A rise is drawn in the error colour
     const rise = await ui.find({ type: "Text", text: "+50\u00a0%" });
     expect(rise.props.color).toBe("error");
