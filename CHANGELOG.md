@@ -20,7 +20,11 @@ sets the name, the eight molecules and the stripes beside that window. Both are 
 from the launch film's app scene, in English. The animated preview built from the
 status-line demo and its two scripts are gone. The README opens on the pane, right
 after its first paragraph and before the terminal's status line, lists `/carbon-panel`
-first, and its mod section is now "The mod: /carbon-panel and the CO2 of each answer".
+first, and its mod section is now "The mod: /carbon-panel and the CO2 of each answer". The
+banner at its top is now `docs/readme-banner.png`, the preview's layout on a light
+ground: the name, the eight molecules and the stripes beside the pane; the walking
+molecules move to the "Open source" section, next to the stripes' credit. The preview
+and the banner show the pane alone, in a card.
 
 ### docs: Ed Hawkins' stripes credit at the end of the README and on the pane's last line
 
