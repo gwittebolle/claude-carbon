@@ -225,6 +225,94 @@ jobs:
       # jq and sqlite3 are the two commands Git for Windows does not ship, and the
       # two the README asks Windows users to install. Everything else the plugin
       # touches (bash, awk, sed, grep, date, curl, git, cygpath) comes with Git.
+      # jq from Chocolatey. sqlite3 from Chocolatey too, and when its feed cannot serve the
+      # package (it could not on 2026-10-14), from the official sqlite.org zip, checked
+      # against its SHA-256. Either way the step fails loudly if a command is still missing,
+      # instead of every suite after it failing for want of it.
+      - name: Install jq and sqlite3
+        run: |
+          command -v jq      >/dev/null 2>&1 || choco install jq     --no-progress -y
+          command -v sqlite3 >/dev/null 2>&1 || choco install sqlite --no-progress -y || true
+          if ! command -v sqlite3 >/dev/null 2>&1; then
+            dir="$RUNNER_TEMP/sqlite"
+            mkdir -p "$dir"
+            curl -fsSL --retry 3 -o "$dir/sqlite.zip" https://www.sqlite.org/2026/sqlite-tools-win-x64-3540000.zip
+            echo "63cb06e952a83fd140139b008ed5b47496608161c62f8cd17bc96e8beb1de029  $dir/sqlite.zip" | sha256sum -c -
+            powershell -NoProfile -Command "Expand-Archive -Force -Path '$(cygpath -w "$dir/sqlite.zip")' -DestinationPath '$(cygpath -w "$dir")'"
+            cygpath -w "$dir" >> "$GITHUB_PATH"
+            export PATH="$dir:$PATH"
+          fi
+          for cmd in jq sqlite3; do
+            command -v "$cmd" >/dev/null 2>&1 || { echo "::error::$cmd could not be installed"; exit 1; }
+          done
+
+      - name: Report the toolchain actually available
+        run: |
+          echo "bash    : ${BASH_VERSION}"
+          echo "jq      : $(command -v jq) $(jq --version 2>/dev/null || echo MISSING)"
+          echo "sqlite3 : $(command -v sqlite3) $(sqlite3 --version 2>/dev/null | cut -d' ' -f1)"
+          sw_vers
+
+      - name: Portability contract
+        if: always()
+        run: /bin/bash tests/run-portability-tests.sh
+
+      - name: Methodology golden vectors
+        if: always()
+        run: /bin/bash tests/run-vectors.sh
+
+      - name: Install and update wiring
+        if: always()
+        run: /bin/bash tests/run-install-tests.sh
+
+      - name: Badge output
+        if: always()
+        run: /bin/bash tests/run-badge-tests.sh
+
+      - name: carbon-report output
+        if: always()
+        run: /bin/bash tests/run-report-tests.sh
+
+      - name: carbon-pr pipeline
+        if: always()
+        run: /bin/bash tests/run-pr-tests.sh
+
+      - name: Per-model split
+        if: always()
+        run: /bin/bash tests/run-per-model-tests.sh
+
+      - name: Session history export
+        if: always()
+        run: /bin/bash tests/run-export-tests.sh
+
+      - name: Session end capture
+        if: always()
+        run: /bin/bash tests/run-session-end-tests.sh
+
+      # The real download of jq 1.8.1 for this Mac's architecture, checked and run
+      - name: jq fetch and PATH
+        if: always()
+        env:
+          CLAUDE_CARBON_NETWORK_TESTS: "1"
+        run: /bin/bash tests/run-jq-fetch-tests.sh
+
+  windows:
+    name: windows (git bash)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    # Every suite reports even when an earlier one fails: a Windows-only failure costs
+    # a full push to observe, so one round-trip should surface all of them at once.
+    defaults:
+      run:
+        # The shell Claude Code itself spawns for hooks and the status line on
+        # Windows, so the suite runs in the environment users actually get.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      # jq and sqlite3 are the two commands Git for Windows does not ship, and the
+      # two the README asks Windows users to install. Everything else the plugin
+      # touches (bash, awk, sed, grep, date, curl, git, cygpath) comes with Git.
       # The Chocolatey feed fails now and then for a package (sqlite, 2026-10-14, three
       # times in a day): a few tries, a pause between them, then the step fails loudly
       # instead of every suite after it failing for want of the command.
