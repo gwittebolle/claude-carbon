@@ -2,6 +2,11 @@
 
 ## 2026-10-14
 
+### fix: the pane's author link opens the author's LinkedIn profile
+
+"Développé par : Gaëtan Wittebolle" now links to linkedin.com/in/gwittebolle instead of
+the personal site.
+
 ### fix: the pane's foot names TokenClimate as the business version
 
 The foot's two credit lines read "Développé par : Gaëtan Wittebolle" and "Découvrez la

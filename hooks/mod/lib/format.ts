@@ -478,7 +478,7 @@ export function sessionStatsText(
 }
 
 // The pane's last line: who made it, and the version for a team
-export const AUTHOR_URL = "https://gaetanwittebolle.com/?ref=carbon-panel";
+export const AUTHOR_URL = "https://www.linkedin.com/in/gwittebolle/";
 // The French site is at the root; only the English one has a prefix
 export function teamUrl(lang: Lang): string {
   return lang === "fr"
