@@ -34,8 +34,10 @@ export type View = { range: Range; from?: string; to?: string };
 export const RANGES: readonly Range[] = ["7d", "30d", "1y", "all", "custom"];
 export const DEFAULT_VIEW: View = { range: "30d" };
 export const HISTORY_FILE = "sessions-history.tsv";
-// Below this many past sessions the molecule has no median to be coloured against.
+// Below this many past sessions there is no median of one's own: the molecule is coloured
+// against a starting reference instead, 0.5 kgCO₂ a session.
 export const MIN_SESSIONS = 10;
+export const START_MEDIAN_GRAMS = 500;
 // Below this many periods with sessions in them the stripes stay uncoloured.
 export const MIN_STRIPES = 3;
 
@@ -146,6 +148,12 @@ export function sessionMedian(past: readonly SessionRow[]): number | null {
   if (past.length < MIN_SESSIONS) return null;
   const m = median(past.map((r) => r.grams));
   return m > 0 ? m : null;
+}
+
+// What the colours are measured against: the person's own median once there is one, the
+// starting reference before, so the molecule has a colour from the first answer.
+export function colourMedian(past: readonly SessionRow[]): number {
+  return sessionMedian(past) ?? START_MEDIAN_GRAMS;
 }
 
 // Where /carbon-panel shows: the band above a terminal's prompt when it was typed there,

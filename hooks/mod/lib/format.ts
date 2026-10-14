@@ -235,10 +235,11 @@ export function currentLine(
   return `${total} · ${ratio}×${NBSP}${fr ? "votre médiane" : "your median"}`;
 }
 
+// Before 10 past sessions the colour compares with the starting reference, 0.5 kgCO₂
 export function colorNote(pastSessions: number, lang: Lang): string {
   return lang === "fr"
-    ? `La couleur arrive après 10 sessions (${pastSessions} pour l'instant).`
-    : `The colour comes after 10 sessions (${pastSessions} so far).`;
+    ? `Couleur comparée à 0,5${NBSP}kgCO₂ jusqu'à 10 sessions (${pastSessions} pour l'instant), puis à votre médiane.`
+    : `Colour compared with 0.5${NBSP}kgCO₂ until 10 sessions (${pastSessions} so far), then with your median.`;
 }
 
 export function noHistoryText(lang: Lang): string {
@@ -469,15 +470,15 @@ export function teamUrl(lang: Lang): string {
     : "https://tokenclimate.com/en?ref=carbon-panel";
 }
 
-// How the figures are computed, every factor and its source
-// The stripes' credit, as the README gives it: the text around the link, and the link's label
-export const STRIPES_URL = "https://showyourstripes.info";
-export function stripesCredit(lang: Lang): { before: string; label: string; after: string } {
+// The stripes' credit, plain text at the very foot of the pane: a courtesy, not a link
+// out (the README carries the link)
+export function stripesCredit(lang: Lang): string {
   return lang === "fr"
-    ? { before: "Inspiré des", label: "warming stripes", after: "d'Ed Hawkins" }
-    : { before: "Inspired by Ed Hawkins'", label: "warming stripes", after: "" };
+    ? "Bandes inspirées des warming stripes d'Ed Hawkins"
+    : "Stripes inspired by Ed Hawkins' warming stripes";
 }
 
+// How the figures are computed, every factor and its source
 export const METHODOLOGY_URL =
   "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md";
 export function methodologyLabel(lang: Lang): string {

@@ -1,7 +1,4 @@
-# claude-carbon
-
-<p align="center"><img src="docs/mascot-stripes.svg" width="696" alt="Eight pixel CO2 molecules, the claude-carbon mascot, walking from dark blue to dark red, the redder the faster: the blue ones smile, the red ones sweat"></p>
-<p align="center"><sub>Inspired by Ed Hawkins' <a href="https://showyourstripes.info">warming stripes</a></sub></p>
+<p><img src="docs/banner.png" width="100%" alt="claude-carbon, free and open source: the CO2 of your Claude Code sessions, in the terminal and in the Claude app. Eight pixel molecules from dark blue to dark red, a terminal whose status line reads 8.2gCO2, and the /carbon-panel pane: this session's molecule and CO2, the last 30 days as tiles and warming stripes, a button for the yearly card"></p>
 
 [![GitHub stars](https://img.shields.io/github/stars/gwittebolle/claude-carbon)](https://github.com/gwittebolle/claude-carbon/stargazers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -9,16 +6,15 @@
 [![npm](https://img.shields.io/npm/v/claude-carbon)](https://www.npmjs.com/package/claude-carbon)
 [![CI](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml/badge.svg)](https://github.com/gwittebolle/claude-carbon/actions/workflows/ci.yml)
 
-claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate computed locally from your token usage, in the terminal status line and in the Code tab of the Claude desktop app, next to the session's API-equivalent cost.
-
-![Live CO2 in the Claude Code status line](docs/demo.gif)
+claude-carbon is an open source Claude Code plugin that tracks the carbon footprint of your sessions: a live CO2 estimate computed locally from your token usage, in the terminal status line and in the Code tab of the Claude desktop app, next to the session's API-equivalent cost. In the desktop app, `/carbon-panel` opens a pane with a pixel molecule coloured by this session's CO2 against the median of your past sessions, your usage over the period you pick, its warming stripes, and a button for your yearly card.
 
 ## What claude-carbon does
 
+- `/carbon-panel`: a pane in the Claude desktop app with your CO2 molecule, your usage and the warming stripes of your sessions (in a terminal, the session in the band above the prompt). See [the mod](#the-mod-carbon-panel-and-the-co2-of-each-answer)
 - Adds a live CO2 estimate to the Claude Code status line, and the session's CO2 under the prompt in the Claude desktop app, each next to the session's API-equivalent cost
 - Persists each session to a local SQLite database, so history survives the 30-day transcript purge
 - Backfills historical data from existing `~/.claude` transcripts
-- Slash commands: `/carbon-panel` (a pane with your CO2 molecule and the warming stripes of your sessions), `/carbon-report` (text), `/carbon-card` (PNG), `/carbon-pr` (footprint of a pull request)
+- Slash commands: `/carbon-report` (text), `/carbon-card` (PNG), `/carbon-pr` (footprint of a pull request)
 - A README badge with your all-time total, and a public methodology with every factor sourced
 
 > **About the `$` figure.** It is an API equivalent: what your session would cost at Anthropic's pay-as-you-go API list prices. On a Pro or Max subscription you do not pay it; it shows the value of what you used, next to its CO2. See [How it works](#how-it-works).
@@ -34,7 +30,7 @@ Already installed? See [Updating](#updating).
 
 ### Option 1: from the Claude desktop app (no terminal)
 
-![Illustration of claude-carbon in the Code tab of the Claude desktop app: "This session: 4.9 gCO₂ · $0.47" under the prompt](docs/desktop-app.png)
+![Illustration of the Claude desktop app with the claude-carbon pane open: a blue pixel molecule, "This session: 8.2 gCO₂ · 0.04× your median", the last 30 days as tiles and warming stripes, a "Get my 2026 card" button, and "This session: 8.2 gCO₂" under the prompt](docs/desktop-pane.png)
 
 1. Open the **Code** tab of the Claude desktop app and start a session, in any folder.
 2. Paste the message for your system. It works in any language. Claude runs the installer for you and asks before running the command: accept.
@@ -66,6 +62,8 @@ Already installed? See [Updating](#updating).
 The chat and Cowork tabs are not covered: their sessions run on Anthropic's servers, so nothing reaches your machine to count.
 
 ### Option 2: from a terminal (developers)
+
+![Live CO2 in the Claude Code status line](docs/demo.gif)
 
 **1. Install (or update):**
 
@@ -99,7 +97,7 @@ claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 
 
 Segments, left to right: project + git branch, model + context window %, API-equivalent session cost + CO2, 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
 
-> **Where the CO2 shows up.** The status line is a feature of the Claude Code terminal UI. It is displayed only when you run `claude` in a terminal, including the integrated terminal of VS Code or JetBrains. The IDE extensions' chat panel has no status line at all, so nothing is displayed there even though the hooks still run and your sessions are recorded: `/carbon-report` covers them. If you use the VS Code panel and want the live CO2, open a terminal in VS Code (`` Ctrl+` ``) and run `claude` from there. The web app (claude.ai/code) runs neither the status line nor the hooks, so nothing is displayed or recorded there. The desktop app does not display the status line either; the plugin's [mod](#the-co2-of-each-answer-mod) draws the CO2 in its Code tab.
+> **Where the CO2 shows up.** The status line is a feature of the Claude Code terminal UI. It is displayed only when you run `claude` in a terminal, including the integrated terminal of VS Code or JetBrains. The IDE extensions' chat panel has no status line at all, so nothing is displayed there even though the hooks still run and your sessions are recorded: `/carbon-report` covers them. If you use the VS Code panel and want the live CO2, open a terminal in VS Code (`` Ctrl+` ``) and run `claude` from there. The web app (claude.ai/code) runs neither the status line nor the hooks, so nothing is displayed or recorded there. The desktop app does not display the status line either; the plugin's [mod](#the-mod-carbon-panel-and-the-co2-of-each-answer) draws the CO2 in its Code tab.
 
 **5h quota source.** The percentage comes directly from Anthropic's `/api/oauth/usage` endpoint (the same data Claude Code displays in `/usage`). No heuristic, no token-limit file to seed. Two sources in order:
 
@@ -346,7 +344,7 @@ It is one developer's total, so it belongs in your profile README or a personal 
 
 Numbers follow the locale the report uses (`fr` prints `12,4 kg`, `us` and the world default print `12.4 kg`); `CLAUDE_CARBON_LOCALE` forces a set.
 
-## The CO2 of each answer (mod)
+## The mod: /carbon-panel and the CO2 of each answer
 
 The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that shows the CO2 of each answer when it ends, computed locally with the same formula and factors as the status line, and the session's total with its API-price cost.
 
@@ -354,11 +352,11 @@ The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/
 - **Desktop app, Code tab**: a line under the answer, only for an unusual answer.
 - **An unusual answer** shows the ratio, and the subagents' share when they weighed on it: `230 gCO₂ · 14× your median`. An answer is unusual when it is above the 97th percentile of your last 200 answers, over 3× their median and at least 10 g, which is about one answer in 27; none is flagged before 50 answers are recorded.
 - **The session total** is pinned under the prompt, CO2 and API-price cost: `This session: 142 gCO₂ · $3.41`, in French `Cette session : 142 gCO₂ · 3,41 $`. It shows unless the claude-carbon status line already gives it or the `showSessionTotal` option is off (both in a terminal only, see [ccstatusline](#using-with-ccstatusline)). The cost is the pay-as-you-go API list price of the same requests as the CO2, from `data/prices.json` with the formula of `/carbon-report`, cache writes at the 1-hour tier Claude Code uses; under a cent it reads `< $0.01`, and it is left out when the price list cannot be read, then until the total starts over, so the cost never covers only part of the requests. It is what the usage would cost on the API, not what a subscription bills. Background subagents, which is how Claude Code starts most of them, count in the session total only: never in an answer, nor in your median. A foreground subagent counts in the answer that started it, not in the next one.
-- **`/carbon-panel` opens a pane** with the mascot, a pixel CO2 molecule. Its colour compares this session with the median of your past sessions, from dark blue (under an eighth of it) to dark red (over eight times it), and it stays grey until 10 sessions are recorded. It hops a pixel up and down while Claude works, faster as it gets redder, and pulls faces as it goes: it looks around before the first answer, blinks and glances aside at work, smiles through a light session and sweats through a heavy one, reacts to each answer, winks at rest, and falls asleep after five minutes without a turn.
+- **`/carbon-panel` opens a pane** with the mascot, a pixel CO2 molecule. Its colour compares this session with the median of your past sessions, from dark blue (under an eighth of it) to dark red (over eight times it). Until 10 sessions are recorded it compares with a starting reference of 0.5 kgCO₂ instead, so it has a colour from the first answer. It hops a pixel up and down while Claude works, faster as it gets redder, and pulls faces as it goes: it looks around before the first answer, blinks and glances aside at work, smiles through a light session and sweats through a heavy one, reacts to each answer, winks at rest, and falls asleep after five minutes without a turn.
 
   <p align="center"><img src="docs/molecule-moods.svg" width="560" alt="The molecule's eight moods: it looks around before the first answer, glances aside at work, smiles through a light session, sweats through a heavy one, smiles or startles after an answer, winks at rest and falls asleep after five idle minutes"></p>
 
-  - **In the desktop app** the pane opens on the right, its tab titled "claude-carbon", in two blocks. Under the molecule, the colour scale, the eight colours from blue to red, with a marker under this session's. *This session*: its CO2, answers, subagents and model, its context window's fill and API-price value, and a small molecule per subagent, coloured by its own CO2. *My usage*: the period you pick (the last 7 or 30 days, 12 months, everything, or two dates you type, `01/05/2026`), its figures as tiles (CO2 as the reports sum it, change against the same length of time before, sessions, API-price value, car equivalence), then warming stripes of that period, a day, a week or a month a stripe after its length, each coloured against the median of the periods shown. The stripe under the pointer lights up and its date, total and sessions show under the stripes. A tile with an (i) reveals its note while the pointer is on it: the API-price value is what this usage costs billed through the API, and a Pro or Max subscription covers some or all of it (which session was billed how is not recorded, so the pane never says what you paid). A gear beside "My usage" turns the change, the API-price value, the car and the split by project (off until you turn it on, each folder with its share and kgCO2) on or off; the pane keeps your choices for the next session. A "Get my 2026 card" button puts `/carbon-card` in an empty prompt for you to send (the card covers the calendar year so far, whatever range the pane shows); it never sends it and leaves a draft you have started alone. A few short lines at the foot link to this methodology, Ed Hawkins' warming stripes, the author's site and TokenClimate.
+  - **In the desktop app** the pane opens on the right, its tab titled "claude-carbon", in two blocks. Under the molecule, the colour scale, the eight colours from blue to red, with a marker under this session's. *This session*: its CO2, answers, subagents and model, its context window's fill and API-price value, and a small molecule per subagent, coloured by its own CO2. *My usage*: the period you pick (the last 7 or 30 days, 12 months, everything, or two dates you type, `01/05/2026`), its figures as tiles (CO2 as the reports sum it, change against the same length of time before, sessions, API-price value, car equivalence), then warming stripes of that period, a day, a week or a month a stripe after its length, each coloured against the median of the periods shown. The stripe under the pointer lights up and its date, total and sessions show under the stripes. A tile with an (i) reveals its note while the pointer is on it: the API-price value is what this usage costs billed through the API, and a Pro or Max subscription covers some or all of it (which session was billed how is not recorded, so the pane never says what you paid). A gear beside "My usage" turns the change, the API-price value, the car and the split by project (off until you turn it on, each folder with its share and kgCO2) on or off; the pane keeps your choices for the next session. A "Get my 2026 card" button puts `/carbon-card` in an empty prompt for you to send (the card covers the calendar year so far, whatever range the pane shows); it never sends it and leaves a draft you have started alone. A few short lines at the foot link to this methodology, the author's site and TokenClimate, and a last one credits Ed Hawkins' warming stripes.
   - **In the terminal** `/carbon-panel` typed at the prompt shows this session in the band right above it, in the classic and the fullscreen rendering alike (sent from the desktop app or a phone to a session running in a terminal, through Remote Control, it opens the side pane there instead): a small molecule of 13 columns by 4 rows in half blocks, and beside it the session's CO2, answers, subagents (a dot each, in its colour), model, context window and API-price value. The period and the stripes live in the desktop app.
   - Run `/carbon-panel` again to close the pane or clear the band. The command is also a skill of the plugin, so the desktop app lists it; where the mod does not run (the VS Code chat panel, a cloud session) it only says where the pane opens.
 - **The stripes' history** is `sessions-history.tsv`, which the Stop hook writes next to `carbon.db` after each answer, read-only on the database. Every recorded session is in it, older rows as they were stored (they keep the factors of their time and are never recomputed), so the stripes, the median and the totals count what `/carbon-report` counts. Another session running at the same time counts with its total so far. The plugin installed alone has no database: the pane then shows the molecule and says where the history comes from.
@@ -391,7 +389,7 @@ Claude Code accepts a single `statusLine` command, so claude-carbon's full statu
 
 (adjust the path if you installed with `CLAUDE_CARBON_DIR`). The widget receives the same status JSON on stdin and prints just the cost + CO2 pair, e.g. `$0.68 · 35gCO₂`. Segment mode never touches the network. Recording to the local database is unaffected either way: persistence runs from hooks, not from the status line.
 
-With the segment in ccstatusline, the [mod](#the-co2-of-each-answer-mod)'s session entry under the prompt shows the total a second time. Turn it off with the `showSessionTotal` option in `/config`; the desktop app, which has no status line, keeps it.
+With the segment in ccstatusline, the [mod](#the-mod-carbon-panel-and-the-co2-of-each-answer)'s session entry under the prompt shows the total a second time. Turn it off with the `showSessionTotal` option in `/config`; the desktop app, which has no status line, keeps it.
 
 ## Emission factors
 
@@ -439,7 +437,7 @@ curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/inst
 
 - Updating re-prices your stored history with the new factors automatically (CO2 only; cost figures are left intact). Run `scripts/recompute.sh --with-cost` yourself only after a price change.
 - If you edited `data/factors.json` or `data/prices.json` locally, the update keeps your edits; on a conflict with upstream it saves yours to `*.local.bak` and tells you.
-- The update also refreshes the [mod](#the-co2-of-each-answer-mod)'s copy. When it asks for a restart (on Windows, a copy in use cannot be replaced), restart Claude Code and run it again; until then the previous copy stays.
+- The update also refreshes the [mod](#the-mod-carbon-panel-and-the-co2-of-each-answer)'s copy. When it asks for a restart (on Windows, a copy in use cannot be replaced), restart Claude Code and run it again; until then the previous copy stays.
 - Installed via the plugin marketplace? Update with Claude Code's built-in `/plugin update` instead.
 
 ## Dependencies
@@ -571,5 +569,9 @@ The shareable report cards already carry this attribution in their footer, so re
 ## Open source
 
 claude-carbon is free and open source under the [MIT license](LICENSE). Contributions welcome.
+
+<p align="center"><img src="docs/mascot-stripes.svg" width="696" alt="Eight pixel CO2 molecules, the claude-carbon mascot, walking from dark blue to dark red, the redder the faster: the blue ones smile, the red ones sweat"></p>
+
+The stripes of the banner and of `/carbon-panel` are inspired by Ed Hawkins' [warming stripes](https://showyourstripes.info), drawn here from your own sessions.
 
 Built by [Gaëtan Wittebolle](https://gaetanwittebolle.com), carbon consultant turned solo builder in Bordeaux, France. Team version: [TokenClimate](https://tokenclimate.com).

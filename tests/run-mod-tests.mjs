@@ -139,6 +139,7 @@ import {
   previousTotal,
   RANGES,
   sessionMedian,
+  colourMedian,
   windowOf,
 } from "../hooks/mod/lib/sessions.ts";
 import { carEquivalence, equivalenceSet } from "../hooks/mod/lib/equiv.ts";
@@ -794,6 +795,9 @@ check("past sessions drop the current", pastSessions(parsed, "a").map((r) => r.i
 check("no median under 10 sessions", sessionMedian(parsed), null);
 const ten = Array.from({ length: 10 }, (_, i) => ({ id: `${i}`, at: i, grams: i + 1, version: 2 }));
 check("median from 10 sessions", sessionMedian(ten), 5.5);
+check("colours against 0.5 kgCO₂ under 10 sessions", colourMedian(parsed), 500);
+check("colours against one's own median from 10", colourMedian(ten), 5.5);
+check("a first session of 0.5 kgCO₂ is mid-scale", classOf(500, colourMedian([])), classOf(5.5, 5.5));
 // Legacy rows: read with their version, kept out of the molecule's median
 const mixed = parseHistory("old1\t10\t900\t1\nold2\t20\t700\t1\nold3\t30\t800\t1\nnew\t40\t5\t2\nbare\t50\t6\n");
 check("legacy version read", mixed.filter((r) => r.version === 1).length, 3);
@@ -1016,8 +1020,8 @@ check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claud
   check("scale alt fr", plainText(scaleAlt(5, "fr")), "Échelle des couleurs, du bleu au rouge : cette session est en 6e position sur 8");
   check("scale alt grey", plainText(scaleAlt(null, "en")), "Colour scale, from blue (under your median) to red (over it)");
 }
-check("stripes credit fr", Object.values(stripesCredit("fr")).join(" "), "Inspiré des warming stripes d'Ed Hawkins");
-check("stripes credit en", Object.values(stripesCredit("en")).join(" ").trim(), "Inspired by Ed Hawkins' warming stripes");
+check("stripes credit fr", stripesCredit("fr"), "Bandes inspirées des warming stripes d'Ed Hawkins");
+check("stripes credit en", stripesCredit("en"), "Stripes inspired by Ed Hawkins' warming stripes");
 check("methodology label", methodologyLabel("fr"), "Comment c'est calculé");
 check("car tag in gCO₂", plainText(carTag("142 g/km, ADEME 2025")), "142 gCO₂/km, ADEME 2025");
 check("car tag in miles", plainText(carTag("393 g/mile, EPA US")), "393 gCO₂/mile, EPA US");

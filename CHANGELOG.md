@@ -2,6 +2,35 @@
 
 ## 2026-10-14
 
+### feat: the molecule has a colour from the first answer
+
+Before 10 past sessions the `/carbon-panel` molecule stayed grey for want of a median.
+It now compares the session with a starting reference of 0.5 kgCO₂ until then, and
+with the person's own median from the 10th session on (`colourMedian` in
+`hooks/mod/lib/sessions.ts`); subagents' small molecules follow the same reference. The
+pane says so under the session while the reference applies. The ratio "× your median"
+still shows only once the median is the person's own.
+
+### docs: the README's desktop illustration and the social preview show the pane
+
+`docs/desktop-pane.png` now shows the Claude desktop app with the `/carbon-panel` pane
+open (the molecule, the session, the period's tiles and stripes, the card button), and
+`docs/social-preview.png` (1280x640, uploaded by hand in the repository's settings)
+sets the name, the eight molecules and the stripes beside that window. Both are drawn
+from the launch film's app scene, in English. The animated preview built from the
+status-line demo and its two scripts are gone. The README's first paragraph names the pane,
+its list puts `/carbon-panel` first, the desktop illustration sits in "Option 1" and the
+status-line demo in "Option 2", and its mod section is now "The mod: /carbon-panel and the CO2 of each answer". The
+banner at its top is now `docs/banner.png`, the preview's layout on a light
+ground: the name, the eight molecules and a terminal with its status line beside the pane; the walking
+molecules move to the "Open source" section, next to the stripes' credit. The preview
+and the banner show the pane alone, in a card.
+
+### docs: Ed Hawkins' stripes credit at the end of the README and on the pane's last line
+
+The credit left the top of the README for its "Open source" section, and in the pane it
+is now the last line of the foot, as plain text with no link.
+
 ### feat: a Mac without jq gets the official one at install, and CI runs on macOS
 
 macOS ships `jq` from 15 (Sequoia) on; on an older Mac with no Homebrew the installer

@@ -417,9 +417,9 @@ describe("the /carbon-panel pane", () => {
     expect(links).toContain("https://gaetanwittebolle.com/?ref=carbon-panel");
     expect(links).toContain("https://tokenclimate.com/?ref=carbon-panel");
     expect(links).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
-    // The stripes' credit, as in the README
-    expect(links).toContain("https://showyourstripes.info");
-    expect(text).toContain("Inspiré des\nd'Ed Hawkins");
+    // The stripes' credit: plain text at the very foot, no link out
+    expect(links).not.toContain("showyourstripes.info");
+    expect(text.endsWith("Bandes inspirées des warming stripes d'Ed Hawkins")).toBe(true);
     // The foot is the pane's last element, held at the bottom
     const tree = (await ui.drawn()) as any;
     // As tall as the rows the surface gives the pane's body (20 in these props)
@@ -555,10 +555,10 @@ describe("the /carbon-panel pane", () => {
       "L'historique de vos sessions vient avec l'installation complète",
     );
     expect(text).toContain(
-      "La couleur arrive après 10 sessions (0 pour l'instant).",
+      "Couleur comparée à 0,5 kgCO₂ jusqu'à 10 sessions (0 pour l'instant), puis à votre médiane.",
     );
     await ui.unmount();
-    // The terminal says why the molecule stays grey: no history, not a count of none
+    // The terminal says there is no history, not a count of none
     const term = await $.ui.mount({ ...PANE, surface: "terminal" });
     const told = await drawn(term);
     expect(told).toContain("L'historique de vos sessions vient avec l'installation complète");
@@ -566,13 +566,13 @@ describe("the /carbon-panel pane", () => {
     await term.unmount();
   });
 
-  test("under 10 past sessions the molecule waits for its colour", async ($: any, on: any) => {
+  test("under 10 past sessions the colour compares with 0.5 kgCO₂", async ($: any, on: any) => {
     world(on, { history: historyText(4) });
     await startSession($);
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
     expect(await drawn(ui)).toContain(
-      "La couleur arrive après 10 sessions (4 pour l'instant).",
+      "Couleur comparée à 0,5 kgCO₂ jusqu'à 10 sessions (4 pour l'instant), puis à votre médiane.",
     );
     await ui.unmount();
   });
