@@ -26,7 +26,7 @@ export const DEFAULT_FACTORS: Factors = {
     fable: { input: 156, output: 3304 },
     opus: { input: 78, output: 1652 },
     sonnet: { input: 39, output: 826 },
-    haiku: { input: 20, output: 413 },
+    haiku: { input: 10, output: 207 },
   },
   cacheReadFactor: 0.08,
   excludeModels: [],

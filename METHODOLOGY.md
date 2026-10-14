@@ -55,7 +55,7 @@ The cache-write TTL tier does not appear in this formula. Writing a 5-minute ent
 | Fable        | 156   | 3304   | Extrapolated (2x Opus)         |
 | Opus         | 78    | 1652   | Extrapolated (2x Sonnet)       |
 | Sonnet       | 39    | 826    | 3-point fit (Jegham et al. v6) |
-| Haiku        | 20    | 413    | Extrapolated (0.5x Sonnet)     |
+| Haiku        | 10    | 207    | Extrapolated (0.25x Sonnet)    |
 
 ## Why input and output factors differ
 
@@ -68,7 +68,12 @@ The ratio used here is not assumed, it is recovered from the three Jegham Sonnet
 The Jegham paper covers Sonnet-class models directly. The other families are estimated by scaling:
 
 - Opus = 2x Sonnet. The current EcoLogits parameter assumptions for Opus 4.5+ (670B vs Sonnet 4.x 440B, active ~133B vs ~88B) and the Anthropic list-price ratio ($5/$25 vs $3/$15) both imply roughly 1.7-2x, not the 3x used in earlier releases. Honest band: 2x-5x Sonnet (Opus is unmeasured; EcoLogits' absolute Opus number is unstable across model generations).
-- Haiku = 0.5x Sonnet (smaller model, lighter compute). Wide band: Jegham's 3.5 Haiku estimate reads higher than Sonnet (a serving/latency artifact), while EcoLogits' modern dense Haiku reads far lower; 0.5x is a physically-plausible middle. Taken at face value instead, the Haiku estimate would put Haiku ≈ Sonnet and erase most of the gain from routing tasks to smaller models; the artifact reading is better supported, but the unfavorable reading exists and this is the widest band in the tool.
+- Haiku = 0.25x Sonnet (10 / 207, Sonnet's 39 / 826 divided by four and rounded up). Anthropic publishes no size, compute or energy figure for any Haiku, and Haiku 5.5 (launched 2026-10-07) has no independent energy estimate yet, so the factor sits between two public bounds:
+  - **Floor, about 0.07x.** EcoLogits 0.11.2 (models data of 2026-09-29), run per 1,000 output tokens: Claude Haiku 4.5 0.06-0.16 Wh against Claude Sonnet 5.5 1.16-1.82 Wh, a ratio of 0.076 at the middle of both ranges (0.059 against Sonnet 4.5). Its parameter counts are assumptions flagged "architecture not released" (Haiku 4.5 dense 10-35B, Sonnet 5.5 mixture-of-experts with 29-88B active), and most of the gap comes from that dense-versus-MoE guess.
+  - **Ceiling, about 0.57x.** Measured output speed on Anthropic's API, Artificial Analysis (read 2026-10-14): Haiku 5.5 237.3 tokens/s, Sonnet 5.5 134.9 tokens/s. On the same hardware and batch, energy per token would scale with the inverse of speed; a smaller model usually runs on fewer chips, so this bounds the ratio from above rather than estimating it.
+  - **0.25x** is the geometric middle of the two bounds (0.21), rounded up: Haiku 5.5 scores close to Sonnet 5.5 (Artificial Analysis Intelligence Index 43 against 56) and its speed ratio is higher than Haiku 4.5's (0.47 against Sonnet 4.5), so it may be a larger model than the one EcoLogits describes, and an underestimate is the error to avoid. 0.5x, the factor until 1.12.0, stays as the upper reading.
+  - Not used: the list-price ratio, $0.10 / $0.50 against $2 / $10 (0.05x), which follows a 90% price cut from Haiku 4.5 rather than a change of hardware; and Jegham's Claude 3.5 Haiku estimate, which reads above Sonnet because the paper places undisclosed models in its large 8-GPU class and scales energy with latency.
+  - To revisit when EcoLogits adds Haiku 5.5. This is still the widest band in the tool.
 - Fable = 2x Opus (no published measurement for Fable 5 / Mythos 5; the list-price ratio, $10/$50 vs $5/$25, is used as a compute proxy)
 
 These are order-of-magnitude estimates. Actual values depend on Anthropic's specific hardware configuration and batching strategies, which are not publicly available. Only Sonnet is covered by the Jegham estimates; the others carry the uncertainty bands noted above.

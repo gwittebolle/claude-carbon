@@ -178,7 +178,7 @@
       "cache_creation_1h_tokens": 10000,
       "cache_read_tokens": 100000,
       "output_tokens": 10000,
-      "expected_co2_grams": 4.69,
+      "expected_co2_grams": 2.35,
       "expected_cost_usd": 0.09
     },
     {
@@ -190,7 +190,7 @@
       "cache_creation_1h_tokens": 10000,
       "cache_read_tokens": 100000,
       "output_tokens": 10000,
-      "expected_co2_grams": 4.69,
+      "expected_co2_grams": 2.35,
       "expected_cost_usd": 0.09
     },
     {
@@ -202,8 +202,9 @@
       "cache_creation_1h_tokens": 10000,
       "cache_read_tokens": 100000,
       "output_tokens": 10000,
-      "expected_co2_grams": 4.69,
+      "expected_co2_grams": 2.35,
       "expected_cost_usd": 0.009
     }
-  ]
+  ],
+  "_refactor_2026_10_14_haiku": "Haiku family emission factors 20/413 -> 10/207 (0.5x -> 0.25x Sonnet, see METHODOLOGY.md). Only expected_co2_grams moves, on the Haiku vectors: haiku-4-5-override, haiku-4-5-dated-snapshot and haiku-5-5-family 4.69 -> 2.35. Every expected_cost_usd is unchanged."
 }

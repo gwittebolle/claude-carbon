@@ -400,7 +400,7 @@ Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), an arXiv pr
 | Fable  | 156                | 3304                | Extrapolated (2x Opus)     |
 | Opus   | 78                 | 1652                | Extrapolated (2x Sonnet)   |
 | Sonnet | 39                 | 826                 | 3-point fit (Jegham v6)    |
-| Haiku  | 20                 | 413                 | Extrapolated (0.5x Sonnet) |
+| Haiku  | 10                 | 207                 | Extrapolated (0.25x Sonnet) |
 
 **Important: these are order-of-magnitude estimates, not precise measurements.**
 

@@ -2,6 +2,19 @@
 
 ## 2026-10-14
 
+### fix: Haiku's emission factors halve, to 0.25x Sonnet
+
+Haiku was estimated at 0.5x Sonnet (20 / 413 gCO2e per million tokens), a middle
+between readings that disagree. It is now 0.25x (10 / 207), set between two public
+bounds: EcoLogits 0.11.2 puts Haiku 4.5 at about 0.07x Sonnet 5.5 per output token, and
+the output speed Artificial Analysis measures on Anthropic's API (Haiku 5.5 237 tokens/s,
+Sonnet 5.5 135) bounds the ratio at about 0.57x from above. Their geometric middle,
+0.21, is rounded up, since Haiku 5.5 comes close to Sonnet 5.5 in capability and may be
+a larger model than the one EcoLogits describes. The list-price ratio (0.05x) is not
+used. METHODOLOGY.md gives the derivation. Sessions on Haiku, often its subagents, count
+half the CO2 they did; the update re-prices stored history as usual. The golden vectors'
+Haiku expectations move accordingly, costs unchanged.
+
 ### fix: the /carbon-panel pane's foot no longer credits the stripes
 
 The README carries the credit to Ed Hawkins' warming stripes; the pane's foot keeps the
