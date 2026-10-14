@@ -2,6 +2,12 @@
 
 ## 2026-10-14
 
+### fix: the pane's foot names TokenClimate as the business version
+
+The foot's two credit lines read "Développé par : Gaëtan Wittebolle" and "Découvrez la
+version entreprise : TokenClimate" (in English "Built by:" and "Discover the business
+version:").
+
 ### fix: the /carbon-panel pane reads right on a first install
 
 Seen on a fresh install. The (i) of the API-price and car tiles revealed their note on
