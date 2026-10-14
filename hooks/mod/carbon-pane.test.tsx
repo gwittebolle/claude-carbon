@@ -46,6 +46,8 @@ type World = {
   // The history file's text, or what it holds when read; null: no file (an install
   // without the database)
   history?: string | null | (() => string);
+  // The daily release check's flag (plugin-update-check.json); absent unless given
+  update?: string;
   // This session's id when read (/clear changes it in the same process)
   sessionId?: () => string;
   welcomed?: boolean;
@@ -128,6 +130,16 @@ function world(on: any, options: World = {}) {
             : options.history;
       return text === null ? { deny: "not found" } : { value: text };
     }
+    if (path.endsWith("/plugin-update-check.json")) {
+      expect(path).toBe(
+        "/home/test/.claude/claude-carbon/plugin-update-check.json",
+      );
+      return options.update === undefined
+        ? { deny: "not found" }
+        : { value: options.update };
+    }
+    if (path.endsWith("/.claude-plugin/plugin.json"))
+      return { value: JSON.stringify({ name: PLUGIN, version: "1.12.5" }) };
     if (path.endsWith("/data/prices.json")) return { deny: "not found" };
     return { value: FACTORS };
   });
@@ -429,6 +441,41 @@ describe("the /carbon-panel pane", () => {
     expect(JSON.stringify(tree.children.at(-1))).toContain("TokenClimate");
     await ui.unmount();
   });
+
+  test("a newer release, named at the top of the foot", async ($: any, on: any) => {
+    const flag = (remote: string, daysAgo = 0) =>
+      JSON.stringify({
+        behind: true,
+        local: "1.12.5",
+        remote,
+        checked_at: Math.floor((NOW - daysAgo * DAY) / 1000),
+      });
+    world(on, { update: flag("1.12.6") });
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    expect(await drawn(ui)).toContain(
+      "Version 1.12.6 disponible : demandez à Claude de lancer « claude plugin update claude-carbon@claude-carbon », puis redémarrez.",
+    );
+    const tree = (await ui.drawn()) as any;
+    expect(JSON.stringify(tree.children.at(-1))).toContain("Version 1.12.6");
+    await ui.unmount();
+  });
+
+  for (const [name, update] of [
+    ["up to date", JSON.stringify({ behind: false, remote: "1.12.5", checked_at: Math.floor(NOW / 1000) })],
+    ["a flag older than a week", JSON.stringify({ behind: true, remote: "1.12.6", checked_at: Math.floor((NOW - 8 * DAY) / 1000) })],
+    ["never checked", undefined],
+  ] as const) {
+    test(`no release line: ${name}`, async ($: any, on: any) => {
+      world(on, { update });
+      await startSession($);
+      await openPane($);
+      const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+      expect(await drawn(ui)).not.toContain("disponible");
+      await ui.unmount();
+    });
+  }
 
   test("the session block counts its answers and subagents", async ($: any, on: any) => {
     world(on);

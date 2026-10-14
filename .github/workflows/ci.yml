@@ -145,6 +145,11 @@ jobs:
       - name: jq fetch and PATH
         run: bash tests/run-jq-fetch-tests.sh
 
+      # The daily release check: a marketplace install lists tags and never fetches into
+      # the plugin cache, a clone fetches its origin, each writes its own flag.
+      - name: Update check
+        run: bash tests/run-update-check-tests.sh
+
   macos:
     name: macos (bash 3.2)
     runs-on: macos-latest
@@ -207,6 +212,10 @@ jobs:
         env:
           CLAUDE_CARBON_NETWORK_TESTS: "1"
         run: /bin/bash tests/run-jq-fetch-tests.sh
+
+      - name: Update check
+        if: always()
+        run: /bin/bash tests/run-update-check-tests.sh
 
   windows:
     name: windows (git bash)

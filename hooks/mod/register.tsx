@@ -39,6 +39,7 @@ import {
   builtByLabel,
   REPO_URL,
   repoLabel,
+  updateText,
   forTeamLabel,
   AUTHOR_URL,
   datePlaceholder,
@@ -132,6 +133,8 @@ import {
   folderName,
   panelSite,
   historyPath,
+  newerRelease,
+  updateFlagPath,
   isView,
   dayKey,
   parseDay,
@@ -280,6 +283,11 @@ async function resetSessionState($: EngineInterface) {
 // another reason (a new request's total) keeps the step.
 const pane: {
   historyFile: string | null;
+  // The daily release check's flag, the running plugin's version, and the newer release
+  // the foot names (null when there is none)
+  updateFile: string | null;
+  ownVersion: string | null;
+  newer: string | null;
   sessionId: string | null;
   rows: SessionRow[] | null | undefined;
   walkTimer: { cancel: () => void } | null;
@@ -310,6 +318,9 @@ const pane: {
   reactUntil: number;
 } = {
   historyFile: null,
+  updateFile: null,
+  ownVersion: null,
+  newer: null,
   sessionId: null,
   rows: undefined,
   walkTimer: null,
@@ -329,6 +340,16 @@ const pane: {
 };
 
 async function loadPaneHistory($: EngineInterface) {
+  pane.newer = null;
+  if (pane.updateFile !== null) {
+    try {
+      const flag = await $.fs.read(pane.updateFile);
+      if (typeof flag === "string")
+        pane.newer = newerRelease(flag, pane.ownVersion, await $.clock.now());
+    } catch {
+      pane.newer = null;
+    }
+  }
   if (pane.historyFile === null) {
     pane.rows = null;
     return;
@@ -584,6 +605,14 @@ export const register: Register = (on, options) => {
     } catch {
       prices = null;
     }
+    try {
+      const text = await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`);
+      const version: unknown =
+        typeof text === "string" ? JSON.parse(text)?.version : undefined;
+      pane.ownVersion = typeof version === "string" ? version : null;
+    } catch {
+      pane.ownVersion = null;
+    }
 
     let settings: Record<string, unknown> = {};
     try {
@@ -627,6 +656,11 @@ export const register: Register = (on, options) => {
     try {
       pane.historyFile = historyPath({
         db: await $.env.get("CLAUDE_CARBON_DB"),
+        configDir: await $.env.get("CLAUDE_CONFIG_DIR"),
+        home: await $.env.get("HOME"),
+        userProfile: await $.env.get("USERPROFILE"),
+      });
+      pane.updateFile = updateFlagPath({
         configDir: await $.env.get("CLAUDE_CONFIG_DIR"),
         home: await $.env.get("HOME"),
         userProfile: await $.env.get("USERPROFILE"),
@@ -1300,6 +1334,7 @@ export const register: Register = (on, options) => {
       // Mods set no font size: the foot stays small by saying little
       const foot = (
         <Box flexDirection="column" marginTop={1}>
+          {pane.newer !== null && <Text>{updateText(pane.newer, lang)}</Text>}
           <ui.Link href={REPO_URL} label={repoLabel(lang)} />
           <Box flexDirection="row" columnGap={1} flexWrap="wrap">
             <Text dimColor>{builtByLabel(lang)}</Text>

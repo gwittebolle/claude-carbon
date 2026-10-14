@@ -99,6 +99,7 @@ import {
   changeValue,
   moneyValue,
   tileLabel,
+  updateText,
 } from "../hooks/mod/lib/format.ts";
 import { lineEntry, BIND_WINDOW_MS } from "../hooks/mod/lib/lines.ts";
 import {
@@ -141,6 +142,8 @@ import {
   sessionMedian,
   colourMedian,
   windowOf,
+  newerRelease,
+  updateFlagPath,
 } from "../hooks/mod/lib/sessions.ts";
 import { carEquivalence, equivalenceSet } from "../hooks/mod/lib/equiv.ts";
 
@@ -775,6 +778,40 @@ check("path from HOME", historyPath({ home: "/h" }), "/h/.claude/claude-carbon/s
 check("path from USERPROFILE", historyPath({ userProfile: "C:\\Users\\g" }), "C:\\Users\\g/.claude/claude-carbon/sessions-history.tsv");
 check("path empty values skipped", historyPath({ db: "", configDir: "", home: "/h" }), "/h/.claude/claude-carbon/sessions-history.tsv");
 check("no path", historyPath({}), null);
+// The daily release check's flag, in the config folder whatever CLAUDE_CARBON_DB says
+check("update flag from CLAUDE_CONFIG_DIR", updateFlagPath({ configDir: "/cfg", home: "/h" }), "/cfg/claude-carbon/plugin-update-check.json");
+check("update flag from HOME", updateFlagPath({ home: "/h" }), "/h/.claude/claude-carbon/plugin-update-check.json");
+check("update flag from USERPROFILE", updateFlagPath({ userProfile: "C:\\Users\\g" }), "C:\\Users\\g/.claude/claude-carbon/plugin-update-check.json");
+check("no update flag", updateFlagPath({ configDir: "" }), null);
+{
+  const at = Date.UTC(2026, 9, 14, 12);
+  const flag = (remote, daysAgo = 0) =>
+    JSON.stringify({ behind: true, local: "1.12.5", remote, checked_at: Math.floor((at - daysAgo * 86400000) / 1000) });
+  check("newer release", newerRelease(flag("1.12.6"), "1.12.5", at), "1.12.6");
+  check("newer release: by number, not text", newerRelease(flag("1.12.10"), "1.12.9", at), "1.12.10");
+  check("newer release: a minor", newerRelease(flag("1.13.0"), "1.12.9", at), "1.13.0");
+  check("same release", newerRelease(flag("1.12.5"), "1.12.5", at), null);
+  // Updated since the check: the running version is compared, not the flag's
+  check("updated since the check", newerRelease(flag("1.12.6"), "1.12.6", at), null);
+  check("older release", newerRelease(flag("1.12.4"), "1.12.5", at), null);
+  check("flag older than a week", newerRelease(flag("1.12.6", 8), "1.12.5", at), null);
+  check("flag of six days", newerRelease(flag("1.12.6", 6), "1.12.5", at), "1.12.6");
+  check("own version unknown", newerRelease(flag("1.12.6"), null, at), null);
+  check("flag not JSON", newerRelease("{", "1.12.5", at), null);
+  check("flag without remote", newerRelease('{"checked_at":1}', "1.12.5", at), null);
+  check("remote not a version", newerRelease(flag("latest"), "1.12.5", at), null);
+}
+check(
+  "update text fr",
+  updateText("1.12.6", "fr").replaceAll("\u00a0", " "),
+  "Version 1.12.6 disponible : demandez à Claude de lancer « claude plugin update claude-carbon@claude-carbon », puis redémarrez.",
+);
+check(
+  "update text en",
+  updateText("1.12.6", "en"),
+  'Version 1.12.6 is out: ask Claude to run "claude plugin update claude-carbon@claude-carbon", then restart.',
+);
+check("update text: no em dash", /\u2014/.test(updateText("1.12.6", "fr") + updateText("1.12.6", "en")), false);
 check("path at the root", historyPath({ db: "/carbon.db" }), "/sessions-history.tsv");
 check(
   "path from a Git Bash CLAUDE_CARBON_DB on Windows",

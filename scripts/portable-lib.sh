@@ -154,6 +154,13 @@ cc_mtime() {
   printf '%s\n' "$m"
 }
 
+# cc_is_plugin_cache <dir>: 0 when <dir> is a copy Claude Code's plugin marketplace
+# manages (under the config folder's plugins/), which only `claude plugin update` may change.
+cc_is_plugin_cache() {
+  case "$1" in */.claude/plugins/*|*/plugins/cache/*) return 0 ;; esac
+  return 1
+}
+
 # ── Processes ───────────────────────────────────────────────────────────────
 # cc_detach <command> [args…]: run a command fully in the background, so it outlives
 # the hook that started it: session start moving on, the SessionEnd budget expiring, or

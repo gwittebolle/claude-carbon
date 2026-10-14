@@ -93,6 +93,58 @@ export function historyPath(env: {
   return null;
 }
 
+// The flag a marketplace install's SessionStart hook writes once a day (check-update.sh):
+// the newest released version. In the config's claude-carbon folder, where the hooks keep
+// their state, whatever CLAUDE_CARBON_DB says.
+export const UPDATE_FILE = "plugin-update-check.json";
+export function updateFlagPath(env: {
+  configDir?: string;
+  home?: string;
+  userProfile?: string;
+}): string | null {
+  const nonEmpty = (v: string | undefined) =>
+    v !== undefined && v !== "" ? v : undefined;
+  const config = nonEmpty(env.configDir);
+  if (config !== undefined) return `${config}/claude-carbon/${UPDATE_FILE}`;
+  const home = nonEmpty(env.home) ?? nonEmpty(env.userProfile);
+  if (home !== undefined) return `${home}/.claude/claude-carbon/${UPDATE_FILE}`;
+  return null;
+}
+
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
+function isNewer(a: string, b: string): boolean {
+  const x = SEMVER.exec(a);
+  const y = SEMVER.exec(b);
+  if (x === null || y === null) return false;
+  for (let i = 1; i <= 3; i++) {
+    const d = Number(x[i]) - Number(y[i]);
+    if (d !== 0) return d > 0;
+  }
+  return false;
+}
+
+// The released version this install lacks, or null. Compared with the running plugin's
+// own version, not the flag's, so an update applied since the last check says nothing;
+// a flag older than a week is ignored, as the status line ignores its own.
+export function newerRelease(
+  flagText: string,
+  ownVersion: string | null,
+  nowMs: number,
+): string | null {
+  if (ownVersion === null) return null;
+  let flag: unknown;
+  try {
+    flag = JSON.parse(flagText);
+  } catch {
+    return null;
+  }
+  if (typeof flag !== "object" || flag === null) return null;
+  const { remote, checked_at } = flag as { remote?: unknown; checked_at?: unknown };
+  if (typeof remote !== "string" || typeof checked_at !== "number") return null;
+  if (nowMs - checked_at * 1000 > 7 * 86400 * 1000) return null;
+  return isNewer(remote, ownVersion) ? remote : null;
+}
+
 // One line per session: id, start in epoch seconds, grams, methodology version, project,
 // API-price cost, model, tab-separated. Fields an older hook did not write read as the
 // current version and as unknown.

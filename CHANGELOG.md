@@ -2,6 +2,22 @@
 
 ## 2026-10-14
 
+### feat: the /carbon-panel pane names a newer release
+
+A marketplace install had no way to learn of a new version: the status line's
+`⬆ /carbon-update` hint only covers a git clone, and the desktop app shows no status line.
+Its SessionStart hook now asks GitHub once a day for the release tags (read-only, nothing
+fetched into Claude Code's plugin cache) and writes `plugin-update-check.json`. When a newer
+release exists, the pane's foot says which one and the command to ask Claude to run,
+`claude plugin update claude-carbon@claude-carbon`, then restart. The pane compares it with
+its own version, so the line goes away once updated, and ignores a check older than a week.
+`CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1` turns it off, as it does the status line's hint.
+
+### fix: the pane's first link says what it offers
+
+The first link of the foot reads "En savoir plus sur claude-carbon" ("Learn more about
+claude-carbon") and still opens the repository's home.
+
 ### fix: the pane's first link opens the repository's home
 
 "Comment c'est calculé" linked to METHODOLOGY.md; the line now reads "claude-carbon sur
