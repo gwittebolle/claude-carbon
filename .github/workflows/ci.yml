@@ -225,10 +225,20 @@ jobs:
       # jq and sqlite3 are the two commands Git for Windows does not ship, and the
       # two the README asks Windows users to install. Everything else the plugin
       # touches (bash, awk, sed, grep, date, curl, git, cygpath) comes with Git.
+      # The Chocolatey feed fails now and then for a package (sqlite, 2026-10-14, three
+      # times in a day): a few tries, a pause between them, then the step fails loudly
+      # instead of every suite after it failing for want of the command.
       - name: Install jq and sqlite3
         run: |
-          command -v jq      >/dev/null 2>&1 || choco install jq     --no-progress -y
-          command -v sqlite3 >/dev/null 2>&1 || choco install sqlite --no-progress -y
+          for pkg in jq:jq sqlite3:sqlite; do
+            cmd="${pkg%%:*}"; name="${pkg#*:}"
+            for try in 1 2 3 4; do
+              command -v "$cmd" >/dev/null 2>&1 && break
+              choco install "$name" --no-progress -y || sleep $((try * 15))
+              export PATH="$PATH:/c/ProgramData/chocolatey/bin"
+            done
+            command -v "$cmd" >/dev/null 2>&1 || { echo "::error::$cmd could not be installed"; exit 1; }
+          done
 
       - name: Report the toolchain actually available
         run: |
