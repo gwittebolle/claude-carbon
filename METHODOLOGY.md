@@ -17,13 +17,9 @@ The three estimated points are fit with an ordinary least-squares regression thr
 
 These are the best available public data to date and will keep being refined as estimates improve. Earlier releases used 190/1140, calibrated against an earlier revision of the same preprint; the move to v6's three per-query energies refines that.
 
-### Cross-validation against EcoLogits
+### Cross-checks
 
-[EcoLogits](https://ecologits.ai) (GenAI Impact / Data For Good) estimates inference impact by an independent route: model parameter counts plus a full lifecycle model, rather than API-derived energy estimates. Its estimate for Claude 3.7 Sonnet brackets **~565-1385 gCO2e/Mtok output** (parameter range, USA grid, full lifecycle), with a usage-only central value near ~630. The Jegham-derived **826** sits inside that band. That is a useful consistency check rather than strong corroboration: the EcoLogits band spans a factor of ~2.5 (almost any plausible value lands inside it), and its parameter counts for closed models are educated guesses. Note one structural difference: EcoLogits charges zero energy to input tokens, whereas Jegham's estimates show a small but real input cost (the 10k-input query consumes more), which this tool keeps via the input factor.
-
-### A third independent estimate (Couch, 2026)
-
-[Simon Couch's January 2026 analysis of AI coding agents](https://simonpcouch.com/blog/2026-01-20-cc-impact/) derives Claude per-token energy by yet another route: Epoch AI's GPT-4o per-query estimate scaled by Anthropic's API price ratios. His self-described pessimistic figures are ~390 Wh/Mtok input and ~1,950 Wh/Mtok output. The Jegham-derived Sonnet factors used here are equivalent to ~136 Wh/Mtok input and ~2,880 Wh/Mtok output. Three routes (API-based energy estimation, parameter-count lifecycle modeling, price-ratio scaling) landing within ~1.5x of each other on output tokens is encouraging, with caveats. Couch's figures are anchored on Opus-class pricing while the comparison here is against Sonnet factors. The routes share assumptions: price-ratio scaling is the same proxy this tool uses for Opus and Fable, and Epoch AI's anchor is itself a parameter-count model, so the three are not fully independent. And the agreement does not extend to input tokens, where the routes span 0 (EcoLogits) to ~390 Wh/Mtok (Couch).
+Two public estimates built by other routes, one from model parameter counts with a lifecycle model ([EcoLogits](https://ecologits.ai)), one from a per-query estimate scaled by API price ratios ([Couch, 2026](https://simonpcouch.com/blog/2026-01-20-cc-impact/)), put Sonnet's output energy within about 1.5x of the value used here. They share some assumptions and disagree on input tokens, so they are a consistency check, not a confirmation.
 
 ## Formula
 
