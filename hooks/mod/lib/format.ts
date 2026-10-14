@@ -470,14 +470,6 @@ export function teamUrl(lang: Lang): string {
     : "https://tokenclimate.com/en?ref=carbon-panel";
 }
 
-// The stripes' credit, plain text at the very foot of the pane: a courtesy, not a link
-// out (the README carries the link)
-export function stripesCredit(lang: Lang): string {
-  return lang === "fr"
-    ? "Bandes inspirées des warming stripes d'Ed Hawkins"
-    : "Stripes inspired by Ed Hawkins' warming stripes";
-}
-
 // How the figures are computed, every factor and its source
 export const METHODOLOGY_URL =
   "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md";

@@ -417,9 +417,9 @@ describe("the /carbon-panel pane", () => {
     expect(links).toContain("https://gaetanwittebolle.com/?ref=carbon-panel");
     expect(links).toContain("https://tokenclimate.com/?ref=carbon-panel");
     expect(links).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
-    // The stripes' credit: plain text at the very foot, no link out
+    // The stripes' credit lives in the README only
     expect(links).not.toContain("showyourstripes.info");
-    expect(text.endsWith("Bandes inspirées des warming stripes d'Ed Hawkins")).toBe(true);
+    expect(text).not.toContain("Ed Hawkins");
     // The foot is the pane's last element, held at the bottom
     const tree = (await ui.drawn()) as any;
     // As tall as the rows the surface gives the pane's body (20 in these props)

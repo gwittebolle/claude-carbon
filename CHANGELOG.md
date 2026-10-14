@@ -2,6 +2,11 @@
 
 ## 2026-10-14
 
+### fix: the /carbon-panel pane's foot no longer credits the stripes
+
+The README carries the credit to Ed Hawkins' warming stripes; the pane's foot keeps the
+methodology, the author and TokenClimate.
+
 ### docs: the README cites ADEME first for the 2 t per-person target
 
 The `/carbon-report` budget line's source in the README now names ADEME's Nos Gestes
