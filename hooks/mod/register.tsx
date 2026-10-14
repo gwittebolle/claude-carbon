@@ -38,7 +38,6 @@ import {
   answerLine,
   builtByLabel,
   METHODOLOGY_URL,
-  stripesCredit,
   methodologyLabel,
   forTeamLabel,
   AUTHOR_URL,
@@ -1299,7 +1298,6 @@ export const register: Register = (on, options) => {
             <Text dimColor>{forTeamLabel(lang)}</Text>
             <ui.Link href={teamUrl(lang)} label="TokenClimate" />
           </Box>
-          <Text dimColor>{stripesCredit(lang)}</Text>
         </Box>
       );
 

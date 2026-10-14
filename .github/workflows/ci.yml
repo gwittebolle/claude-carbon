@@ -225,10 +225,26 @@ jobs:
       # jq and sqlite3 are the two commands Git for Windows does not ship, and the
       # two the README asks Windows users to install. Everything else the plugin
       # touches (bash, awk, sed, grep, date, curl, git, cygpath) comes with Git.
+      # jq from Chocolatey. sqlite3 from Chocolatey too, and when its feed cannot serve the
+      # package (it could not on 2026-10-14), from the official sqlite.org zip, checked
+      # against its SHA-256. Either way the step fails loudly if a command is still missing,
+      # instead of every suite after it failing for want of it.
       - name: Install jq and sqlite3
         run: |
           command -v jq      >/dev/null 2>&1 || choco install jq     --no-progress -y
-          command -v sqlite3 >/dev/null 2>&1 || choco install sqlite --no-progress -y
+          command -v sqlite3 >/dev/null 2>&1 || choco install sqlite --no-progress -y || true
+          if ! command -v sqlite3 >/dev/null 2>&1; then
+            dir="$RUNNER_TEMP/sqlite"
+            mkdir -p "$dir"
+            curl -fsSL --retry 3 -o "$dir/sqlite.zip" https://www.sqlite.org/2026/sqlite-tools-win-x64-3540000.zip
+            echo "63cb06e952a83fd140139b008ed5b47496608161c62f8cd17bc96e8beb1de029  $dir/sqlite.zip" | sha256sum -c -
+            powershell -NoProfile -Command "Expand-Archive -Force -Path '$(cygpath -w "$dir/sqlite.zip")' -DestinationPath '$(cygpath -w "$dir")'"
+            cygpath -w "$dir" >> "$GITHUB_PATH"
+            export PATH="$dir:$PATH"
+          fi
+          for cmd in jq sqlite3; do
+            command -v "$cmd" >/dev/null 2>&1 || { echo "::error::$cmd could not be installed"; exit 1; }
+          done
 
       - name: Report the toolchain actually available
         run: |
