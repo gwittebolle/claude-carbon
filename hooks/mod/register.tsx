@@ -81,6 +81,7 @@ import {
   subagentsAlt,
   subagentTitle,
   mascotAlt,
+  scaleAlt,
   noHistoryText,
   otherProjectsLine,
   paneHint,
@@ -116,6 +117,9 @@ import {
   type Mood,
   mascotCells,
   mascotSvg,
+  scaleSvg,
+  SCALE_WIDTH,
+  SCALE_HEIGHT,
   NEUTRAL,
   IDLE_STEP_MS,
   stepMs,
@@ -1008,20 +1012,29 @@ export const register: Register = (on, options) => {
 
       const ui = $.ui.resolve(e);
       const { Box, Text, Button } = ui;
+      // The molecule, and under it the colour scale with this session's place on it
       const mascot = (
-        <ui.Svg
-          source={mascotSvg({
-            color,
-            walking: isWorking,
-            step: stepMs(cls ?? NEUTRAL_CLASS),
-            title: mascotAlt(lang),
-            mood,
-          })}
-          alt={mascotAlt(lang)}
-          width={112}
-          height={90}
-          isInteractive
-        />
+        <Box flexDirection="column" alignItems="center">
+          <ui.Svg
+            source={mascotSvg({
+              color,
+              walking: isWorking,
+              step: stepMs(cls ?? NEUTRAL_CLASS),
+              title: mascotAlt(lang),
+              mood,
+            })}
+            alt={mascotAlt(lang)}
+            width={112}
+            height={90}
+            isInteractive
+          />
+          <ui.Svg
+            source={scaleSvg(cls)}
+            alt={scaleAlt(cls, lang)}
+            width={SCALE_WIDTH}
+            height={SCALE_HEIGHT}
+          />
+        </Box>
       );
       // The chosen button in the app's main style, the others dim
       const choice = (isChosen: boolean) =>

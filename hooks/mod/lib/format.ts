@@ -642,6 +642,18 @@ export function mascotAlt(lang: Lang): string {
     : "Pixel CO₂ molecule, coloured by this session against your median, from blue (below) to red (above)";
 }
 
+// The scale under the molecule, read aloud: where this session sits on it
+export function scaleAlt(cls: number | null, lang: Lang): string {
+  const fr = lang === "fr";
+  if (cls === null)
+    return fr
+      ? "Échelle des couleurs, du bleu (sous votre médiane) au rouge (au-dessus)"
+      : "Colour scale, from blue (under your median) to red (over it)";
+  return fr
+    ? `Échelle des couleurs, du bleu au rouge : cette session est en ${cls + 1}e position sur 8`
+    : `Colour scale, from blue to red: this session is ${cls + 1} of 8`;
+}
+
 export function stripesAlt(lang: Lang): string {
   return lang === "fr"
     ? "Une bande par période, la plus ancienne à gauche, du bleu (sous la médiane) au rouge (au-dessus)"

@@ -32,6 +32,13 @@ line now runs the Stop hook's own computation (`cc_session_usage`) on the
 transcript, short at that point, subagents included; the context-window estimate
 stays as the last fallback, with no database or no transcript.
 
+### feat: the pane shows where this session sits on the colour scale
+
+Under the molecule in the desktop app's pane, a small scale of the eight colours,
+bluest to reddest, with a marker under this session's colour (`scaleSvg` in
+`hooks/mod/lib/mascot.ts`); no marker while the molecule is grey, before a median
+exists. Its alt text reads the place out ("6e position sur 8").
+
 ### docs: the README's molecules pull the pane's faces
 
 The banner's eight molecules walk as before and now wear the faces the

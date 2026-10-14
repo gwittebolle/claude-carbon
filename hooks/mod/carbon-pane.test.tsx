@@ -783,8 +783,8 @@ describe("the /carbon-panel pane", () => {
       walk(node.children);
     };
     walk(tree);
-    // The molecule and the stripes
-    expect(sources.length).toBe(2);
+    // The molecule, its colour scale and the stripes
+    expect(sources.length).toBe(3);
     expect(sources.every((s) => s.length <= 131072)).toBe(true);
     // About eight years, one stripe a month, with the years written out
     expect(await drawn(ui)).toContain("une bande par mois");

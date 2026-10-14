@@ -471,6 +471,28 @@ export function subagentsSvg(
   );
 }
 
+// The colour scale under the molecule: the eight colours, bluest to reddest, and a marker
+// under this session's. No marker while the molecule is grey (no median yet).
+export const SCALE_WIDTH = 112;
+export const SCALE_HEIGHT = 22;
+export function scaleSvg(cls: number | null): string {
+  const swatch = SCALE_WIDTH / PALETTE.length;
+  const swatches = PALETTE.map(
+    (c, i) => `<rect x="${(i * swatch).toFixed(2)}" y="0" width="${swatch.toFixed(2)}" height="8" fill="${c}"/>`,
+  ).join("");
+  const marker =
+    cls === null
+      ? ""
+      : (() => {
+          const x = (Math.min(7, Math.max(0, cls)) + 0.5) * swatch;
+          return `<path fill="${OUTLINE}" d="M${x.toFixed(2)} 11l5 8h-10z"/>`;
+        })();
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SCALE_WIDTH} ${SCALE_HEIGHT}" width="${SCALE_WIDTH}" height="${SCALE_HEIGHT}" shape-rendering="crispEdges">` +
+    `${swatches}${marker}</svg>`
+  );
+}
+
 export const STRIPES_HEIGHT = 72;
 // The hovered stripe's label shows over the stripes' foot: no room kept for it
 export const STRIPES_SVG_HEIGHT = STRIPES_HEIGHT;

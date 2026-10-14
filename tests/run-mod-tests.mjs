@@ -91,6 +91,7 @@ import {
   METHODOLOGY_URL,
   methodologyLabel,
   stripesCredit,
+  scaleAlt,
   forTeamLabel,
   teamUrl,
   blockTitle,
@@ -115,6 +116,7 @@ import {
   MOODS,
   mascotCells,
   mascotSvg,
+  scaleSvg,
   mascotWords,
   NEUTRAL,
   PALETTE,
@@ -984,6 +986,17 @@ check("team url en", teamUrl("en"), "https://tokenclimate.com/en?ref=carbon-pane
 check("author url", AUTHOR_URL, "https://gaetanwittebolle.com/?ref=carbon-panel");
 check("built by", builtByLabel("fr"), "Développé par");
 check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
+// The colour scale under the molecule
+{
+  const scale = scaleSvg(3);
+  check("scale: eight colours", (scale.match(/<rect /g) ?? []).length, 8);
+  check("scale: bluest to reddest", scale.indexOf(PALETTE[0]) < scale.indexOf(PALETTE[7]), true);
+  check("scale: a marker under the session's colour", /<path [^>]*d="M49\.00 11/.test(scale), true);
+  check("scale: no marker while grey", scaleSvg(null).includes("<path"), false);
+  check("scale: no script", /<script|on[a-z]+=/i.test(scale), false);
+  check("scale alt fr", plainText(scaleAlt(5, "fr")), "Échelle des couleurs, du bleu au rouge : cette session est en 6e position sur 8");
+  check("scale alt grey", plainText(scaleAlt(null, "en")), "Colour scale, from blue (under your median) to red (over it)");
+}
 check("stripes credit fr", Object.values(stripesCredit("fr")).join(" "), "Inspiré des warming stripes d'Ed Hawkins");
 check("stripes credit en", Object.values(stripesCredit("en")).join(" ").trim(), "Inspired by Ed Hawkins' warming stripes");
 check("methodology label", methodologyLabel("fr"), "Comment c'est calculé");
