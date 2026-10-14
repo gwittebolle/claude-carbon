@@ -1,6 +1,4 @@
-# claude-carbon
-
-<p align="center"><img src="docs/banner.png" width="880" alt="claude-carbon, free and open source: the CO2 of your Claude Code sessions, in the terminal and in the Claude app. Eight pixel molecules from dark blue to dark red, a terminal whose status line reads 8.2gCO2, and the /carbon-panel pane: this session's molecule and CO2, the last 30 days as tiles and warming stripes, a button for the yearly card"></p>
+<p align="center"><img src="docs/banner.png" width="760" alt="claude-carbon, free and open source: the CO2 of your Claude Code sessions, in the terminal and in the Claude app. Eight pixel molecules from dark blue to dark red, a terminal whose status line reads 8.2gCO2, and the /carbon-panel pane: this session's molecule and CO2, the last 30 days as tiles and warming stripes, a button for the yearly card"></p>
 
 [![GitHub stars](https://img.shields.io/github/stars/gwittebolle/claude-carbon)](https://github.com/gwittebolle/claude-carbon/stargazers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
