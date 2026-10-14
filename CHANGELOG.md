@@ -26,8 +26,8 @@ throwaway repository on `main`, so it never shows the branch it was made from.
 
 On a session's first turn the status line draws before the Stop hook has written
 the session's row, and nothing redraws it after. It fell back to the context
-window, all input at the full input factor, cache reads included: 6 g for an
-answer the database and the mod both put at 4.3 g. With no row yet, the status
+window, all input at the full input factor, cache reads included: 6 gCO₂ for an
+answer the database and the mod both put at 4.3 gCO₂. With no row yet, the status
 line now runs the Stop hook's own computation (`cc_session_usage`) on the
 transcript, short at that point, subagents included; the context-window estimate
 stays as the last fallback, with no database or no transcript.
