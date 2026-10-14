@@ -140,6 +140,74 @@ jobs:
       - name: Windows end-to-end (expected to skip here)
         run: bash tests/run-windows-e2e.sh
 
+      # The jq a Mac without one is given: a wrong checksum installs nothing, and
+      # portable-lib finds the private jq only when the system has none.
+      - name: jq fetch and PATH
+        run: bash tests/run-jq-fetch-tests.sh
+
+  macos:
+    name: macos (bash 3.2)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    # macOS's own /bin/bash is 3.2 and stays so: Apple ships no newer one. Every script
+    # claims to run under it, and only this job holds them to it. A runner has the
+    # developer tools a person's Mac may lack, so the bare-Mac case stays a manual test.
+    defaults:
+      run:
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report the toolchain actually available
+        run: |
+          echo "bash    : ${BASH_VERSION}"
+          echo "jq      : $(command -v jq) $(jq --version 2>/dev/null || echo MISSING)"
+          echo "sqlite3 : $(command -v sqlite3) $(sqlite3 --version 2>/dev/null | cut -d' ' -f1)"
+          sw_vers
+
+      - name: Portability contract
+        if: always()
+        run: /bin/bash tests/run-portability-tests.sh
+
+      - name: Methodology golden vectors
+        if: always()
+        run: /bin/bash tests/run-vectors.sh
+
+      - name: Install and update wiring
+        if: always()
+        run: /bin/bash tests/run-install-tests.sh
+
+      - name: Badge output
+        if: always()
+        run: /bin/bash tests/run-badge-tests.sh
+
+      - name: carbon-report output
+        if: always()
+        run: /bin/bash tests/run-report-tests.sh
+
+      - name: carbon-pr pipeline
+        if: always()
+        run: /bin/bash tests/run-pr-tests.sh
+
+      - name: Per-model split
+        if: always()
+        run: /bin/bash tests/run-per-model-tests.sh
+
+      - name: Session history export
+        if: always()
+        run: /bin/bash tests/run-export-tests.sh
+
+      - name: Session end capture
+        if: always()
+        run: /bin/bash tests/run-session-end-tests.sh
+
+      # The real download of jq 1.8.1 for this Mac's architecture, checked and run
+      - name: jq fetch and PATH
+        if: always()
+        env:
+          CLAUDE_CARBON_NETWORK_TESTS: "1"
+        run: /bin/bash tests/run-jq-fetch-tests.sh
+
   windows:
     name: windows (git bash)
     runs-on: windows-latest

@@ -60,7 +60,7 @@ Already installed? See [Updating](#updating).
 **If the install stops**
 
 - **macOS opens a window about "command line developer tools".** That is `git`, which the installer needs and a Mac without developer tools does not have yet. Click **Install**, wait until it finishes (a few minutes), then tell Claude: "Run the claude-carbon install again."
-- **"jq is not installed" or "sqlite3 is not installed".** Tell Claude: "Install what is missing, then run the claude-carbon install again." Recent macOS versions already include both. On Windows the installer prints the `winget` command to use.
+- **"jq is not installed" or "sqlite3 is not installed".** Tell Claude: "Install what is missing, then run the claude-carbon install again." Every Mac has `sqlite3`, and macOS 15 and later also have `jq`; on an older Mac the installer fetches the official `jq` itself, checked against its published checksum. On Windows the installer prints the `winget` command to use.
 - **Windows says Git Bash is missing.** Install [Git for Windows](https://git-scm.com/downloads/win) (Claude Code needs it on Windows anyway), reopen the app, and ask Claude again.
 
 The chat and Cowork tabs are not covered: their sessions run on Anthropic's servers, so nothing reaches your machine to count.
@@ -450,7 +450,7 @@ curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/inst
 - `curl` - 5h quota usage via Anthropic's `/api/oauth/usage` endpoint (optional, 60s cache)
 - `node` + `playwright-core` + Chromium - PNG export for `/carbon-card` (optional)
 
-`jq` and `sqlite3` are pre-installed on macOS. On Linux: `apt install jq sqlite3`. On Windows, see below.
+`sqlite3` is pre-installed on every Mac, and `jq` from macOS 15 (Sequoia) on. On an older Mac with no `jq`, the installer downloads the official jq 1.8.1 binary for the Mac's processor, checks it against the SHA-256 the jq project publishes, and puts it in `~/.claude/claude-carbon/bin/`, where the scripts and the slash commands find it; a `jq` installed later (Homebrew, for one) takes precedence. On Linux: `apt install jq sqlite3`. On Windows, see below.
 
 To use `/carbon-card`, install Playwright and its Chromium browser:
 

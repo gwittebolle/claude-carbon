@@ -20,6 +20,8 @@ ccp() {
   esac
 }
 CFG="$(ccp "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
+# A jq the installer fetched into the data folder (a Mac older than macOS 15 has none)
+if ! command -v jq >/dev/null 2>&1 && [ -x "$CFG/claude-carbon/bin/jq" ]; then PATH="$CFG/claude-carbon/bin:$PATH"; fi
 REPO_DIR=""
 if command -v jq >/dev/null 2>&1 && [ -f "$CFG/settings.json" ]; then
   SL_CMD="$(jq -r '.statusLine.command // empty' "$CFG/settings.json" 2>/dev/null)"

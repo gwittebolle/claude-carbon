@@ -20,6 +20,9 @@ ccp() {
   esac
 }
 SETTINGS="$(ccp "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")/settings.json"
+# A jq the installer fetched into the data folder (a Mac older than macOS 15 has none)
+JQ_DIR="$(ccp "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")/claude-carbon/bin"
+if ! command -v jq >/dev/null 2>&1 && [ -x "$JQ_DIR/jq" ]; then PATH="$JQ_DIR:$PATH"; fi
 if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS" ]; then
   SL_CMD="$(jq -r '.statusLine.command // empty' "$SETTINGS" 2>/dev/null)"
   # statusLine.command stores a shell-escaped path: expand ~ and unescape spaces

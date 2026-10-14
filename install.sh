@@ -68,7 +68,42 @@ echo "  claude-carbon installer"
 echo "  Track the carbon footprint of your Claude Code sessions."
 echo ""
 
+# >>> fetch jq
+# macOS ships jq from 15 (Sequoia) on. On an older Mac with no Homebrew, a person who
+# only uses the desktop app has no simple way to get it: fetch the official jq binary,
+# checked against the SHA-256 jq publishes for the release, into the data folder every
+# script looks in (scripts/portable-lib.sh puts it on PATH when the system has none).
+# CLAUDE_CARBON_JQ_BASE points the download elsewhere, for the tests only.
+cc_fetch_jq() {
+  local dir="$1" asset sha tmp
+  case "$(uname -m 2>/dev/null)" in
+    arm64)  asset="jq-macos-arm64"; sha="a9fe3ea2f86dfc72f6728417521ec9067b343277152b114f4e98d8cb0e263603" ;;
+    x86_64) asset="jq-macos-amd64"; sha="e80dbe0d2a2597e3c11c404f03337b981d74b4a8504b70586c354b7697a7c27f" ;;
+    *) return 1 ;;
+  esac
+  mkdir -p "$dir" || return 1
+  tmp="${dir}/jq.download.$$"
+  if curl -fsSL --retry 2 -o "$tmp" "${CLAUDE_CARBON_JQ_BASE:-https://github.com/jqlang/jq/releases/download/jq-1.8.1}/${asset}" \
+     && [ "$(shasum -a 256 "$tmp" 2>/dev/null | cut -d' ' -f1)" = "$sha" ] \
+     && chmod +x "$tmp" && mv -f "$tmp" "${dir}/jq"; then
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+# <<< fetch jq
+
 # 1. Check dependencies
+if [ "$CC_OS" = "darwin" ] && ! command -v jq &>/dev/null; then
+  JQ_DIR="${CONFIG_DIR}/claude-carbon/bin"
+  echo "jq is not installed: fetching the official jq 1.8.1 into ${JQ_DIR}..."
+  if cc_fetch_jq "$JQ_DIR"; then
+    PATH="${JQ_DIR}:${PATH}"
+    export PATH
+  else
+    echo "  Could not fetch jq, or its checksum did not match." >&2
+  fi
+fi
 for cmd in jq sqlite3 git; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "ERROR: $cmd is not installed." >&2
