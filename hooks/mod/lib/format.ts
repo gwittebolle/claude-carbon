@@ -486,11 +486,10 @@ export function teamUrl(lang: Lang): string {
     : "https://tokenclimate.com/en?ref=carbon-panel";
 }
 
-// How the figures are computed, every factor and its source
-export const METHODOLOGY_URL =
-  "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md";
-export function methodologyLabel(lang: Lang): string {
-  return lang === "fr" ? "Comment c'est calculé" : "How it is calculated";
+// The project's home on GitHub: its README leads to the methodology in one click
+export const REPO_URL = "https://github.com/gwittebolle/claude-carbon";
+export function repoLabel(lang: Lang): string {
+  return lang === "fr" ? "claude-carbon sur GitHub" : "claude-carbon on GitHub";
 }
 
 // The foot's two credit lines, a label and a colon each, the link after it

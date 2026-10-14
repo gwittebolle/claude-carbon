@@ -89,8 +89,8 @@ import {
   apiValueNote,
   AUTHOR_URL,
   builtByLabel,
-  METHODOLOGY_URL,
-  methodologyLabel,
+  REPO_URL,
+  repoLabel,
   scaleAlt,
   forTeamLabel,
   teamUrl,
@@ -1008,7 +1008,7 @@ check("team url fr", teamUrl("fr"), "https://tokenclimate.com/?ref=carbon-panel"
 check("team url en", teamUrl("en"), "https://tokenclimate.com/en?ref=carbon-panel");
 check("author url", AUTHOR_URL, "https://www.linkedin.com/in/gwittebolle/");
 check("built by", plainText(builtByLabel("fr")), "Développé par :");
-check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
+check("repo link", REPO_URL, "https://github.com/gwittebolle/claude-carbon");
 // The colour scale under the molecule
 {
   const scale = scaleSvg(3);
@@ -1020,7 +1020,7 @@ check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claud
   check("scale alt fr", plainText(scaleAlt(5, "fr")), "Échelle des couleurs, du bleu au rouge : cette session est en 6e position sur 8");
   check("scale alt grey", plainText(scaleAlt(null, "en")), "Colour scale, from blue (under your median) to red (over it)");
 }
-check("methodology label", methodologyLabel("fr"), "Comment c'est calculé");
+check("repo label", repoLabel("fr"), "claude-carbon sur GitHub");
 check("car tag in gCO₂", plainText(carTag("142 g/km, ADEME 2025")), "142 gCO₂/km, ADEME 2025");
 check("car tag in miles", plainText(carTag("393 g/mile, EPA US")), "393 gCO₂/mile, EPA US");
 check("panel: typed in a terminal, the band", panelSite(["terminal"], "composer"), "band");

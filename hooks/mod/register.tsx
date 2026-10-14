@@ -37,8 +37,8 @@ import type { Prices } from "./lib/cost.ts";
 import {
   answerLine,
   builtByLabel,
-  METHODOLOGY_URL,
-  methodologyLabel,
+  REPO_URL,
+  repoLabel,
   forTeamLabel,
   AUTHOR_URL,
   datePlaceholder,
@@ -1300,7 +1300,7 @@ export const register: Register = (on, options) => {
       // Mods set no font size: the foot stays small by saying little
       const foot = (
         <Box flexDirection="column" marginTop={1}>
-          <ui.Link href={METHODOLOGY_URL} label={methodologyLabel(lang)} />
+          <ui.Link href={REPO_URL} label={repoLabel(lang)} />
           <Box flexDirection="row" columnGap={1} flexWrap="wrap">
             <Text dimColor>{builtByLabel(lang)}</Text>
             <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />
