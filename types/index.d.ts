@@ -25,11 +25,33 @@ export type SessionTotal = {
   turns: number;
 };
 
+// What the /carbon-panel pane covers: a preset range, or months picked by the person
+// ("2026-05"); one stripe per day, week or month follows from its length.
+export type PaneView = {
+  range: "7d" | "30d" | "1y" | "all" | "custom";
+  from?: string;
+  to?: string;
+};
+
+// The blocks the /carbon-panel pane shows under the stripes, besides the total
+export type PaneBlocks = {
+  compare: boolean;
+  cost: boolean;
+  equivalence: boolean;
+  projects: boolean;
+};
+
 declare module "claude-code" {
   interface PluginState {
     "claude-carbon": {
       answers: AnswerCo2Entry[];
       session: SessionTotal;
+      // True from a main-loop turn's start to its end: the molecule walks.
+      working: boolean;
+      // True while /carbon-panel shows the molecule in the band above a terminal's prompt
+      band: boolean;
+      view: PaneView;
+      blocks: PaneBlocks;
     };
   }
 }

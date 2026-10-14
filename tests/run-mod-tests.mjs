@@ -7,6 +7,9 @@
 //      and data/prices.json (the files the mod reads).
 //   2. Display rules (hooks/mod/lib/format.ts), French and English.
 //   3. Which turn a duration line belongs to (hooks/mod/lib/lines.ts).
+//   4. The /carbon-panel pane: the mascot's frames, colours and terminal cells
+//      (hooks/mod/lib/mascot.ts), the session history (hooks/mod/lib/sessions.ts)
+//      and the pane's texts.
 // Runs on Node 22.6+ with --experimental-strip-types (default from Node 23.6).
 
 import { readFileSync } from "node:fs";
@@ -42,8 +45,103 @@ import {
   welcomeText,
   HISTORY_SIZE,
   MIN_HISTORY,
+  colorNote,
+  commandDescription,
+  currentLine,
+  dateLabel,
+  emptyRangeText,
+  mascotAlt,
+  cardButtonLabel,
+  cardDraftBusy,
+  cardFillFailed,
+  cardReadyText,
+  blockLabel,
+  compareText,
+  costText,
+  equivalenceText,
+  carValue,
+  showLabel,
+  noHistoryText,
+  otherProjectsLine,
+  paneHint,
+  paneTitle,
+  paneUnplaced,
+  rangeLabel,
+  stripesAlt,
+  stripeTitle,
+  changePercent,
+  periodHeadline,
+  sessionsCount,
+  projectBarLine,
+  waitingText,
+  carTag,
+  contextText,
+  moreAgentsText,
+  subagentsAlt,
+  subagentTitle,
+  fromLabel,
+  toLabel,
+  dateInvalid,
+  datePlaceholder,
+  dayInputValue,
+  stripesCaption,
+  apiValueNote,
+  AUTHOR_URL,
+  builtByLabel,
+  METHODOLOGY_URL,
+  methodologyLabel,
+  stripesCredit,
+  scaleAlt,
+  forTeamLabel,
+  teamUrl,
+  blockTitle,
+  sessionStatsText,
+  changeValue,
+  moneyValue,
+  tileLabel,
 } from "../hooks/mod/lib/format.ts";
 import { lineEntry, BIND_WINDOW_MS } from "../hooks/mod/lib/lines.ts";
+import {
+  CELL_COLUMNS,
+  CELL_ROWS,
+  classOf,
+  colorOf,
+  FRAMES,
+  MINI_FRAMES,
+  faceFrame,
+  miniFaceFrame,
+  moodOf,
+  isStill,
+  faceAt,
+  MOODS,
+  mascotCells,
+  mascotSvg,
+  scaleSvg,
+  mascotWords,
+  NEUTRAL,
+  PALETTE,
+  stepMs,
+  stripesSvg,
+  subagentsSvg,
+} from "../hooks/mod/lib/mascot.ts";
+import {
+  barMedian,
+  bars,
+  folderName,
+  panelSite,
+  historyPath,
+  isView,
+  dayKey,
+  parseDay,
+  parseHistory,
+  pastSessions,
+  periodTotal,
+  previousTotal,
+  RANGES,
+  sessionMedian,
+  windowOf,
+} from "../hooks/mod/lib/sessions.ts";
+import { carEquivalence, equivalenceSet } from "../hooks/mod/lib/equiv.ts";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NBSP = " ";
@@ -537,6 +635,416 @@ check(
   lineEntry([{ durationMs: 38000, co2: null }], "a", T0, noLines),
   undefined,
 );
+
+// ── 4. The /carbon-panel pane: mascot, stripes, history (lib/mascot.ts, lib/sessions.ts) ──
+
+check("class at the median", classOf(100, 100), 4);
+check("class just under the median", classOf(99, 100), 3);
+check("class 2x", classOf(200, 100), 5);
+check("class floor", classOf(1, 100), 0);
+check("class ceiling", classOf(100000, 100), 7);
+check("class with no median", classOf(50, 0), 0);
+check("step bluest", stepMs(0), 460);
+check("step reddest", stepMs(7), 124);
+check("palette bluest", colorOf(0), "#08306b");
+check("palette reddest", colorOf(7), "#67000d");
+check("no class: grey", colorOf(null), NEUTRAL);
+check("frames same height", FRAMES[0].length, FRAMES[1].length);
+check("frames same width", FRAMES.every((f) => f.every((r) => r.length === 18)), true);
+
+// The README banner draws the same frames and palette
+const banner = readFileSync(join(REPO, "docs/mascot-stripes.svg"), "utf8");
+for (const c of PALETTE) check(`banner has ${c}`, banner.includes(c), true);
+
+// Half blocks: 20 x 7 cells, three words each, decodable, never the default colour as
+// the foreground of a drawn half
+const words = mascotWords(MINI_FRAMES[0], PALETTE[5]);
+check("cells count", words.length, CELL_COLUMNS * CELL_ROWS * 3);
+let badHalf = 0;
+for (let i = 0; i < words.length; i += 3) {
+  const [glyph, fg] = [words[i], words[i + 1]];
+  if ((glyph === 0x2580 || glyph === 0x2584) && fg === 0x01000000) badHalf += 1;
+  if (![0x2580, 0x2584, 0x20].includes(glyph)) badHalf += 1;
+}
+check("half blocks well formed", badHalf, 0);
+const decoded = Buffer.from(mascotCells(MINI_FRAMES[1], PALETTE[2]), "base64");
+check("cells decode to the right size", decoded.length, CELL_COLUMNS * CELL_ROWS * 12);
+check("cells little-endian", decoded.readUInt32LE(0), mascotWords(MINI_FRAMES[1], PALETTE[2])[0]);
+check("mini frames same size", MINI_FRAMES.every((f) => f.length === CELL_ROWS * 2 && f.every((r) => r.length === CELL_COLUMNS)), true);
+// The hop is one pixel: frame B is frame A one pixel up, legs aside
+check("mini hop one pixel", MINI_FRAMES[0][2], MINI_FRAMES[1][1]);
+check("big hop one pixel", FRAMES[0][2], FRAMES[1][1]);
+
+const svg = mascotSvg({ color: PALETTE[6], walking: true, step: 172, title: "t" });
+check("svg no script", /<script|on[a-z]+=/i.test(svg), false);
+check("svg walks", svg.includes("@keyframes") && svg.includes("344ms"), true);
+check("svg reduced motion", svg.includes("prefers-reduced-motion"), true);
+check("svg at rest breathes slowly", mascotSvg({ color: NEUTRAL, walking: false, step: 300, title: "t" }).includes("2400ms"), true);
+check("svg size", svg.length < 131072, true);
+
+// Faces: every one fits both hops, big and small, and changes only the face
+const ALL_FACES = ["neutral", "blink", "lookLeft", "lookRight", "lookUp", "wink", "happy", "surprised", "worried", "worriedBlink", "sleep", "doze"];
+for (const f of ALL_FACES) {
+  for (const hop of [0, 1]) {
+    const big = faceFrame(hop, f);
+    const mini = miniFaceFrame(hop, f);
+    check(`face ${f} hop ${hop}: big size`, big.length === FRAMES[0].length && big.every((r) => r.length === 18), true);
+    check(`face ${f} hop ${hop}: small size`, mini.length === CELL_ROWS * 2 && mini.every((r) => r.length === CELL_COLUMNS), true);
+    // The body's outline never moves: a face only repaints inside it, or beside it (a drop, a z)
+    const bodyOf = (rows) => rows.map((r) => r.replace(/k/g, "#").replace(/[szg]/g, "."));
+    check(`face ${f} hop ${hop}: same body`, bodyOf(big).join(), bodyOf(faceFrame(hop, "neutral")).join());
+  }
+}
+check("neutral is the README's face", faceFrame(0, "neutral").join(), FRAMES[0].join());
+check("happy smiles", faceFrame(0, "happy").join("\n").split("k").length - 1 > faceFrame(0, "neutral").join("\n").split("k").length - 1, true);
+check("worried sweats", faceFrame(0, "worried").join("").includes("s"), true);
+check("asleep: a Z of ten pixels", faceFrame(0, "sleep").join("").split("z").length - 1, 10);
+// Its diagonal: one pixel on each of the two middle rows, the upper one further right
+{
+  const rows = faceFrame(0, "sleep").filter((r) => r.includes("z"));
+  check("asleep: the Z has a diagonal", rows[1].indexOf("z") > rows[2].indexOf("z") && rows[1].split("z").length === 2, true);
+}
+{
+  const sleepWords = mascotWords(miniFaceFrame(0, "sleep"), PALETTE[3]);
+  check("asleep in a terminal: the letter z", sleepWords.filter((w, i) => i % 3 === 0 && w === 0x7a).length, 2);
+}
+check("asleep: no hop", isStill("asleep") && !isStill("idle"), true);
+check("asleep svg: no hop animation", mascotSvg({ color: PALETTE[3], walking: false, step: 300, title: "t", mood: "asleep" }).includes("@keyframes fa"), false);
+check("small blink shuts the eyes", miniFaceFrame(0, "blink").join("").includes("k"), false);
+
+// Moods
+const mood = (o) => moodOf({ working: false, cls: 3, hasAnswer: true, idleMs: 0, reacting: false, ...o });
+check("mood idle", mood({}), "idle");
+check("mood waiting", mood({ hasAnswer: false }), "waiting");
+check("mood working", mood({ working: true }), "working");
+check("mood light work cheerful", mood({ working: true, cls: 1 }), "cheerful");
+check("mood heavy work strained", mood({ working: true, cls: 6 }), "strained");
+check("mood grey work", mood({ working: true, cls: null }), "working");
+check("mood after an answer", mood({ reacting: true }), "pleased");
+check("mood after a heavy answer", mood({ reacting: true, cls: 7 }), "phew");
+check("mood asleep after 5 min", mood({ idleMs: 5 * 60_000 }), "asleep");
+check("mood still awake before", mood({ idleMs: 5 * 60_000 - 1 }), "idle");
+check("face at start", faceAt("idle", 0).face, "neutral");
+check("face hold", faceAt("idle", 400).holdMs, 2000);
+check("face blink", faceAt("idle", 2450).face, "blink");
+const idleLoop = MOODS.idle.reduce((sum, [, ms]) => sum + ms, 0);
+check("face loops", faceAt("idle", idleLoop + 10).face, "neutral");
+check("one-face mood holds", faceAt("pleased", 999_999).face, "happy");
+{
+  const idleSvg = mascotSvg({ color: PALETTE[3], walking: false, step: 300, title: "t", mood: "idle" });
+  check("svg: a layer per face", ["f-neutral", "f-blink", "f-lookLeft", "f-wink", "f-happy"].every((c) => idleSvg.includes(c)), true);
+  check("svg: faces loop", idleSvg.includes(`${idleLoop}ms steps(1,end) infinite`), true);
+  check("svg: still face under reduced motion", idleSvg.includes(".f-neutral{opacity:1}}"), true);
+  const pleasedSvg = mascotSvg({ color: PALETTE[3], walking: false, step: 300, title: "t", mood: "pleased" });
+  check("svg: one face, no face animation", pleasedSvg.includes("@keyframes k-"), false);
+  const strainedSvg = mascotSvg({ color: PALETTE[7], walking: true, step: 124, title: "t", mood: "strained" });
+  check("svg: sweat drawn", strainedSvg.includes("#4f9fd8"), true);
+  check("svg: faces keep it small", strainedSvg.length < 131072, true);
+}
+// The desktop pane draws at most 180 stripes, each with its hover label
+const stripesDoc = stripesSvg(
+  Array.from({ length: 180 }, (_, i) => ({
+    color: i % 9 === 0 ? null : PALETTE[i % 8],
+    title: `<${i}> & "x" semaine du 12 oct. · 1 234,5 kgCO₂ · 12 sessions`,
+  })),
+  "t",
+  720,
+);
+check("stripes svg keeps its shape", stripesDoc.includes('viewBox="0 0 720 72"'), true);
+check("stripes hover label shown by CSS", stripesDoc.includes("#b3:hover~#t3"), true);
+check("stripes labels drawn above every stripe", stripesDoc.lastIndexOf('class="b"') < stripesDoc.indexOf('class="t"'), true);
+check("stripes: no native tooltip", stripesDoc.includes("<title>"), false);
+check("stripes svg no script", /<script|on[a-z]+=/i.test(stripesDoc), false);
+check("stripes svg size, 180 stripes", stripesDoc.length < 131072, true);
+check("stripes svg escapes labels", stripesDoc.includes("&lt;3&gt; &amp; &quot;x&quot;"), true);
+
+// The history file
+check(
+  "path from CLAUDE_CARBON_DB",
+  historyPath({ db: "/data/cc/carbon.db", home: "/h" }),
+  "/data/cc/sessions-history.tsv",
+);
+check(
+  "path from a Windows CLAUDE_CARBON_DB",
+  historyPath({ db: "C:\\Users\\g\\carbon.db" }),
+  "C:\\Users\\g/sessions-history.tsv",
+);
+check("path from CLAUDE_CONFIG_DIR", historyPath({ configDir: "/cfg", home: "/h" }), "/cfg/claude-carbon/sessions-history.tsv");
+check("path from HOME", historyPath({ home: "/h" }), "/h/.claude/claude-carbon/sessions-history.tsv");
+check("path from USERPROFILE", historyPath({ userProfile: "C:\\Users\\g" }), "C:\\Users\\g/.claude/claude-carbon/sessions-history.tsv");
+check("path empty values skipped", historyPath({ db: "", configDir: "", home: "/h" }), "/h/.claude/claude-carbon/sessions-history.tsv");
+check("no path", historyPath({}), null);
+check("path at the root", historyPath({ db: "/carbon.db" }), "/sessions-history.tsv");
+check(
+  "path from a Git Bash CLAUDE_CARBON_DB on Windows",
+  historyPath({ db: "/c/Users/g/data/carbon.db", userProfile: "C:\\Users\\g" }),
+  "C:/Users/g/data/sessions-history.tsv",
+);
+check(
+  "a POSIX path that looks like a drive stays as it is",
+  historyPath({ db: "/c/data/carbon.db", home: "/home/g" }),
+  "/c/data/sessions-history.tsv",
+);
+
+const parsed = parseHistory("a\t100\t5.5\r\nbroken line\nb\tx\t3\nc\t200\t0\nd\t50\t2\n\n");
+check("history parse keeps valid rows", parsed.map((r) => r.id).join(","), "d,a");
+check("history parse ms", parsed[1].at, 100000);
+check("history empty", parseHistory("").length, 0);
+check("past sessions drop the current", pastSessions(parsed, "a").map((r) => r.id).join(","), "d");
+check("no median under 10 sessions", sessionMedian(parsed), null);
+const ten = Array.from({ length: 10 }, (_, i) => ({ id: `${i}`, at: i, grams: i + 1, version: 2 }));
+check("median from 10 sessions", sessionMedian(ten), 5.5);
+// Legacy rows: read with their version, kept out of the molecule's median
+const mixed = parseHistory("old1\t10\t900\t1\nold2\t20\t700\t1\nold3\t30\t800\t1\nnew\t40\t5\t2\nbare\t50\t6\n");
+check("legacy version read", mixed.filter((r) => r.version === 1).length, 3);
+check("no version: current", mixed.find((r) => r.id === "bare").version, 2);
+// One series: legacy rows count in the median like the others
+check("legacy in the session median", sessionMedian([...ten, ...mixed.filter((r) => r.version === 1)]), 7);
+check("cost read", parseHistory("a\t10\t5\t2\tsite\t0.4565\n")[0].usd, 0.4565);
+check("no cost field", parseHistory("a\t10\t5\t2\tsite\n")[0].usd, null);
+check("project read", parseHistory("a\t10\t5\t2\tcarbonara\n")[0].project, "carbonara");
+check("no project field", parseHistory("a\t10\t5\t2\n")[0].project, "");
+check("folder name", folderName("/Users/g/code/claude-carbon/"), "claude-carbon");
+check("folder name Windows", folderName("C:\\Users\\g\\site"), "site");
+
+// Windows and stripes: one stripe per day, week or month across the whole period
+const now = new Date(2026, 9, 12, 12).getTime(); // Monday 12 Oct 2026
+const day = 86_400_000;
+const row = (id, at, grams, extra = {}) => ({ id, at, grams, version: 2, project: "", usd: null, ...extra });
+const rows = [
+  row("old", now - 400 * day, 1000),
+  row("s1", new Date(2026, 8, 30, 10).getTime(), 10), // Wed 30 Sep
+  row("s2", new Date(2026, 9, 1, 10).getTime(), 20), // Thu 1 Oct
+  row("s3", new Date(2026, 9, 11, 23).getTime(), 40), // Sun 11 Oct
+];
+{
+  const w7 = windowOf({ range: "7d" }, rows, now);
+  check("7 days by day", w7.step, "day");
+  check("7 days, 7 stripes", bars(rows, w7).length, 7);
+  check("7 days start at midnight", new Date(w7.start).getHours(), 0);
+  const w30 = windowOf({ range: "30d" }, rows, now);
+  const b30 = bars(rows, w30);
+  check("30 days, 30 stripes", b30.length, 30);
+  check("a younger history starts at its first session", bars(rows.slice(1), windowOf({ range: "30d" }, rows.slice(1), now)).length, 13);
+  check("30 days keep the 3 recent sessions", b30.reduce((s, b) => s + b.sessions, 0), 3);
+  check("an empty day is 0 g", b30.filter((b) => b.grams === 0).length, 27);
+  const w1y = windowOf({ range: "1y" }, rows, now);
+  check("weeks start on Monday", new Date(bars(rows, w1y)[0].start).getDay(), 1);
+  check("12 months by week", windowOf({ range: "1y" }, rows, now).step, "week");
+  const wAll = windowOf({ range: "all" }, rows, now);
+  check("400 days of history by week", wAll.step, "week");
+  check("over 400 days by month", windowOf({ range: "all" }, [row("older", now - 500 * day, 1), ...rows], now).step, "month");
+  check("all starts at the first session's week", wAll.start <= now - 400 * day && now - 400 * day - wAll.start < 7 * day, true);
+  check("all keeps every session", bars(rows, wAll).reduce((s, b) => s + b.sessions, 0), 4);
+  const wShort = windowOf({ range: "all" }, rows.slice(1), now);
+  check("a short history by day", wShort.step, "day");
+  const custom = windowOf({ range: "custom", from: "2026-09-01", to: "2026-09-30" }, rows, now);
+  check("a custom month by day", custom.step, "day");
+  check("a custom month starts on the 1st", new Date(custom.start).getDate(), 1);
+  check("a custom month, 30 stripes", bars(rows, custom).length, 30);
+  check("a custom month sums its sessions", periodTotal(rows, custom).grams, 10);
+  const longCustom = windowOf({ range: "custom", from: "2025-01-01", to: "2026-10-31" }, rows, now);
+  check("a custom range over a year by month", longCustom.step, "month");
+  check("a custom range ends now at the latest", longCustom.end, now);
+  check("day key", dayKey(new Date(2026, 4, 3).getTime()), "2026-05-03");
+  check("date day first", parseDay("1/5/2026"), "2026-05-01");
+  check("date with dots", parseDay(" 01.05.2026 "), "2026-05-01");
+  check("date iso", parseDay("2026-05-01"), "2026-05-01");
+  check("not a real date", parseDay("31/02/2026"), null);
+  check("not a date", parseDay("mai 2026"), null);
+  check("date back in its field", dayInputValue("2026-05-01"), "01/05/2026");
+  // A custom range by week counts from its first day, not from that week's Monday
+  const byWeek = [row("before", new Date(2026, 3, 28, 10).getTime(), 7), row("in", new Date(2026, 4, 2, 10).getTime(), 5)];
+  const weekly = windowOf({ range: "custom", from: "2026-05-01", to: "2026-08-31" }, byWeek, now);
+  check("a custom range by week", weekly.step, "week");
+  check("a custom range starts on its first day", dayKey(weekly.start), "2026-05-01");
+  check("a custom range leaves out the days before it", periodTotal(byWeek, weekly).grams, 5);
+  check("its first stripe is the week it starts in", new Date(bars(byWeek, weekly)[0].start).getDay(), 1);
+  check("its first stripe holds only its own days", bars(byWeek, weekly)[0].grams, 5);
+}
+// The same length of time before, for the comparison; none for the whole history
+{
+  // Oldest first, as the history file reads
+  const r = [row("b", now - 10 * day, 20), row("c", now - 9 * day, 10, { usd: 2 }), row("a", now - 2 * day, 30, { usd: 1 })];
+  const w = windowOf({ range: "7d" }, r, now);
+  const prev = previousTotal(r, w, { range: "7d" });
+  check("previous window", prev.grams, 30);
+  check("previous cost, priced rows only", prev.usd, 2);
+  check("no previous for all", previousTotal(r, windowOf({ range: "all" }, r, now), { range: "all" }), null);
+  check("total cost", periodTotal(r, w).usd, 1);
+  check("no cost known", periodTotal([row("x", now - day, 5)], w).usd, null);
+}
+// The car equivalence, the reports' set and row
+const factorsDoc = JSON.parse(readFileSync(join(REPO, "data/factors.json"), "utf8"));
+check("equivalence set fr", equivalenceSet(["fr_FR.UTF-8"], "fr"), "fr");
+check("equivalence set us", equivalenceSet([undefined, "en_US.UTF-8"], "en"), "us");
+check("equivalence set world", equivalenceSet(["de_DE.UTF-8"], "en"), "world");
+check("equivalence set skips C", equivalenceSet(["C", "fr_FR"], "en"), "fr");
+check("equivalence no variable, French", equivalenceSet([undefined], "fr"), "fr");
+check("equivalence no variable, English", equivalenceSet([], "en"), "world");
+check("car fr divisor", carEquivalence(factorsDoc, "fr")?.divisor, 142);
+check("car us unit", carEquivalence(factorsDoc, "us")?.unit, "miles");
+check("car unknown set", carEquivalence(factorsDoc, "xx"), null);
+check("car no file", carEquivalence(null, "fr"), null);
+check("compare up", compareText(150, 100, "30d", "fr").replaceAll(NBSP, " "), "+50 % par rapport aux 30 jours d'avant");
+check("compare down en", compareText(80, 100, "1y", "en").replaceAll(NBSP, " "), "-20 % vs the 12 months before");
+check("compare custom", compareText(80, 100, "custom", "fr").replaceAll(NBSP, " "), "-20 % par rapport à la période d'avant");
+check("compare nothing before", compareText(80, 0, "30d", "fr"), null);
+check("compare all", compareText(80, 100, "all", "fr"), null);
+check("change percent", changePercent(150, 100), 50);
+check("car tile value", carValue(240000, carEquivalence(factorsDoc, "fr"), "fr").replaceAll(NBSP, " "), "≈ 1 690 km");
+check("card button names the card's year", cardButtonLabel(2026, "fr"), "Obtenir ma carte 2026");
+check("equivalence text", equivalenceText(240000, carEquivalence(factorsDoc, "fr"), "fr").replaceAll(NBSP, " "), "≈ 1 690 km en voiture (142 gCO₂/km, ADEME 2025)");
+check("cost grouped", costText(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $ au prix API");
+check("cost grouped en", costText(27608.16, "en"), "$27,608 at API prices");
+check("cost small", costText(12.3, "fr").replaceAll(NBSP, " "), "12,30 $ au prix API");
+const plainText = (s) => s.replaceAll(NBSP, " ");
+check("session stats", sessionStatsText(1, 3, "opus", "fr"), "1 réponse · 3 sous-agents · Opus");
+check("session stats en", sessionStatsText(2, 1, null, "en"), "2 answers · 1 subagent");
+{
+  const parsed8 = parseHistory("a\t10\t5\t2\tsite\t0.5\tclaude-opus-5-5\t1234\n")[0];
+  check("model read", parsed8.model, "claude-opus-5-5");
+}
+check("money value", moneyValue(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $");
+check("money value en", moneyValue(12.3, "en"), "$12.30");
+check("change value", changeValue(-18).replaceAll(NBSP, " "), "-18 %");
+check("api value note", apiValueNote("fr").replaceAll(NBSP, " "), "Le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.");
+check("bar median needs 3 full bars", barMedian([{ grams: 1 }, { grams: 0 }, { grams: 3 }]), null);
+check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams: 5 }]), 3);
+// Where midnight is skipped for summer time (Santiago, Sunday 6 Sep 2026), no session
+// is lost and the weeks still reach the current one
+{
+  const tz = process.env.TZ;
+  process.env.TZ = "America/Santiago";
+  const sun = new Date(2026, 8, 6, 12).getTime();
+  const tue = new Date(2026, 8, 8, 12).getTime();
+  const at = new Date(2026, 8, 20, 12).getTime();
+  const dst = [row("a", sun, 10), row("b", tue, 20)];
+  const w = bars(dst, windowOf({ range: "1y" }, dst, at));
+  check("DST weeks keep every session", w.reduce((s, b) => s + b.grams, 0), 30);
+  check("DST weeks reach the current week", w.at(-1).start <= at && at - w.at(-1).start < 7 * day, true);
+  check("DST week starts at the day's first instant", new Date(w.at(-1).start).getHours(), 0);
+  const days = bars(dst, windowOf({ range: "30d" }, dst, at));
+  check("DST days keep every session", days.reduce((s, b) => s + b.grams, 0), 30);
+  // From the first session (6 Sep) to the day of `at` (20 Sep)
+  check("DST days from the first session", days.length, 15);
+  if (tz === undefined) delete process.env.TZ;
+  else process.env.TZ = tz;
+}
+// Just after the clocks go forward (Paris, Sunday 29 Mar 2026), 7 days are 7 stripes
+{
+  const tz = process.env.TZ;
+  process.env.TZ = "Europe/Paris";
+  const at = new Date(2026, 3, 2, 0, 30).getTime(); // Thursday 2 Apr, 00:30
+  const w = windowOf({ range: "7d" }, [row("a", at - 20 * day, 1)], at);
+  check("DST: 7 days start 6 days back", dayKey(w.start), "2026-03-27");
+  check("DST: 7 days, 7 stripes", bars([], w).length, 7);
+  if (tz === undefined) delete process.env.TZ;
+  else process.env.TZ = tz;
+}
+// The period summed, by project, heaviest first
+{
+  const r = [row("a", now - 2 * day, 30, { project: "x" }), row("b", now - day, 60, { project: "y" }), row("c", now - 400 * day, 999, { project: "z" })];
+  const sum = periodTotal(r, windowOf({ range: "30d" }, r, now));
+  check("total grams", sum.grams, 90);
+  check("total sessions", sum.sessions, 2);
+  check("projects heaviest first", sum.projects.map((q) => q.project).join(","), "y,x");
+  check("project share", Math.round(sum.projects[0].share * 100), 67);
+}
+check("view check", isView({ range: "1y" }), true);
+check("view check custom", isView({ range: "custom", from: "2026-05-01", to: "2026-10-13" }), true);
+check("view check custom backwards", isView({ range: "custom", from: "2026-10-13", to: "2026-05-01" }), false);
+check("view check months only", isView({ range: "custom", from: "2026-05", to: "2026-10" }), false);
+check("view check 3 months is gone", isView({ range: "90d" }), false);
+check("view check custom no months", isView({ range: "custom" }), false);
+check("view check refuses", isView({ range: "2d" }), false);
+
+// Pane texts, French and English, under the same rules as the rest of the mod
+const pane = [];
+for (const lang of ["fr", "en"]) {
+  // The tab title is the plugin's name on purpose (asked for), so it is checked apart
+  pane.push(commandDescription(lang), paneHint(lang), paneUnplaced(lang));
+  pane.push(currentLine(52, 140, lang), currentLine(800, 140, lang), currentLine(52, null, lang));
+  pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang));
+  pane.push(mascotAlt(lang), stripesAlt(lang));
+  pane.push(cardButtonLabel(2026, lang), cardDraftBusy(lang), cardReadyText(lang), cardFillFailed(lang));
+  pane.push(compareText(120, 100, "30d", lang), compareText(80, 100, "1y", lang), costText(12.3, lang), showLabel(lang));
+  pane.push(equivalenceText(240000, carEquivalence(factorsDoc, lang === "fr" ? "fr" : "us"), lang));
+  for (const b of ["compare", "cost", "equivalence", "projects"]) pane.push(blockLabel(b, lang));
+  pane.push(periodHeadline(84900, lang), sessionsCount(91, lang), projectBarLine("site", 6000, 0.07, lang), projectBarLine("", 50, 0.001, lang));
+  pane.push(subagentsAlt(1, lang), subagentsAlt(3, lang), subagentTitle(1, 12, lang), contextText(42, lang), builtByLabel(lang), forTeamLabel(lang), apiValueNote(lang), moneyValue(27608, lang), changeValue(29));
+  for (const k of ["period", "change", "sessions", "cost"]) pane.push(tileLabel(k, lang));
+  pane.push(sessionStatsText(3, 2, "fable", lang), blockTitle("usage", lang), blockTitle("session", lang));
+  pane.push(waitingText(lang), fromLabel(lang), toLabel(lang), datePlaceholder(lang), dateInvalid(lang));
+  pane.push(otherProjectsLine(4, 900, 0.01, lang));
+  for (const r of RANGES) pane.push(rangeLabel(r, lang));
+  for (const s of ["day", "week", "month"]) {
+    pane.push(stripesCaption(s, 1234, lang), stripesCaption(s, null, lang));
+    pane.push(dateLabel(now, s, lang), dateLabel(now, s, lang, true), stripeTitle(now, s, 1234, 3, lang), stripeTitle(now, s, 0, 0, lang));
+  }
+}
+for (const text of pane) {
+  check(`pane text set: ${text}`, typeof text === "string" && text.length > 0, true);
+  check(`pane no plugin name: ${text}`, text.includes("claude-carbon"), false);
+  check(`pane no em dash: ${text}`, text.includes("\u2014"), false);
+  check(`pane no receipt: ${text}`, text.toLowerCase().includes("receipt"), false);
+  // Always gCO₂, the car factor's rate included ("142 gCO₂/km")
+  check(`pane unit: ${text}`, / g(?!CO₂)\b/.test(text.replaceAll(NBSP, " ")), false);
+}
+// French puts a no-break space before : ; ! and ?, never a plain one
+for (const lang of ["fr"]) {
+  const fr = [paneUnplaced(lang), currentLine(52, 140, lang), colorNote(4, lang), noHistoryText(lang), cardDraftBusy(lang), periodHeadline(900, lang), waitingText(lang), cardReadyText(lang), cardFillFailed(lang), compareText(120, 100, "30d", lang), dateInvalid(lang)];
+  for (const text of fr) check(`fr punctuation: ${text}`, / [:;!?]/.test(text), false);
+}
+check("current line", plainText(currentLine(52, 140, "fr")), "Cette session : 52 gCO₂ · 0,37× votre médiane");
+check("current line high", plainText(currentLine(1400, 140, "en")), "This session: 1.4 kgCO₂ · 10× your median");
+check("pane title", paneTitle("fr"), "claude-carbon");
+// Pages checked live on 2026-10-13: the French site is at the root, /fr is a 404
+check("team url fr", teamUrl("fr"), "https://tokenclimate.com/?ref=carbon-panel");
+check("team url en", teamUrl("en"), "https://tokenclimate.com/en?ref=carbon-panel");
+check("author url", AUTHOR_URL, "https://gaetanwittebolle.com/?ref=carbon-panel");
+check("built by", builtByLabel("fr"), "Développé par");
+check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
+// The colour scale under the molecule
+{
+  const scale = scaleSvg(3);
+  check("scale: eight colours", (scale.match(/<rect /g) ?? []).length, 8);
+  check("scale: bluest to reddest", scale.indexOf(PALETTE[0]) < scale.indexOf(PALETTE[7]), true);
+  check("scale: a marker under the session's colour", /<path [^>]*d="M49\.00 11/.test(scale), true);
+  check("scale: no marker while grey", scaleSvg(null).includes("<path"), false);
+  check("scale: no script", /<script|on[a-z]+=/i.test(scale), false);
+  check("scale alt fr", plainText(scaleAlt(5, "fr")), "Échelle des couleurs, du bleu au rouge : cette session est en 6e position sur 8");
+  check("scale alt grey", plainText(scaleAlt(null, "en")), "Colour scale, from blue (under your median) to red (over it)");
+}
+check("stripes credit fr", Object.values(stripesCredit("fr")).join(" "), "Inspiré des warming stripes d'Ed Hawkins");
+check("stripes credit en", Object.values(stripesCredit("en")).join(" ").trim(), "Inspired by Ed Hawkins' warming stripes");
+check("methodology label", methodologyLabel("fr"), "Comment c'est calculé");
+check("car tag in gCO₂", plainText(carTag("142 g/km, ADEME 2025")), "142 gCO₂/km, ADEME 2025");
+check("car tag in miles", plainText(carTag("393 g/mile, EPA US")), "393 gCO₂/mile, EPA US");
+check("panel: typed in a terminal, the band", panelSite(["terminal"], "composer"), "band");
+check("panel: a terminal session driven from the app, the pane", panelSite(["terminal", "desktop"], "bridge"), "pane");
+check("panel: the desktop app's own session, the pane", panelSite(["desktop"], "composer"), "pane");
+check("panel: another plugin's run in a terminal, the band", panelSite(["terminal"], "plugin"), "band");
+check("context", plainText(contextText(41.6, "fr")), "Contexte 42 %");
+{
+  const row = subagentsSvg([{ color: PALETTE[2], title: "a" }, { color: PALETTE[7], title: "<b>" }], { walking: true, step: 172 });
+  check("subagents: one molecule each", (row.match(/<g class="m\d+">/g) ?? []).length, 2);
+  check("subagents: they walk", row.includes("344ms"), true);
+  check("subagents: out of step", row.includes(".m1 .a,.m1 .b,.m1 .f{animation-delay:-1170ms}"), true);
+  check("subagents: they pull faces", row.includes("f-blink"), true);
+  check("subagents: at rest they breathe", subagentsSvg([{ color: NEUTRAL, title: "a" }], { walking: false, step: 172 }).includes("2400ms"), true);
+  check("subagents: reduced motion", row.includes("prefers-reduced-motion"), true);
+  check("subagents: no script", /<script|on[a-z]+=/i.test(row), false);
+  check("subagents: titles escaped", row.includes("&lt;b&gt;"), true);
+  check("subagent title", plainText(subagentTitle(2, 12, "fr")), "Sous-agent 2 · 12 gCO₂");
+}
+check("for a team", plainText(forTeamLabel("fr")), "Pour une équipe :");
+check("caption", plainText(stripesCaption("week", 1200, "fr")), "une bande par semaine · médiane 1,2 kgCO₂ par semaine");
+check("caption en", plainText(stripesCaption("day", null, "en")), "one stripe per day");
+check("headline", plainText(periodHeadline(901200, "fr")), "901,2 kgCO₂ sur la période");
+check("date with year", plainText(dateLabel(now, "day", "fr", true)), "12 oct. 2026");
+check("project bar", plainText(projectBarLine("carbonara", 103500, 0.41, "fr")), "███████ 41 % carbonara · 103,5 kgCO₂");
+check("stripe title week", plainText(stripeTitle(now, "week", 1234, 3, "fr")), "semaine du 12 oct. · 1,2 kgCO₂ · 3 sessions");
 
 console.log(`${checks - failures}/${checks} checks passed`);
 process.exit(failures === 0 ? 0 : 1);

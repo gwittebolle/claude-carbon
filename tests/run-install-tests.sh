@@ -95,7 +95,7 @@ check "cold start: SessionEnd hook"        "$SESSIONEND" "$(hook_commands "$S" S
 # Developer Mode, so there the commands are copied on purpose and configure-settings.sh
 # refreshes the copy on update; assert whichever form this platform is meant to produce.
 MISSING=""
-for c in carbon-report carbon-card carbon-update carbon-badge carbon-pr; do
+for c in carbon-report carbon-card carbon-update carbon-badge carbon-pr carbon-panel; do
   if cc_is_windows; then
     cmp -s "${REPO_DIR}/skills/${c}/SKILL.md" "${CFG}/commands/${c}.md" 2>/dev/null || MISSING="${MISSING}${c} "
   else
@@ -328,17 +328,17 @@ else
 
   CFG="${TMPROOT}/nudge"
   nudge_db "$CFG" 7
-  check "nudge: closed month and its total, in English" "📊 ${PREV_NAME}: 10.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  check "nudge: closed month and its total, in English" "📊 ${PREV_NAME}: 10.5kgCO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
   check "nudge: total cached under today's date"       "${TODAY_KEY} 10500" "$(cat "${CFG}/claude-carbon/last-month-total" 2>/dev/null)"
   # A row added after the first read is not seen: the query is not run again.
   sqlite3 "${CFG}/claude-carbon/carbon.db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('late', 'p', 'claude-opus-5', 5000.0, '${PREV_MONTH}-09T10:00:00Z');"
-  check "nudge: cache reused, query not rerun"          "📊 ${PREV_NAME}: 10.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  check "nudge: cache reused, query not rerun"          "📊 ${PREV_NAME}: 10.5kgCO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
   printf '%s 840\n' "$TODAY_KEY" > "${CFG}/claude-carbon/last-month-total"
-  check "nudge: figure read from the cache, grams below 1 kg" "📊 ${PREV_NAME}: 840g CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  check "nudge: figure read from the cache, grams below 1 kg" "📊 ${PREV_NAME}: 840gCO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
   # A cache from an earlier day is read again: a session still running across the
   # 1st keeps adding to the closed month under its start date.
   printf '%s-01 840\n' "$PREV_MONTH" > "${CFG}/claude-carbon/last-month-total"
-  check "nudge: a cache from another day is recomputed" "📊 ${PREV_NAME}: 15.5kg CO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
+  check "nudge: a cache from another day is recomputed" "📊 ${PREV_NAME}: 15.5kgCO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
   check "nudge: past the day threshold it is gone"      "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=0 nudge_line)"
   date +%Y-%m > "${CFG}/claude-carbon/last-card-month"
   check "nudge: a card this month clears it"            "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
@@ -372,10 +372,22 @@ sl_co2() {
     | CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
 }
 
-check "statusline: cumulative total from the DB, not the context window" "26.3kg CO₂" "$(sl_co2 sess-known)"
-check "statusline: unknown session falls back to the window estimate"    "16g CO₂"    "$(sl_co2 sess-unknown)"
-check "statusline: excluded row does not leak, falls back"               "0g CO₂"     "$(sl_co2 sess-excluded glm-4.7)"
-check "statusline: no session_id falls back"                             "16g CO₂"    "$(sl_co2 '')"
+check "statusline: cumulative total from the DB, not the context window" "26.3kgCO₂" "$(sl_co2 sess-known)"
+check "statusline: unknown session falls back to the window estimate"    "16gCO₂"    "$(sl_co2 sess-unknown)"
+check "statusline: excluded row does not leak, falls back"               "0gCO₂"     "$(sl_co2 sess-excluded glm-4.7)"
+check "statusline: no session_id falls back"                             "16gCO₂"    "$(sl_co2 '')"
+
+# First turn: no row yet, the Stop hook still writing it. The status line makes the hook's
+# own computation on the transcript, cache reads at their factor: 4.3 g, shown 4 g, where
+# the window estimate (all 80 202 input tokens at the full factor) said 6 g.
+SL_TRANSCRIPT="${TMPROOT}/statusline/sess-first.jsonl"
+printf '%s\n' '{"type":"assistant","requestId":"r1","timestamp":"2026-10-13T13:53:55Z","message":{"id":"m1","model":"claude-opus-5-5","usage":{"input_tokens":2,"cache_creation_input_tokens":50784,"cache_creation":{"ephemeral_1h_input_tokens":50784},"cache_read_input_tokens":29416,"output_tokens":113}}}' > "$SL_TRANSCRIPT"
+sl_first() {
+  printf '{"session_id":"sess-first","transcript_path":"%s","model":{"id":"claude-opus-5-5","display_name":"M"},"context_window":{"total_input_tokens":80202,"total_output_tokens":113,"used_percentage":8},"cost":{"total_cost_usd":0.41},"workspace":{"current_dir":"/tmp/p"}}' "$1" \
+    | CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+}
+check "statusline: first turn takes the transcript, as the Stop hook will" "4gCO₂" "$(sl_first "$SL_TRANSCRIPT")"
+check "statusline: first turn, transcript gone, falls back to the window"  "6gCO₂" "$(sl_first "${TMPROOT}/statusline/none.jsonl")"
 
 # ------------------------------------------------------- 11. decode-context sum
 

@@ -515,13 +515,15 @@ done
 rm -f "$SKILL_TMP"
 if [ -z "$SKILL_BAD" ]; then ok "all SKILL.md bash blocks parse"; else bad "all SKILL.md bash blocks parse" "$SKILL_BAD"; fi
 
-# Every skill must carry the path helper: they resolve CLAUDE_* variables before
-# any library is reachable, so each one needs its own copy.
+# Every skill that runs bash must carry the path helper: they resolve CLAUDE_* variables
+# before any library is reachable, so each one needs its own copy. A skill with no bash
+# block (carbon-panel, which the mod answers) resolves nothing.
 HELPER_BAD=""
 for f in "${REPO_DIR}"/skills/*/SKILL.md; do
+  grep -q '^```bash$' "$f" || continue
   grep -q 'ccp() {' "$f" || HELPER_BAD="${HELPER_BAD} $(basename "$(dirname "$f")")"
 done
-if [ -z "$HELPER_BAD" ]; then ok "all skills define the ccp path helper"; else bad "all skills define the ccp path helper" "$HELPER_BAD"; fi
+if [ -z "$HELPER_BAD" ]; then ok "skills that run bash define the ccp path helper"; else bad "skills that run bash define the ccp path helper" "$HELPER_BAD"; fi
 
 echo ""
 echo "─────────────────────────────"

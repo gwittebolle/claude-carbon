@@ -192,3 +192,470 @@ export function isCarbonStatusLine(command: unknown): boolean {
     command.includes("statusline.sh")
   );
 }
+
+// ── The /carbon-panel pane ──────────────────────────────────────────────────
+
+// The pane's tab: the plugin's name, as the person asked for it
+export function paneTitle(_lang: Lang): string {
+  return "claude-carbon";
+}
+
+export function commandDescription(lang: Lang): string {
+  return lang === "fr"
+    ? "Votre molécule de CO₂ et l'historique de vos sessions"
+    : "Your CO₂ molecule and the history of your sessions";
+}
+
+// Shown once per machine to someone already welcomed before the pane existed.
+export function paneHint(lang: Lang): string {
+  return lang === "fr"
+    ? "Tapez /carbon-panel pour voir votre molécule et l'historique de vos sessions."
+    : "Type /carbon-panel to see your molecule and the history of your sessions.";
+}
+
+export function paneUnplaced(lang: Lang): string {
+  return lang === "fr"
+    ? `Le panneau carbone ne peut pas s'ouvrir ici${NBSP}: élargissez la fenêtre ou mettez Claude Code à jour.`
+    : "The carbon pane cannot open here: widen the window or update Claude Code.";
+}
+
+// The molecule's line: the session so far, and its ratio to the median of past sessions.
+export function currentLine(
+  grams: number,
+  sessionMedian: number | null,
+  lang: Lang,
+): string {
+  const fr = lang === "fr";
+  const head = fr ? `Cette session${NBSP}:` : "This session:";
+  const total = `${head} ${formatGrams(grams, lang)}`;
+  if (sessionMedian === null || !(sessionMedian > 0) || !(grams > 0)) return total;
+  const r = grams / sessionMedian;
+  const ratio =
+    r >= 10 ? `${Math.round(r)}` : decimal(r, r >= 1 ? 1 : 2, lang);
+  return `${total} · ${ratio}×${NBSP}${fr ? "votre médiane" : "your median"}`;
+}
+
+export function colorNote(pastSessions: number, lang: Lang): string {
+  return lang === "fr"
+    ? `La couleur arrive après 10 sessions (${pastSessions} pour l'instant).`
+    : `The colour comes after 10 sessions (${pastSessions} so far).`;
+}
+
+export function noHistoryText(lang: Lang): string {
+  return lang === "fr"
+    ? "L'historique de vos sessions vient avec l'installation complète (voir le README)."
+    : "The history of your sessions comes with the full install (see the README).";
+}
+
+export function emptyRangeText(lang: Lang): string {
+  return lang === "fr"
+    ? "Aucune session sur cette période."
+    : "No session in this period.";
+}
+
+
+const RANGE_LABELS: Record<string, [string, string]> = {
+  "7d": ["7 j", "7 d"],
+  "30d": ["30 j", "30 d"],
+  "1y": ["12 mois", "12 months"],
+  all: ["Tout", "All"],
+  custom: ["Personnalisée", "Custom"],
+};
+function pick(pair: [string, string] | undefined, lang: Lang): string {
+  return pair === undefined ? "" : lang === "fr" ? pair[0] : pair[1];
+}
+
+export function rangeLabel(range: string, lang: Lang): string {
+  return pick(RANGE_LABELS[range], lang);
+}
+
+
+function countOf(n: number, step: string, lang: Lang): string {
+  const fr = lang === "fr";
+  if (step === "week") return fr ? `${n} semaine${n > 1 ? "s" : ""}` : `${n} week${n > 1 ? "s" : ""}`;
+  if (step === "month") return fr ? `${n} mois` : `${n} month${n > 1 ? "s" : ""}`;
+  return `${n} session${n > 1 ? "s" : ""}`;
+}
+
+// Under the stripes: what one stripe is, and the median their colours measure against
+const PER: Record<string, [string, string]> = {
+  day: ["jour", "day"],
+  week: ["semaine", "week"],
+  month: ["mois", "month"],
+};
+export function stripesCaption(step: string, stripeMedian: number | null, lang: Lang): string {
+  const fr = lang === "fr";
+  const unit = pick(PER[step], lang);
+  const one = fr ? `une bande par ${unit}` : `one stripe per ${unit}`;
+  if (stripeMedian === null) return one;
+  const per = fr ? ` par ${unit}` : ` a ${unit}`;
+  return `${one} · ${fr ? "médiane" : "median"} ${formatGrams(stripeMedian, lang)}${per}`;
+}
+
+// The period's figure, the pane's main one
+export function periodHeadline(grams: number, lang: Lang): string {
+  return lang === "fr"
+    ? `${formatGrams(grams, lang)} sur la période`
+    : `${formatGrams(grams, lang)} over the period`;
+}
+
+export function sessionsCount(n: number, lang: Lang): string {
+  return countOf(n, "session", lang);
+}
+
+// The custom range's fields: a date typed day first, or as 2026-05-01
+export function datePlaceholder(lang: Lang): string {
+  return lang === "fr" ? "JJ/MM/AAAA" : "DD/MM/YYYY";
+}
+
+export function dateInvalid(lang: Lang): string {
+  return lang === "fr"
+    ? `Date non reconnue${NBSP}: tapez-la comme 01/05/2026.`
+    : "Date not recognised: type it as 01/05/2026.";
+}
+
+// A day key shown back in its field: "01/05/2026"
+export function dayInputValue(key: string): string {
+  const [y, m, d] = key.split("-");
+  return `${d ?? ""}/${m ?? ""}/${y ?? ""}`;
+}
+
+export function fromLabel(lang: Lang): string {
+  return lang === "fr" ? "Du" : "From";
+}
+
+export function toLabel(lang: Lang): string {
+  return lang === "fr" ? "au" : "to";
+}
+
+export function waitingText(lang: Lang): string {
+  return lang === "fr"
+    ? `Cette session${NBSP}: en attente de la première réponse`
+    : "This session: waiting for the first answer";
+}
+
+
+
+const MONTHS_FR = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// A day ("22 août", "Aug 22", with the year when asked), or a month for monthly
+// stripes ("août 2026", "Aug 2026").
+export function dateLabel(
+  ms: number,
+  step: string,
+  lang: Lang,
+  withYear = false,
+): string {
+  const d = new Date(ms);
+  const month = (lang === "fr" ? MONTHS_FR : MONTHS_EN)[d.getMonth()] ?? "";
+  if (step === "month") return `${month}${NBSP}${d.getFullYear()}`;
+  const year = withYear ? `${NBSP}${d.getFullYear()}` : "";
+  return lang === "fr"
+    ? `${d.getDate()}${NBSP}${month}${year}`
+    : `${month}${NBSP}${d.getDate()}${withYear ? `,${NBSP}${d.getFullYear()}` : ""}`;
+}
+
+// A stripe's tooltip in the desktop app.
+export function stripeTitle(
+  start: number,
+  step: string,
+  grams: number,
+  sessions: number,
+  lang: Lang,
+): string {
+  const fr = lang === "fr";
+  const when =
+    step === "week"
+      ? `${fr ? "semaine du" : "week of"} ${dateLabel(start, "session", lang)}`
+      : dateLabel(start, step, lang);
+  const amount = grams > 0 ? formatGrams(grams, lang) : fr ? "aucune session" : "no session";
+  return sessions === 0
+    ? `${when} · ${amount}`
+    : `${when} · ${amount} · ${countOf(sessions, "session", lang)}`;
+}
+
+// Against the same length of time just before: "+12 % par rapport aux 30 jours
+// d'avant". Nothing when there is nothing before to compare with.
+const BEFORE: Record<string, [string, string]> = {
+  "7d": ["aux 7 jours d'avant", "the 7 days before"],
+  "30d": ["aux 30 jours d'avant", "the 30 days before"],
+  "1y": ["aux 12 mois d'avant", "the 12 months before"],
+  custom: ["à la période d'avant", "the period before"],
+};
+
+// The change against the period before, in whole percent; null when there is none
+export function changePercent(grams: number, previous: number): number | null {
+  return previous > 0 ? Math.round(((grams - previous) / previous) * 100) : null;
+}
+export function compareText(
+  grams: number,
+  previous: number,
+  range: string,
+  lang: Lang,
+): string | null {
+  const before = BEFORE[range];
+  const change = changePercent(grams, previous);
+  if (before === undefined || change === null) return null;
+  const sign = change > 0 ? "+" : change < 0 ? "-" : "";
+  const amount = `${sign}${Math.abs(change)}${NBSP}%`;
+  return lang === "fr"
+    ? `${amount} par rapport ${before[0]}`
+    : `${amount} vs ${before[1]}`;
+}
+
+// ── Model families, as the session block names them ─────
+
+const FAMILY_NAMES: Record<string, string> = {
+  fable: "Fable",
+  opus: "Opus",
+  sonnet: "Sonnet",
+  haiku: "Haiku",
+};
+export function familyName(f: string): string {
+  return FAMILY_NAMES[f] ?? f;
+}
+
+
+// The car factor as the pane prints it, the unit spelled out: "142 gCO₂/km, ADEME 2025"
+export function carTag(tag: string): string {
+  return tag.replace(/(\d)\s*g\//, `$1${NBSP}gCO₂/`);
+}
+
+// A subagent's molecule, on hover: "Sous-agent 2 · 12 gCO₂"
+export function subagentTitle(n: number, grams: number, lang: Lang): string {
+  return `${lang === "fr" ? "Sous-agent" : "Subagent"} ${n} · ${formatGrams(grams, lang)}`;
+}
+
+export function subagentsAlt(n: number, lang: Lang): string {
+  return lang === "fr"
+    ? `${n} sous-agent${n > 1 ? "s" : ""} de cette session, une petite molécule chacun, colorée selon son CO₂`
+    : `${n} subagent${n > 1 ? "s" : ""} of this session, a small molecule each, coloured by its CO₂`;
+}
+
+// More subagents than the row shows: "+4"
+export function moreAgentsText(n: number): string {
+  return `+${n}`;
+}
+
+// The context window's fill: "Contexte 42 %"
+export function contextText(percentUsed: number, lang: Lang): string {
+  const p = `${Math.round(percentUsed)}${NBSP}%`;
+  return lang === "fr" ? `Contexte ${p}` : `Context ${p}`;
+}
+
+// The running session, under its line: "12 réponses · 3 sous-agents · Opus"
+export function sessionStatsText(
+  answers: number,
+  subagents: number,
+  f: string | null,
+  lang: Lang,
+): string {
+  const fr = lang === "fr";
+  const parts = [
+    fr ? `${answers} réponse${answers > 1 ? "s" : ""}` : `${answers} answer${answers > 1 ? "s" : ""}`,
+    fr ? `${subagents} sous-agent${subagents > 1 ? "s" : ""}` : `${subagents} subagent${subagents > 1 ? "s" : ""}`,
+  ];
+  if (f !== null) parts.push(familyName(f));
+  return parts.join(" · ");
+}
+
+// The pane's last line: who made it, and the version for a team
+export const AUTHOR_URL = "https://gaetanwittebolle.com/?ref=carbon-panel";
+// The French site is at the root; only the English one has a prefix
+export function teamUrl(lang: Lang): string {
+  return lang === "fr"
+    ? "https://tokenclimate.com/?ref=carbon-panel"
+    : "https://tokenclimate.com/en?ref=carbon-panel";
+}
+
+// How the figures are computed, every factor and its source
+// The stripes' credit, as the README gives it: the text around the link, and the link's label
+export const STRIPES_URL = "https://showyourstripes.info";
+export function stripesCredit(lang: Lang): { before: string; label: string; after: string } {
+  return lang === "fr"
+    ? { before: "Inspiré des", label: "warming stripes", after: "d'Ed Hawkins" }
+    : { before: "Inspired by Ed Hawkins'", label: "warming stripes", after: "" };
+}
+
+export const METHODOLOGY_URL =
+  "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md";
+export function methodologyLabel(lang: Lang): string {
+  return lang === "fr" ? "Comment c'est calculé" : "How it is calculated";
+}
+
+export function builtByLabel(lang: Lang): string {
+  return lang === "fr" ? "Développé par" : "Built by";
+}
+export function forTeamLabel(lang: Lang): string {
+  return lang === "fr" ? `Pour une équipe${NBSP}:` : "For a team:";
+}
+
+export function blockTitle(kind: "session" | "usage", lang: Lang): string {
+  if (kind === "session") return lang === "fr" ? "Cette session" : "This session";
+  return lang === "fr" ? "Mon usage" : "My usage";
+}
+
+// The tiles at the top of the desktop pane: a label over a figure
+const TILE_LABELS: Record<string, [string, string]> = {
+  period: ["Sur la période", "Over the period"],
+  change: ["Par rapport à avant", "Against before"],
+  sessions: ["Sessions", "Sessions"],
+  cost: ["Valeur au prix API", "API-price value"],
+  car: ["En voiture", "By car"],
+};
+export function tileLabel(kind: string, lang: Lang): string {
+  return pick(TILE_LABELS[kind], lang);
+}
+
+// "+29 %", "-18 %"
+export function changeValue(change: number): string {
+  const sign = change > 0 ? "+" : change < 0 ? "-" : "";
+  return `${sign}${Math.abs(change)}${NBSP}%`;
+}
+
+// "27 616 $", "$27,616", "12,30 $"
+export function moneyValue(usd: number, lang: Lang): string {
+  return costText(usd, lang).replace(lang === "fr" ? " au prix API" : " at API prices", "");
+}
+
+// Under the value tile, so it holds whoever pays: a subscription, an API key, extra
+// usage, or sessions of several kinds. Which session was billed how is not recorded.
+export function apiValueNote(lang: Lang): string {
+  return lang === "fr"
+    ? `Le prix de cet usage facturé à l'API${NBSP}; un abonnement Pro ou Max en couvre tout ou partie.`
+    : "What this usage costs billed through the API; a Pro or Max subscription covers some or all of it.";
+}
+
+// "12,34 $ au prix API", "$12.34 at API prices"
+export function costText(usd: number, lang: Lang): string {
+  // Whole dollars from a thousand up, grouped: "27 608 $", "$27,608"
+  const money =
+    usd >= 1000
+      ? lang === "fr"
+        ? `${thousands(usd, lang)}${NBSP}$`
+        : `$${thousands(usd, lang)}`
+      : formatUsd(usd, lang);
+  return lang === "fr" ? `${money} au prix API` : `${money} at API prices`;
+}
+
+function thousands(n: number, lang: Lang): string {
+  const whole = String(Math.round(n));
+  const sep = lang === "fr" ? NBSP : ",";
+  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, sep);
+}
+
+// "≈ 1 680 km en voiture (142 g/km, ADEME 2025)", the reports' and cards' car line
+export function equivalenceText(
+  grams: number,
+  car: { divisor: number; label: string; tag: string },
+  lang: Lang,
+): string {
+  return `≈${NBSP}${thousands(grams / car.divisor, lang)} ${car.label} (${carTag(car.tag)})`;
+}
+
+// The car tile's figure, the period's CO2 in the locale's unit: "≈ 1 684 km"
+export function carValue(
+  grams: number,
+  car: { divisor: number; unit: string },
+  lang: Lang,
+): string {
+  return `≈${NBSP}${thousands(grams / car.divisor, lang)} ${car.unit}`;
+}
+
+// The blocks a person can show or hide in the pane, under the gear
+
+const BLOCK_LABELS: Record<string, [string, string]> = {
+  compare: ["Comparaison", "Comparison"],
+  cost: ["Coût API", "API cost"],
+  equivalence: ["Équivalence", "Equivalence"],
+  projects: ["Projets", "Projects"],
+};
+export function blockLabel(block: string, lang: Lang): string {
+  return pick(BLOCK_LABELS[block], lang);
+}
+
+export function showLabel(lang: Lang): string {
+  return lang === "fr" ? "Afficher" : "Show";
+}
+
+
+// The button that puts /carbon-card in the prompt, for the person to send. The card
+// covers the calendar year so far, whatever range the pane shows: the label says which.
+export function cardButtonLabel(year: number, lang: Lang): string {
+  return lang === "fr" ? `Obtenir ma carte ${year}` : `Get my ${year} card`;
+}
+
+// After the button filled the prompt: what is there and what to do
+export function cardReadyText(lang: Lang): string {
+  return lang === "fr"
+    ? `/carbon-card est dans le prompt${NBSP}: appuyez sur Entrée pour créer la carte.`
+    : "/carbon-card is in the prompt: press Enter to make the card.";
+}
+
+// The prompt could not take it (a dialog is open, or no prompt box here)
+export function cardFillFailed(lang: Lang): string {
+  return lang === "fr"
+    ? `Le prompt n'a pas pu recevoir /carbon-card${NBSP}: tapez-le vous-même.`
+    : "The prompt could not take /carbon-card: type it yourself.";
+}
+
+// When the prompt already holds a draft, the button leaves it alone and says why
+export function cardDraftBusy(lang: Lang): string {
+  return lang === "fr"
+    ? `Le prompt contient déjà un brouillon${NBSP}: videz-le pour obtenir la carte.`
+    : "The prompt already holds a draft: clear it to get the card.";
+}
+
+
+function percent(share: number): string {
+  const p = Math.round(share * 100);
+  return p < 1 ? `<${NBSP}1${NBSP}%` : `${p}${NBSP}%`;
+}
+
+
+// A project as a bar, left-aligned so bars compare whatever the font:
+// "███████ 41 % carbonara · 103,5 kgCO₂"
+export function projectBarLine(
+  project: string,
+  grams: number,
+  share: number,
+  lang: Lang,
+): string {
+  const name = project === "" ? (lang === "fr" ? "sans projet" : "no project") : project;
+  const bar = "█".repeat(Math.max(1, Math.round(share * 16)));
+  return `${bar} ${percent(share)} ${name} · ${formatGrams(grams, lang)}`;
+}
+
+// The rest after the projects listed
+export function otherProjectsLine(count: number, grams: number, share: number, lang: Lang): string {
+  const fr = lang === "fr";
+  const label = fr
+    ? `${count} autre${count > 1 ? "s" : ""} projet${count > 1 ? "s" : ""}`
+    : `${count} other project${count > 1 ? "s" : ""}`;
+  return `${label} · ${formatGrams(grams, lang)} · ${percent(share)}`;
+}
+
+export function mascotAlt(lang: Lang): string {
+  return lang === "fr"
+    ? "Molécule de CO₂ en pixels, colorée selon cette session par rapport à votre médiane, du bleu (en dessous) au rouge (au-dessus)"
+    : "Pixel CO₂ molecule, coloured by this session against your median, from blue (below) to red (above)";
+}
+
+// The scale under the molecule, read aloud: where this session sits on it
+export function scaleAlt(cls: number | null, lang: Lang): string {
+  const fr = lang === "fr";
+  if (cls === null)
+    return fr
+      ? "Échelle des couleurs, du bleu (sous votre médiane) au rouge (au-dessus)"
+      : "Colour scale, from blue (under your median) to red (over it)";
+  return fr
+    ? `Échelle des couleurs, du bleu au rouge : cette session est en ${cls + 1}e position sur 8`
+    : `Colour scale, from blue to red: this session is ${cls + 1} of 8`;
+}
+
+export function stripesAlt(lang: Lang): string {
+  return lang === "fr"
+    ? "Une bande par période, la plus ancienne à gauche, du bleu (sous la médiane) au rouge (au-dessus)"
+    : "One stripe per period, oldest on the left, from blue (below the median) to red (above)";
+}

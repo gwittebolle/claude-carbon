@@ -105,6 +105,11 @@ jobs:
       - name: Assert the interrupted-turn tail is recorded
         run: bash tests/run-session-end-tests.sh
 
+      # The history the mod's /carbon pane draws: v2 sessions only, the DB untouched,
+      # an atomic write. Throwaway DB under a temp root.
+      - name: Assert the session history export
+        run: bash tests/run-export-tests.sh
+
   per-model:
     name: per-model split
     runs-on: ubuntu-latest
@@ -197,6 +202,10 @@ jobs:
       - name: Per-model split
         if: always()
         run: bash tests/run-per-model-tests.sh
+
+      - name: Session history export
+        if: always()
+        run: bash tests/run-export-tests.sh
 
       # The detached run goes through nohup or a bare background job under Git Bash.
       - name: Session end capture

@@ -1,6 +1,7 @@
 # claude-carbon
 
-<p align="center"><img src="docs/mascot-stripes.svg" width="696" alt="Eight pixel CO2 molecules, the claude-carbon mascot, from dark blue to dark red"></p>
+<p align="center"><img src="docs/mascot-stripes.svg" width="696" alt="Eight pixel CO2 molecules, the claude-carbon mascot, walking from dark blue to dark red, the redder the faster: the blue ones smile, the red ones sweat"></p>
+<p align="center"><sub>Inspired by Ed Hawkins' <a href="https://showyourstripes.info">warming stripes</a></sub></p>
 
 [![GitHub stars](https://img.shields.io/github/stars/gwittebolle/claude-carbon)](https://github.com/gwittebolle/claude-carbon/stargazers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -17,7 +18,7 @@ claude-carbon is an open source Claude Code plugin that tracks the carbon footpr
 - Adds a live CO2 estimate to the Claude Code status line, and the session's CO2 under the prompt in the Claude desktop app, each next to the session's API-equivalent cost
 - Persists each session to a local SQLite database, so history survives the 30-day transcript purge
 - Backfills historical data from existing `~/.claude` transcripts
-- Slash commands: `/carbon-report` (text), `/carbon-card` (PNG), `/carbon-pr` (footprint of a pull request)
+- Slash commands: `/carbon-panel` (a pane with your CO2 molecule and the warming stripes of your sessions), `/carbon-report` (text), `/carbon-card` (PNG), `/carbon-pr` (footprint of a pull request)
 - A README badge with your all-time total, and a public methodology with every factor sourced
 
 > **About the `$` figure.** It is an API equivalent: what your session would cost at Anthropic's pay-as-you-go API list prices. On a Pro or Max subscription you do not pay it; it shows the value of what you used, next to its CO2. See [How it works](#how-it-works).
@@ -93,7 +94,7 @@ Same command to install and to update to the latest version (all three run the s
 **2. Restart Claude Code.** Your CO2 appears in the status line:
 
 ```
-claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 · 65g CO₂ | Use 24% ↻13:00
+claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 · 65gCO₂ | Use 24% ↻13:00
 ```
 
 Segments, left to right: project + git branch, model + context window %, API-equivalent session cost + CO2, 5h block usage % + reset time. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the 5h block (after a 15 min grace window, only once usage reaches 15%).
@@ -130,7 +131,7 @@ card is saved as an HTML page in the same folder and opens in your browser, scal
 window, and a screenshot of it does the job.
 The card's footer says where to find the tool, `claude-carbon sur GitHub` / `claude-carbon on GitHub`, with the address below it.
 
-From the 1st to the 10th of each month the status line ends with `📊 September: 84.2kg CO₂ · /carbon-card`:
+From the 1st to the 10th of each month the status line ends with `📊 September: 84.2kgCO₂ · /carbon-card`:
 the total of the month just closed, the bar the card draws for it, in the same format as the
 session figure. It is read from carbon.db once a day while the nudge shows, and kept in
 `~/.claude/claude-carbon/last-month-total`. A month with fewer than 7 days of sessions gets no
@@ -353,6 +354,14 @@ The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/
 - **Desktop app, Code tab**: a line under the answer, only for an unusual answer.
 - **An unusual answer** shows the ratio, and the subagents' share when they weighed on it: `230 gCO₂ · 14× your median`. An answer is unusual when it is above the 97th percentile of your last 200 answers, over 3× their median and at least 10 g, which is about one answer in 27; none is flagged before 50 answers are recorded.
 - **The session total** is pinned under the prompt, CO2 and API-price cost: `This session: 142 gCO₂ · $3.41`, in French `Cette session : 142 gCO₂ · 3,41 $`. It shows unless the claude-carbon status line already gives it or the `showSessionTotal` option is off (both in a terminal only, see [ccstatusline](#using-with-ccstatusline)). The cost is the pay-as-you-go API list price of the same requests as the CO2, from `data/prices.json` with the formula of `/carbon-report`, cache writes at the 1-hour tier Claude Code uses; under a cent it reads `< $0.01`, and it is left out when the price list cannot be read, then until the total starts over, so the cost never covers only part of the requests. It is what the usage would cost on the API, not what a subscription bills. Background subagents, which is how Claude Code starts most of them, count in the session total only: never in an answer, nor in your median. A foreground subagent counts in the answer that started it, not in the next one.
+- **`/carbon-panel` opens a pane** with the mascot, a pixel CO2 molecule. Its colour compares this session with the median of your past sessions, from dark blue (under an eighth of it) to dark red (over eight times it), and it stays grey until 10 sessions are recorded. It hops a pixel up and down while Claude works, faster as it gets redder, and pulls faces as it goes: it looks around before the first answer, blinks and glances aside at work, smiles through a light session and sweats through a heavy one, reacts to each answer, winks at rest, and falls asleep after five minutes without a turn.
+
+  <p align="center"><img src="docs/molecule-moods.svg" width="560" alt="The molecule's eight moods: it looks around before the first answer, glances aside at work, smiles through a light session, sweats through a heavy one, smiles or startles after an answer, winks at rest and falls asleep after five idle minutes"></p>
+
+  - **In the desktop app** the pane opens on the right, its tab titled "claude-carbon", in two blocks. Under the molecule, the colour scale, the eight colours from blue to red, with a marker under this session's. *This session*: its CO2, answers, subagents and model, its context window's fill and API-price value, and a small molecule per subagent, coloured by its own CO2. *My usage*: the period you pick (the last 7 or 30 days, 12 months, everything, or two dates you type, `01/05/2026`), its figures as tiles (CO2 as the reports sum it, change against the same length of time before, sessions, API-price value, car equivalence), then warming stripes of that period, a day, a week or a month a stripe after its length, each coloured against the median of the periods shown. The stripe under the pointer lights up and its date, total and sessions show under the stripes. A tile with an (i) reveals its note while the pointer is on it: the API-price value is what this usage costs billed through the API, and a Pro or Max subscription covers some or all of it (which session was billed how is not recorded, so the pane never says what you paid). A gear beside "My usage" turns the change, the API-price value, the car and the split by project (off until you turn it on, each folder with its share and kgCO2) on or off; the pane keeps your choices for the next session. A "Get my 2026 card" button puts `/carbon-card` in an empty prompt for you to send (the card covers the calendar year so far, whatever range the pane shows); it never sends it and leaves a draft you have started alone. A few short lines at the foot link to this methodology, Ed Hawkins' warming stripes, the author's site and TokenClimate.
+  - **In the terminal** `/carbon-panel` typed at the prompt shows this session in the band right above it, in the classic and the fullscreen rendering alike (sent from the desktop app or a phone to a session running in a terminal, through Remote Control, it opens the side pane there instead): a small molecule of 13 columns by 4 rows in half blocks, and beside it the session's CO2, answers, subagents (a dot each, in its colour), model, context window and API-price value. The period and the stripes live in the desktop app.
+  - Run `/carbon-panel` again to close the pane or clear the band. The command is also a skill of the plugin, so the desktop app lists it; where the mod does not run (the VS Code chat panel, a cloud session) it only says where the pane opens.
+- **The stripes' history** is `sessions-history.tsv`, which the Stop hook writes next to `carbon.db` after each answer, read-only on the database. Every recorded session is in it, older rows as they were stored (they keep the factors of their time and are never recomputed), so the stripes, the median and the totals count what `/carbon-report` counts. Another session running at the same time counts with its total so far. The plugin installed alone has no database: the pane then shows the molecule and says where the history comes from.
 
 Claude Code draws mods in the terminal and in the desktop app's Code tab only: nothing appears in the VS Code extension's chat panel, in cloud sessions or with `claude -p`. Mods need Claude Code 2.1.287 or later (2.1.286 in the desktop app).
 
@@ -368,7 +377,7 @@ The curl, PowerShell and npm installers set up the status line, the database and
 
 To turn it off, run `claude plugin disable claude-carbon@skills-dir`. To remove it, run the installer with `CLAUDE_CARBON_NO_MOD=1` on the `bash` side (`curl … | CLAUDE_CARBON_NO_MOD=1 bash`); keep the variable set, in your shell or in the `env` block of `settings.json`, or the next `/carbon-update` puts it back. The installer leaves alone a `skills/claude-carbon/` folder it did not make, and skips the copy while the claude-carbon plugin is enabled. Pick one of the two: the plugin added on top of an installer runs the hooks twice.
 
-Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, starts no process, makes no network call and never changes what Claude does. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then French.
+Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, starts no process, makes no network call and never changes what Claude does; besides its own data files, it reads only `sessions-history.tsv`. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then French.
 
 The mod's own tests run with `bash tests/run-mod-kit.sh`, under `claude plugin test`, which mocks the engine: no login needed. CI runs them on every push with Claude Code 2.1.296.
 
@@ -380,7 +389,7 @@ Claude Code accepts a single `statusLine` command, so claude-carbon's full statu
 ~/code/claude-carbon/scripts/statusline.sh --segment
 ```
 
-(adjust the path if you installed with `CLAUDE_CARBON_DIR`). The widget receives the same status JSON on stdin and prints just the cost + CO2 pair, e.g. `$0.68 · 35g CO₂`. Segment mode never touches the network. Recording to the local database is unaffected either way: persistence runs from hooks, not from the status line.
+(adjust the path if you installed with `CLAUDE_CARBON_DIR`). The widget receives the same status JSON on stdin and prints just the cost + CO2 pair, e.g. `$0.68 · 35gCO₂`. Segment mode never touches the network. Recording to the local database is unaffected either way: persistence runs from hooks, not from the status line.
 
 With the segment in ccstatusline, the [mod](#the-co2-of-each-answer-mod)'s session entry under the prompt shows the total a second time. Turn it off with the `showSessionTotal` option in `/config`; the desktop app, which has no status line, keeps it.
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-10-14
+
+### fix: the /carbon-panel pane after /clear, on a phone, and around a clock change
+
+After `/clear` or `/resume` the pane kept the conversation before as the running one:
+it left that conversation out of the period and counted the new one twice. It now
+reads the new conversation's id and the history again, the one before counted as a
+past session. On a phone (Remote Control), which has no text field, a custom range no
+longer leaves the pane blank: its two dates show as text. A custom range drawn by week
+or by month counts from its first day, not from the Monday or the 1st before it (its
+first stripe is then partial), and "7 days" or "30 days" go back by calendar days, so
+the week after a change of clock no longer gets an extra stripe. The pane reads the
+history again after each answer, so other sessions running at the same time show
+without reopening it. The test of the export counts its temp files with a glob, as
+shellcheck asks.
+
 ## 2026-10-13
 
 ### fix: backfill names a session's project after its last folder, as the live hook does
@@ -15,14 +31,132 @@ it. The README's `/carbon-pr` note now speaks of the session's last folder.
 `tests/run-per-model-tests.sh` covers a session that changes folder mid-way,
 with and without a truncated last line.
 
+### fix: the status line writes gCO₂ and kgCO₂, as the mod and the reports do
+
+The status line printed `65g CO₂` and `84.2kg CO₂`; it now prints `65gCO₂` and
+`84.2kgCO₂`, the unit the mod, the pane and the cards use. The README's
+examples, the demo GIF and the social preview follow. The demo now records from a
+throwaway repository on `main`, so it never shows the branch it was made from.
+
+### fix: the status line's first turn shows the session's CO2, not a context estimate
+
+On a session's first turn the status line draws before the Stop hook has written
+the session's row, and nothing redraws it after. It fell back to the context
+window, all input at the full input factor, cache reads included: 6 gCO₂ for an
+answer the database and the mod both put at 4.3 gCO₂. With no row yet, the status
+line now runs the Stop hook's own computation (`cc_session_usage`) on the
+transcript, short at that point, subagents included; the context-window estimate
+stays as the last fallback, with no database or no transcript.
+
+### feat: the pane shows where this session sits on the colour scale
+
+Under the molecule in the desktop app's pane, a small scale of the eight colours,
+bluest to reddest, with a marker under this session's colour (`scaleSvg` in
+`hooks/mod/lib/mascot.ts`); no marker while the molecule is grey, before a median
+exists. Its alt text reads the place out ("6e position sur 8").
+
+### docs: the README's molecules pull the pane's faces
+
+The banner's eight molecules walk as before and now wear the faces the
+`/carbon-panel` pane gives their weight: the blue ones smile, the middle ones
+blink and glance aside, the red ones sweat. A new drawing in the pane's section,
+`docs/molecule-moods.svg`, shows its eight moods with a caption each. Both come
+from `scripts/render-mascot.mjs`, which now draws from the mod's own faces and
+moods (`moleculeCss` and `moleculeHop`, exported by `hooks/mod/lib/mascot.ts`,
+take a scope so several molecules keep their own mood in one drawing), and which
+can also write the moods as a GIF (`--gif out.gif`, ImageMagick) for places an SVG
+does not play.
+
 ## 2026-10-12
+
+### feat: /carbon-panel opens a pane with a CO2 molecule and the warming stripes of your sessions (1.11.0)
+
+The mod registers `/carbon-panel`, which opens a pane, or closes it when it is open.
+The command is also a skill (`skills/carbon-panel`, linked by the installers), so
+the desktop app lists it; the mod catches both spellings before the skill's text
+reaches the model, and that text only answers where the mod does not run. At
+the top, a pixel CO2 molecule (`hooks/mod/lib/mascot.ts`) coloured by this
+session's CO2 against the median of past sessions, in eight classes by powers of
+two from dark blue to dark red, grey until 10 past sessions are recorded. It hops
+one pixel up and down while a main-loop turn runs, one step every 460 ms for
+the bluest down to 124 ms for the reddest: a small 13 x 4 cell molecule blitted
+into a `Raster` in the terminal, a CSS animation inside an `Svg` in the desktop
+app, still under reduced motion. It pulls faces as it goes, over a body that never
+changes (`FACES`, `MOODS`): it looks around before the first answer, blinks and
+glances aside while at work, smiles through a light session and sweats through a
+heavy one, smiles or startles for a moment after each answer, winks and looks up
+at rest, and falls asleep with a z after five minutes without a turn. In the
+desktop app each face is a layer of the Svg shown in turn by CSS; in the terminal
+the picture follows the clock, a blit at each hop and each change of face. In the desktop app, below it, warming
+stripes of past sessions, the running one included with its live total, covering
+exactly the period picked: 7 or 30 days by day, 12 months by week (from Monday),
+everything or a custom range of two typed dates by day, week or month after its
+length (`windowOf` in `hooks/mod/lib/sessions.ts`), empty periods included as
+gaps. They are coloured against the median of the periods shown with sessions in
+them (uncoloured under three), the one still filling left out of it; at most 180
+stripes in the desktop app's side pane, the most recent.
+The range is a row of buttons, the custom dates two `Input` fields read at Enter
+(`parseDay`: day first or ISO, a date that does not exist refused); the choice is
+kept in `$.store` for the next session. The stripe under the pointer lights up and
+its label (date, total, sessions) shows under the stripes at once, drawn in the
+Svg and revealed by CSS `:hover`, since the app's own tooltip is slow and placed
+far off; the Svg's viewBox matches its drawn width so the label keeps its shape.
+The tab is titled "claude-carbon", and a few short lines held at the pane's foot
+link to the methodology, to Ed Hawkins' warming stripes (showyourstripes.info), to
+the author's site and to TokenClimate (`?ref=carbon-panel`). The pane opens without the keyboard, so typing
+and Escape stay with the prompt. The period's figures (CO2, change, sessions,
+API-price value, car) are tiles under the range buttons; then the blocks the person chooses under the gear beside "My usage", kept in
+`$.store`: the change
+against the same length of time before, the API-price value (worded so it holds
+whoever pays: a Pro or Max subscription covers some or all of it), the car
+equivalence
+of the reports (`hooks/mod/lib/equiv.ts`), and the split by project (off until
+turned on). A tile that needs a word of explanation (the API-price value, the
+car's factor and source) shows an (i), and the pointer on the tile reveals the
+note under the tiles: a hover group of the surface (`hover.scope`, a Box drawn
+`display: "none"`), no hook and no redraw. The session block gives its
+answers, subagents and model, its context window's fill (`$.session.usage()`)
+and API-price value, and in the desktop app a small molecule per subagent
+(`subagentsSvg`, eight then "+N"), coloured by the CO2 of its own requests, and
+walking, breathing and blinking like the big one. Typed in a terminal, `/carbon-panel`
+opens no pane (in fullscreen rendering it would dock as a whole column for four
+lines): it turns on and off the session in the band above the prompt. Sent to a
+terminal session from the desktop app or a phone (Remote Control, origin `bridge`),
+it opens the side pane there (`panelSite` in `hooks/mod/lib/sessions.ts`). The band
+(`AbovePrompt`, drawn over whatever it already holds, never over a survey) holds the
+small molecule with its lines beside it and a dot per subagent in its colour.
+The period, the stripes, the card and the links are the desktop app's. The history file now also carries each session's model. A "Get my 2026 card" button (the card covers the
+calendar year so far, whatever range the pane shows) puts `/carbon-card` in
+an empty prompt (`$.prompt.fill`) and never sends it; a draft in progress is left
+alone.
+
+The history comes from `sessions-history.tsv`, which the Stop hook now writes next
+to `carbon.db` after each answer, and the SessionStart hook at the start of each
+session, detached (`cc_export_sessions` in `scripts/portable-lib.sh`):
+sessions not excluded and with CO2, oldest first, as id, start in epoch seconds,
+grams, methodology version, project and API-price cost. Legacy (v1) rows are in
+it as stored and count like the others, as in `/carbon-report`. The rows come from a `sqlite3 -readonly` query written
+to a temp file and renamed into place. The mod resolves the file as the hooks
+resolve the database (`CLAUDE_CARBON_DB`, `CLAUDE_CONFIG_DIR`, then `HOME` or
+`USERPROFILE`) and still writes no database, starts no process and makes no
+network call; `hooks/mod/carbon-pane.test.tsx` checks it. Without the file (the
+plugin installed alone) the pane shows the molecule and says where the history
+comes from. Someone welcomed by an earlier version sees a one-time toast naming
+`/carbon-panel`. The README banner is now drawn from the mod's frames and palette by
+`scripts/render-mascot.mjs`. Tests: `tests/run-export-tests.sh` (in CI on Linux
+and Windows), kit tests for the pane, and checks of the frames, the half-block
+cells, the history file, the stripes by week and month and the pane's texts in
+`tests/run-mod-tests.mjs`.
 
 ### docs: a pixel CO2 molecule as the README mascot
 
 The README opens on a row of eight pixel CO2 molecules (O=C=O, the carbon in
 the middle with two eyes), coloured from dark blue to dark red like warming
-stripes. The image is `docs/mascot-stripes.svg`: plain pixel paths, no script,
-with a grey outline so the darkest colours stay visible on GitHub's dark theme.
+stripes. They hop, two frames each, from one step every 460 ms for the bluest
+to one every 124 ms for the reddest; with reduced motion they stand still. The
+image is `docs/mascot-stripes.svg`: plain pixel paths and a CSS animation, no
+script, with a grey outline so the darkest colours stay visible on GitHub's
+dark theme. A line under it credits Ed Hawkins' warming stripes.
 
 ### feat: the mod's pinned entry gives the session's CO2 and API-price cost (1.10.0)
 
