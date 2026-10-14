@@ -660,11 +660,16 @@ export const register: Register = (on, options) => {
         home: await $.env.get("HOME"),
         userProfile: await $.env.get("USERPROFILE"),
       });
-      pane.updateFile = updateFlagPath({
-        configDir: await $.env.get("CLAUDE_CONFIG_DIR"),
-        home: await $.env.get("HOME"),
-        userProfile: await $.env.get("USERPROFILE"),
-      });
+      // The same opt-out as the status line's hint
+      const noNotice = await $.env.get("CLAUDE_CARBON_NO_UPDATE_NOTIFIER");
+      pane.updateFile =
+        noNotice !== undefined && noNotice !== ""
+          ? null
+          : updateFlagPath({
+              configDir: await $.env.get("CLAUDE_CONFIG_DIR"),
+              home: await $.env.get("HOME"),
+              userProfile: await $.env.get("USERPROFILE"),
+            });
       pane.sessionId = await $.session.id().catch(() => null);
       pane.project = folderName(e.cwd ?? "");
       pane.subagents = 0;

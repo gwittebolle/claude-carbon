@@ -48,6 +48,8 @@ type World = {
   history?: string | null | (() => string);
   // The daily release check's flag (plugin-update-check.json); absent unless given
   update?: string;
+  // More variables than LANG and HOME
+  env?: Record<string, string>;
   // This session's id when read (/clear changes it in the same process)
   sessionId?: () => string;
   welcomed?: boolean;
@@ -115,7 +117,7 @@ function world(on: any, options: World = {}) {
     store.set(e.key, JSON.parse(JSON.stringify(e.value)));
     return { value: undefined };
   });
-  mock.env(on, { LANG: "fr_FR.UTF-8", HOME: "/home/test" });
+  mock.env(on, { LANG: "fr_FR.UTF-8", HOME: "/home/test", ...options.env });
   on("fs.read", ($: any, e: any) => {
     const path = String(e.path);
     if (path.endsWith("/sessions-history.tsv")) {
@@ -466,9 +468,18 @@ describe("the /carbon-panel pane", () => {
     ["up to date", JSON.stringify({ behind: false, remote: "1.12.5", checked_at: Math.floor(NOW / 1000) })],
     ["a flag older than a week", JSON.stringify({ behind: true, remote: "1.12.6", checked_at: Math.floor((NOW - 8 * DAY) / 1000) })],
     ["never checked", undefined],
+    ["turned off", "off"],
   ] as const) {
     test(`no release line: ${name}`, async ($: any, on: any) => {
-      world(on, { update });
+      world(
+        on,
+        update === "off"
+          ? {
+              update: JSON.stringify({ remote: "1.12.6", checked_at: Math.floor(NOW / 1000) }),
+              env: { CLAUDE_CARBON_NO_UPDATE_NOTIFIER: "1" },
+            }
+          : { update },
+      );
       await startSession($);
       await openPane($);
       const ui = await $.ui.mount({ ...PANE, surface: "desktop" });

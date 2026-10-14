@@ -5,7 +5,7 @@
 #   - a marketplace install asks for the release tags only (never a fetch into Claude
 #     Code's cache) and writes plugin-update-check.json, the newest vX.Y.Z by version order;
 #   - a git clone fetches its origin and writes update-check.json, as before;
-#   - the opt-out, and a folder that is neither, write nothing;
+#   - the opt-out, another marketplace's copy, and a folder that is neither, write nothing;
 #   - cc_is_plugin_cache tells the two apart.
 #
 # Runs under temp roots; the real ~/.claude is never read. bash 3.2 compatible.
@@ -72,7 +72,9 @@ plant() {
 run() {
   local root="$1" config="$2"
   shift 2
+  # SYSTEMROOT and PATHEXT kept: Git Bash on Windows needs them to start anything
   env -i HOME="$TMPROOT/home" PATH="$TMPROOT/bin:$PATH" GIT_LOG="$TMPROOT/git.log" \
+    SYSTEMROOT="${SYSTEMROOT:-}" PATHEXT="${PATHEXT:-}" \
     CLAUDE_CONFIG_DIR="$config" "$@" bash "$root/scripts/check-update.sh"
 }
 
@@ -118,6 +120,14 @@ CONFIG="$TMPROOT/plain/config"
 plant "$TMPROOT/plain/copy" 1.12.5
 run "$TMPROOT/plain/copy" "$CONFIG"
 check "neither: nothing written" "$(ls "$CONFIG/claude-carbon" 2>/dev/null)" ""
+# Another marketplace's copy (a listing pinned to an old commit): no check, no fetch
+CONFIG="$TMPROOT/other/config"
+PLUGIN="$CONFIG/plugins/cache/claude-plugins-community/co2-tracker/1.12.5"
+plant "$PLUGIN" 1.12.5
+: >"$TMPROOT/git.log"
+run "$PLUGIN" "$CONFIG"
+check "another marketplace: nothing written" "$(ls "$CONFIG/claude-carbon" 2>/dev/null)" ""
+check "another marketplace: git never called" "$(wc -l <"$TMPROOT/git.log" | tr -d ' ')" "0"
 
 # 4. cc_is_plugin_cache
 . "$REPO_DIR/scripts/portable-lib.sh"

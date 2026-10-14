@@ -312,6 +312,10 @@ jobs:
         if: always()
         run: bash tests/run-windows-e2e.sh
 
+      - name: Update check
+        if: always()
+        run: bash tests/run-update-check-tests.sh
+
       # install.ps1 is the one file no POSIX machine can even parse.
       - name: install.ps1
         if: always()
