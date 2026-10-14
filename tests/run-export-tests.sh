@@ -52,6 +52,13 @@ INSERT INTO sessions VALUES
   ('bad-date', 3, 'not a date', 2, 0, 'x', NULL, NULL, NULL);"
 BEFORE="$(cksum <"$DB")"
 
+# The temp files the export may leave next to the DB (none expected)
+temp_files() {
+  local n=0 f
+  for f in "$TMPROOT"/*tmp*; do [ -e "$f" ] && n=$((n + 1)); done
+  echo "$n"
+}
+
 cc_export_sessions "$DB"
 TAB="$(printf '\t')"
 check "file written" "$([ -f "$OUT" ] && echo yes)" "yes"
@@ -67,7 +74,7 @@ check "no cost: empty field" "$(grep '^v1' "$OUT" | cut -f6)" ""
 check "project, a tab in its name made a space" "$(grep '^v2-late' "$OUT" | cut -f5)" "my app"
 check "no project: empty field" "$(grep '^v1' "$OUT" | cut -f5)" ""
 check "database untouched" "$(cksum <"$DB")" "$BEFORE"
-check "no temp file left" "$(ls "$TMPROOT" | grep -c tmp)" "0"
+check "no temp file left" "$(temp_files)" "0"
 
 # No rows: an empty file, which the pane reads as an empty history
 sqlite3 "$DB" "UPDATE sessions SET excluded = 1;"
@@ -79,7 +86,7 @@ printf 'previous\t1\t2\n' >"$OUT"
 cc_export_sessions "${TMPROOT}/missing.db"
 check "missing DB: no file next to it" "$([ -f "${TMPROOT}/missing.db" ] && echo created)" ""
 check "failed query keeps the previous file" "$(cat "$OUT")" "previous${TAB}1${TAB}2"
-check "failed query: no temp file left" "$(ls "$TMPROOT" | grep -c tmp)" "0"
+check "failed query: no temp file left" "$(temp_files)" "0"
 
 # The SessionStart hook writes it too, detached, so the pane has a history before the
 # session's first answer
