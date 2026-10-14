@@ -2,6 +2,12 @@
 
 ## 2026-10-14
 
+### docs: the README cites ADEME first for the 2 t per-person target
+
+The `/carbon-report` budget line's source in the README now names ADEME's Nos Gestes
+Climat, which gives 2 t as a world average from the IPCC 1.5 °C scenarios, before
+Carbone 4's *Faire sa part ?*. METHODOLOGY.md already cited both.
+
 ### feat: the molecule has a colour from the first answer
 
 Before 10 past sessions the `/carbon-panel` molecule stayed grey for want of a median.

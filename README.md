@@ -413,7 +413,7 @@ Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), an arXiv pr
 
 The car equivalent in reports and cards follows your locale, since a km by car emits up to ~1.7x more in one country than in another: ADEME's 142 gCO2e/km on a French or undetected locale, EPA's 393 gCO2e/mile on a US locale, a 200 gCO2/km world average otherwise. Force a set with `CLAUDE_CARBON_LOCALE` (`fr`, `us`, `world`, or any locale string). The factors live in `data/factors.json` under `equivalences`.
 
-`/carbon-report` also gives this calendar year's total as a share of 2 tCO2e, the 2050 per-person target for a whole footprint (Carbone 4, *Faire sa part ?*, 2019). It is there for scale: the 2 t covers everything a person emits in a year, AI included. Sources and caveats: [METHODOLOGY.md](METHODOLOGY.md#annual-budget-line).
+`/carbon-report` also gives this calendar year's total as a share of 2 tCO2e, the 2050 per-person target for a whole footprint (ADEME, [Nos Gestes Climat](https://nosgestesclimat.fr/blog/environnement/reduire-empreinte-carbone-objectif-deux-tonnes), from the IPCC 1.5 °C scenarios; also Carbone 4, *Faire sa part ?*, 2019). It is there for scale: the 2 t covers everything a person emits in a year, AI included. Sources and caveats: [METHODOLOGY.md](METHODOLOGY.md#annual-budget-line).
 
 Factors are editable in `data/factors.json`. See [METHODOLOGY.md](METHODOLOGY.md) for the full scientific basis, formula, and equivalences.
 
