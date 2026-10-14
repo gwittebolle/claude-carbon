@@ -38,7 +38,6 @@ import {
   answerLine,
   builtByLabel,
   METHODOLOGY_URL,
-  STRIPES_URL,
   stripesCredit,
   methodologyLabel,
   forTeamLabel,
@@ -1286,15 +1285,9 @@ export const register: Register = (on, options) => {
         </Box>
       );
       // Mods set no font size: the foot stays small by saying little
-      const credit = stripesCredit(lang);
       const foot = (
         <Box flexDirection="column" marginTop={1}>
           <ui.Link href={METHODOLOGY_URL} label={methodologyLabel(lang)} />
-          <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-            <Text dimColor>{credit.before}</Text>
-            <ui.Link href={STRIPES_URL} label={credit.label} />
-            {credit.after !== "" && <Text dimColor>{credit.after}</Text>}
-          </Box>
           <Box flexDirection="row" columnGap={1} flexWrap="wrap">
             <Text dimColor>{builtByLabel(lang)}</Text>
             <ui.Link href={AUTHOR_URL} label="Gaëtan Wittebolle" />
@@ -1303,6 +1296,7 @@ export const register: Register = (on, options) => {
             <Text dimColor>{forTeamLabel(lang)}</Text>
             <ui.Link href={teamUrl(lang)} label="TokenClimate" />
           </Box>
+          <Text dimColor>{stripesCredit(lang)}</Text>
         </Box>
       );
 

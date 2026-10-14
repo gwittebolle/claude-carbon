@@ -1016,8 +1016,8 @@ check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claud
   check("scale alt fr", plainText(scaleAlt(5, "fr")), "Échelle des couleurs, du bleu au rouge : cette session est en 6e position sur 8");
   check("scale alt grey", plainText(scaleAlt(null, "en")), "Colour scale, from blue (under your median) to red (over it)");
 }
-check("stripes credit fr", Object.values(stripesCredit("fr")).join(" "), "Inspiré des warming stripes d'Ed Hawkins");
-check("stripes credit en", Object.values(stripesCredit("en")).join(" ").trim(), "Inspired by Ed Hawkins' warming stripes");
+check("stripes credit fr", stripesCredit("fr"), "Bandes inspirées des warming stripes d'Ed Hawkins");
+check("stripes credit en", stripesCredit("en"), "Stripes inspired by Ed Hawkins' warming stripes");
 check("methodology label", methodologyLabel("fr"), "Comment c'est calculé");
 check("car tag in gCO₂", plainText(carTag("142 g/km, ADEME 2025")), "142 gCO₂/km, ADEME 2025");
 check("car tag in miles", plainText(carTag("393 g/mile, EPA US")), "393 gCO₂/mile, EPA US");
