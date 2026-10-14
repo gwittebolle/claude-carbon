@@ -139,6 +139,7 @@ import {
   previousTotal,
   RANGES,
   sessionMedian,
+  colourMedian,
   windowOf,
 } from "../hooks/mod/lib/sessions.ts";
 import { carEquivalence, equivalenceSet } from "../hooks/mod/lib/equiv.ts";
@@ -794,6 +795,9 @@ check("past sessions drop the current", pastSessions(parsed, "a").map((r) => r.i
 check("no median under 10 sessions", sessionMedian(parsed), null);
 const ten = Array.from({ length: 10 }, (_, i) => ({ id: `${i}`, at: i, grams: i + 1, version: 2 }));
 check("median from 10 sessions", sessionMedian(ten), 5.5);
+check("colours against 0.5 kgCO₂ under 10 sessions", colourMedian(parsed), 500);
+check("colours against one's own median from 10", colourMedian(ten), 5.5);
+check("a first session of 0.5 kgCO₂ is mid-scale", classOf(500, colourMedian([])), classOf(5.5, 5.5));
 // Legacy rows: read with their version, kept out of the molecule's median
 const mixed = parseHistory("old1\t10\t900\t1\nold2\t20\t700\t1\nold3\t30\t800\t1\nnew\t40\t5\t2\nbare\t50\t6\n");
 check("legacy version read", mixed.filter((r) => r.version === 1).length, 3);

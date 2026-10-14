@@ -555,10 +555,10 @@ describe("the /carbon-panel pane", () => {
       "L'historique de vos sessions vient avec l'installation complète",
     );
     expect(text).toContain(
-      "La couleur arrive après 10 sessions (0 pour l'instant).",
+      "Couleur comparée à 0,5 kgCO₂ jusqu'à 10 sessions (0 pour l'instant), puis à votre médiane.",
     );
     await ui.unmount();
-    // The terminal says why the molecule stays grey: no history, not a count of none
+    // The terminal says there is no history, not a count of none
     const term = await $.ui.mount({ ...PANE, surface: "terminal" });
     const told = await drawn(term);
     expect(told).toContain("L'historique de vos sessions vient avec l'installation complète");
@@ -566,13 +566,13 @@ describe("the /carbon-panel pane", () => {
     await term.unmount();
   });
 
-  test("under 10 past sessions the molecule waits for its colour", async ($: any, on: any) => {
+  test("under 10 past sessions the colour compares with 0.5 kgCO₂", async ($: any, on: any) => {
     world(on, { history: historyText(4) });
     await startSession($);
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
     expect(await drawn(ui)).toContain(
-      "La couleur arrive après 10 sessions (4 pour l'instant).",
+      "Couleur comparée à 0,5 kgCO₂ jusqu'à 10 sessions (4 pour l'instant), puis à votre médiane.",
     );
     await ui.unmount();
   });

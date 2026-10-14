@@ -235,10 +235,11 @@ export function currentLine(
   return `${total} · ${ratio}×${NBSP}${fr ? "votre médiane" : "your median"}`;
 }
 
+// Before 10 past sessions the colour compares with the starting reference, 0.5 kgCO₂
 export function colorNote(pastSessions: number, lang: Lang): string {
   return lang === "fr"
-    ? `La couleur arrive après 10 sessions (${pastSessions} pour l'instant).`
-    : `The colour comes after 10 sessions (${pastSessions} so far).`;
+    ? `Couleur comparée à 0,5${NBSP}kgCO₂ jusqu'à 10 sessions (${pastSessions} pour l'instant), puis à votre médiane.`
+    : `Colour compared with 0.5${NBSP}kgCO₂ until 10 sessions (${pastSessions} so far), then with your median.`;
 }
 
 export function noHistoryText(lang: Lang): string {

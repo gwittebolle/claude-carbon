@@ -2,6 +2,20 @@
 
 ## 2026-10-14
 
+### feat: the molecule has a colour from the first answer
+
+Before 10 past sessions the `/carbon-panel` molecule stayed grey for want of a median.
+It now compares the session with a starting reference of 0.5 kgCO₂ until then, and
+with the person's own median from the 10th session on (`colourMedian` in
+`hooks/mod/lib/sessions.ts`); subagents' small molecules follow the same reference. The
+pane says so under the session while the reference applies. The ratio "× your median"
+still shows only once the median is the person's own.
+
+### docs: Ed Hawkins' stripes credit at the end of the README and on the pane's last line
+
+The credit left the top of the README for its "Open source" section, and in the pane it
+is now the last line of the foot, as plain text with no link.
+
 ### feat: a Mac without jq gets the official one at install, and CI runs on macOS
 
 macOS ships `jq` from 15 (Sequoia) on; on an older Mac with no Homebrew the installer

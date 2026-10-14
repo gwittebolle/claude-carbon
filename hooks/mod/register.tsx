@@ -140,6 +140,7 @@ import {
   periodTotal,
   previousTotal,
   RANGES,
+  colourMedian,
   sessionMedian,
   windowOf,
 } from "./lib/sessions.ts";
@@ -352,9 +353,9 @@ async function moleculeNow(
 ): Promise<{ cls: number | null; mood: Mood; isWorking: boolean }> {
   const total = await read($, session);
   const isWorking = await read($, working);
-  const m = sessionMedian(pastSessions(pane.rows ?? [], pane.sessionId));
+  const m = colourMedian(pastSessions(pane.rows ?? [], pane.sessionId));
   // Grey, as drawn, until this session counts something
-  const cls = m === null || !(total.grams > 0) ? null : classOf(total.grams, m);
+  const cls = !(total.grams > 0) ? null : classOf(total.grams, m);
   if (pane.lastActive === 0) pane.lastActive = now;
   const mood = moodOf({
     working: isWorking,
@@ -401,13 +402,14 @@ async function terminalSession(
   const now = await $.clock.now();
   const past = pastSessions(pane.rows ?? [], pane.sessionId);
   const sm = sessionMedian(past);
+  const cm = colourMedian(past);
   const { cls, mood, isWorking } = await moleculeNow($, now);
   const color = colorOf(cls);
   // A dot per subagent in its molecule's colour, eight then "+N"
   const agents = [...pane.agents.values()];
   const dots = agents
     .slice(0, MAX_AGENT_MOLECULES)
-    .map((grams) => (sm === null || !(grams > 0) ? NEUTRAL : colorOf(classOf(grams, sm))));
+    .map((grams) => (!(grams > 0) ? NEUTRAL : colorOf(classOf(grams, cm))));
   const more = agents.length - dots.length;
   // The context window's fill and the session's API-price value, as the status line
   // has them
@@ -449,7 +451,7 @@ async function terminalSession(
           </Box>
         )}
         {meta !== "" && <Text dimColor>{meta}</Text>}
-        {/* Grey for want of history: the pane says which */}
+        {/* No history file, or a reference until there is a median of one's own */}
         {pane.rows === null ? (
           <Text dimColor>{noHistoryText(lang)}</Text>
         ) : (
@@ -970,8 +972,9 @@ export const register: Register = (on, options) => {
       const now = await $.clock.now();
       const past = pastSessions(pane.rows ?? [], pane.sessionId);
       const sm = sessionMedian(past);
-      // Grey until there is a median, and until this session has counted something
-      const cls = sm === null || !(total.grams > 0) ? null : classOf(total.grams, sm);
+      const cm = colourMedian(past);
+      // Grey until this session has counted something
+      const cls = !(total.grams > 0) ? null : classOf(total.grams, cm);
       const color = colorOf(cls);
       const { mood } = await moleculeNow($, now);
       // The running session joins the stripes with its live total, as the newest, at
@@ -1239,10 +1242,10 @@ export const register: Register = (on, options) => {
         </Box>
       );
       // The session's subagents as small molecules, each coloured by its CO2 against the
-      // median of past sessions (grey without one): at most eight, then "+N"
+      // median of past sessions (the starting reference before one): at most eight, then "+N"
       const agentList = [...pane.agents.values()];
       const shownAgents = agentList.slice(0, MAX_AGENT_MOLECULES).map((grams, i) => ({
-        color: sm === null || !(grams > 0) ? NEUTRAL : colorOf(classOf(grams, sm)),
+        color: !(grams > 0) ? NEUTRAL : colorOf(classOf(grams, cm)),
         title: subagentTitle(i + 1, grams, lang),
       }));
       const moreAgents = agentList.length - shownAgents.length;
