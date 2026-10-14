@@ -486,10 +486,10 @@ export function teamUrl(lang: Lang): string {
     : "https://tokenclimate.com/en?ref=carbon-panel";
 }
 
-// The project's home on GitHub: its README leads to the methodology in one click
+// The project's home: its README says what the tool does and leads to the methodology
 export const REPO_URL = "https://github.com/gwittebolle/claude-carbon";
 export function repoLabel(lang: Lang): string {
-  return lang === "fr" ? "claude-carbon sur GitHub" : "claude-carbon on GitHub";
+  return lang === "fr" ? "En savoir plus sur claude-carbon" : "Learn more about claude-carbon";
 }
 
 // The foot's two credit lines, a label and a colon each, the link after it

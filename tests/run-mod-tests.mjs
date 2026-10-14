@@ -1020,7 +1020,8 @@ check("repo link", REPO_URL, "https://github.com/gwittebolle/claude-carbon");
   check("scale alt fr", plainText(scaleAlt(5, "fr")), "Échelle des couleurs, du bleu au rouge : cette session est en 6e position sur 8");
   check("scale alt grey", plainText(scaleAlt(null, "en")), "Colour scale, from blue (under your median) to red (over it)");
 }
-check("repo label", repoLabel("fr"), "claude-carbon sur GitHub");
+check("repo label", repoLabel("fr"), "En savoir plus sur claude-carbon");
+check("repo label en", repoLabel("en"), "Learn more about claude-carbon");
 check("car tag in gCO₂", plainText(carTag("142 g/km, ADEME 2025")), "142 gCO₂/km, ADEME 2025");
 check("car tag in miles", plainText(carTag("393 g/mile, EPA US")), "393 gCO₂/mile, EPA US");
 check("panel: typed in a terminal, the band", panelSite(["terminal"], "composer"), "band");
