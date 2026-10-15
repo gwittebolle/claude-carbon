@@ -136,8 +136,11 @@ TOP_PROJECTS="$(sqlite3 -separator '|' "$DB_PATH" "SELECT project, SUM(co2_grams
 # otherwise (recorded before the table existed).
 TOP_MODEL="$(sqlite3 "$DB_PATH" "SELECT model FROM (SELECT CASE WHEN m.session_id IS NULL THEN s.model ELSE m.model END AS model, CASE WHEN m.session_id IS NULL THEN COALESCE(s.input_tokens, 0) + COALESCE(s.output_tokens, 0) ELSE m.input_tokens + m.output_tokens END AS tokens FROM (SELECT * FROM sessions ${WHERE}) s LEFT JOIN session_models m ON m.session_id = s.session_id) GROUP BY model ORDER BY SUM(tokens) DESC LIMIT 1;")"
 
-# Total tokens
-TOTAL_TOKENS_RAW="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) FROM sessions ${WHERE};")"
+# Total tokens: every token Claude processed, cache reads included (about 95% of a
+# Claude Code session, as ccusage counts them). input_tokens already holds the cache writes.
+read -r TOTAL_TOKENS_RAW CACHE_READ_RAW <<EOF
+$(sqlite3 -separator ' ' "$DB_PATH" "SELECT COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0) + COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(cache_read_tokens), 0) FROM sessions ${WHERE};")
+EOF
 
 # ── Format values ───────────────────────────────────────────
 # shellcheck source=scripts/format-lib.sh
@@ -197,8 +200,21 @@ if [ -n "$UNTIL" ]; then
   SINCE_LABEL_EN="${SINCE_LABEL_EN}, up to ${MONTHS_EN[$_um]} ${_ud}, ${_uy}"
 fi
 
-# Format tokens (M)
-TOTAL_TOKENS="$(echo "$TOTAL_TOKENS_RAW" | LC_ALL=C awk '{printf "%.0f", $1/1000000}')"
+# Format tokens: millions under a billion, then billions with one decimal (Md in French,
+# B in English), so a total never reads "47000M"
+NBSP="$(printf '\302\240')"
+TOKENS_FR="$(LC_ALL=C awk -v n="$TOTAL_TOKENS_RAW" 'BEGIN { if (n >= 1e9) { v = sprintf("%.1f", n / 1e9); sub(/\./, ",", v); printf "%s Md", v } else printf "%.0fM", n / 1e6 }')"
+TOKENS_EN="$(LC_ALL=C awk -v n="$TOTAL_TOKENS_RAW" 'BEGIN { if (n >= 1e9) printf "%.1fB", n / 1e9; else printf "%.0fM", n / 1e6 }')"
+# The share re-read from the cache, under the figure; left out below 1% (an install
+# without prompt caching), never rounded up to 100%
+CACHE_PCT="$(LC_ALL=C awk -v c="$CACHE_READ_RAW" -v t="$TOTAL_TOKENS_RAW" 'BEGIN { if (t > 0) printf "%d", 100 * c / t; else print 0 }')"
+if [ "$CACHE_PCT" -ge 1 ] 2>/dev/null; then
+  CACHE_NOTE_FR="<br>dont ${CACHE_PCT}${NBSP}% relus en cache"
+  CACHE_NOTE_EN="<br>${CACHE_PCT}% cache reads"
+else
+  CACHE_NOTE_FR=""
+  CACHE_NOTE_EN=""
+fi
 
 # Projection annuelle (fourchette)
 # Use actual first session date, not --since filter
@@ -313,7 +329,8 @@ inject_common() {
     -e "s|{{EQUIV_UNIT}}|${EQUIV_UNIT}|g" \
     -e "s|{{EQUIV_SRC}}|${EQUIV_SRC}|g" \
     -e "s|{{TOP_MODEL}}|${TOP_MODEL_DISPLAY}|g" \
-    -e "s|{{TOTAL_TOKENS}}|${TOTAL_TOKENS}|g" \
+    -e "s|{{TOTAL_TOKENS}}|${TOKENS_DISPLAY}|g" \
+    -e "s|{{CACHE_NOTE}}|${CACHE_NOTE}|g" \
     -e "s|{{PROJECTION}}|${PROJECTION}|g" \
   -e "s|{{PROJECTION_UNIT}}|${PROJECTION_UNIT}|g" \
     -e "s|{{P1_NAME}}|${P_NAME[0]}|g" \
@@ -339,6 +356,8 @@ SINCE_LABEL="$SINCE_LABEL_FR"
 EQUIV_KM="$EQUIV_KM_FR"
 EQUIV_UNIT="km"
 EQUIV_SRC="$EQUIV_TAG_FR"
+TOKENS_DISPLAY="$TOKENS_FR"
+CACHE_NOTE="$CACHE_NOTE_FR"
 _t=$(mktemp "${CC_TMP}/claude-carbon-summary-fr-XXXXXX"); TMP_SUMMARY_FR="${_t}.html"; mv "$_t" "$TMP_SUMMARY_FR"
 _t=$(mktemp "${CC_TMP}/claude-carbon-detailed-fr-XXXXXX"); TMP_DETAILED_FR="${_t}.html"; mv "$_t" "$TMP_DETAILED_FR"
 inject_common "$TEMPLATE_DIR/report-summary.html" "$TMP_SUMMARY_FR"
@@ -349,6 +368,8 @@ SINCE_LABEL="$SINCE_LABEL_EN"
 EQUIV_KM="$EQUIV_KM_EN"
 EQUIV_UNIT="$EQUIV_UNIT_EN"
 EQUIV_SRC="$EQUIV_TAG_EN"
+TOKENS_DISPLAY="$TOKENS_EN"
+CACHE_NOTE="$CACHE_NOTE_EN"
 _t=$(mktemp "${CC_TMP}/claude-carbon-summary-en-XXXXXX"); TMP_SUMMARY_EN="${_t}.html"; mv "$_t" "$TMP_SUMMARY_EN"
 _t=$(mktemp "${CC_TMP}/claude-carbon-detailed-en-XXXXXX"); TMP_DETAILED_EN="${_t}.html"; mv "$_t" "$TMP_DETAILED_EN"
 inject_common "$TEMPLATE_DIR/report-summary-en.html" "$TMP_SUMMARY_EN"
@@ -427,6 +448,16 @@ else
   EQUIV_KM="$EQUIV_KM_EN"
   EQUIV_UNIT="$EQUIV_UNIT_EN"
   EQUIV_SRC="$EQUIV_SRC_EN"
+fi
+# Once, for someone who made a card before the token count took in cache reads: the
+# figure jumps (cache reads are ~95% of a session's tokens) while CO2 and cost do not move.
+# The stamp is written on every run, so a new install never sees the note.
+_TOKENS_STAMP="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon/card-tokens-with-cache"
+if [ ! -f "$_TOKENS_STAMP" ]; then
+  if [ -f "$(dirname "$_TOKENS_STAMP")/last-card-month" ]; then
+    echo "Note: the card's token count now includes cache reads, so it is much higher than on earlier cards. The CO2 and the API-price cost are unchanged."
+  fi
+  mkdir -p "$(dirname "$_TOKENS_STAMP")" 2>/dev/null && : > "$_TOKENS_STAMP" 2>/dev/null || true
 fi
 echo "Totals since ${SINCE_LABEL_EN}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${EQUIV_SRC}) · ${TOTAL_SESSIONS} sessions"
 
