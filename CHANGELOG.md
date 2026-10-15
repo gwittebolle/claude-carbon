@@ -5,7 +5,7 @@
 ### fix: the card's token count includes cache reads
 
 The summary card's token tile added input and output only, so it left out cache reads,
-about 95% of a Claude Code session's tokens, while the CO2 and the API-price cost on the
+over 90% of a Claude Code session's tokens, while the CO2 and the API-price cost on the
 same card included them. It now counts every token Claude processed, shows billions past a
 billion ("25.3B", "25,3 Md"), reads "tokens processed" / "tokens traités", and gives the
 share of cache reads in a grey line under it. The CO2 and the cost do not change. The first
