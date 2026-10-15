@@ -6,7 +6,9 @@
 
 Hovering a part of a detail bar lights it up and shows, under the bar, its kind and its
 figures on that bar ("Cache relu · 23,9 Md tokens · 98,4 %", "Sortie · 239 kWh ·
-68,6 kgCO2 · 27,4 %"), the way the stripes show theirs, in place of the system tooltip.
+68,6 kgCO₂ · 27,4 %"), the way the stripes show theirs, in place of the system tooltip.
+A label too long for a narrow pane is set smaller rather than cut, on the stripes too,
+which now share the same label.
 The detail's percentages carry one decimal. Each bar names its own ids and classes, so
 the two bars and the stripes never answer each other's hover. The colour keys in front of
 the kinds carry a text alternative, without which the desktop app left them out.

@@ -640,7 +640,7 @@ export function formatShare(share: number, lang: Lang): string {
   return `${decimal(share * 100, 1, lang)}${NBSP}%`;
 }
 
-// Under a kind's name: "23,8 Md tokens (98 %) · 21,6 kWh · 6,2 kgCO₂ (61 %)"
+// Under a kind's name: "23,8 Md tokens (98,4 %) · 21,6 kWh · 6,2 kgCO₂ (60,9 %)"
 export function detailLine(
   part: { tokens: number; tokenShare: number; wh: number; grams: number; gramShare: number },
   lang: Lang,
@@ -662,7 +662,7 @@ export function detailTotalLine(
 }
 
 // What a hovered part of a bar says: its kind, its figures on that bar, its share
-// "Cache relu · 23,9 Md tokens · 98 %", "Cache relu · 535 kWh · 153,5 kgCO₂ · 61 %"
+// "Cache relu · 23,9 Md tokens · 98,4 %", "Cache relu · 535 kWh · 153,5 kgCO₂ · 60,9 %"
 export function detailHover(
   part: { kind: string; tokens: number; tokenShare: number; wh: number; grams: number; gramShare: number },
   bar: "tokens" | "co2",

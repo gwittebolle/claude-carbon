@@ -819,6 +819,17 @@ check("no path", historyPath({}), null);
   check("bar: labels escaped", bar.includes(">a &amp; b</text>"), true);
   check("bar: no <title>, the hover label instead", bar.includes("<title>"), false);
   check("bar: hovering a part shows its label", /#bar-p0:hover~#bar-t0/.test(bar), true);
+  check("bar: labels hidden until hovered", bar.includes(".bar-t{opacity:0;pointer-events:none}"), true);
+  check("bar: labels after the parts, as the ~ selector needs", bar.indexOf('id="bar-t0"') > bar.lastIndexOf('id="bar-p'), true);
+  {
+    // A label too long for a narrow pane is set smaller, never wider than the drawing
+    const narrow = splitBarSvg([1], ["Cache écrit · 101 kWh · 28,8 kgCO₂ · 11,7 %"], 200);
+    const size = Number((narrow.match(/font-size="([\d.]+)"/) ?? [])[1]);
+    const box = narrow.match(/<g id="bar-t0"[^>]*><rect x="([\d.]+)" y="16" width="([\d.]+)"/);
+    check("bar label: smaller in a narrow pane", size < 12 && size >= 8, true);
+    check("bar label: inside the drawing", Number(box[1]) >= 0 && Number(box[1]) + Number(box[2]) <= 200, true);
+    check("bar label: full size when it fits", /font-size="12"/.test(splitBarSvg([1], ["Sortie · 0,2 %"], 300)), true);
+  }
   check("bar: ids and classes named after the bar", /id="co2-p0"/.test(splitBarSvg([1], ["x"], 100, "co2")) && !/id="p0"|class="t"/.test(bar), true);
   check("hover tokens fr", pt(detailHover(d.parts[2], "tokens", "fr")), "Cache relu · 100 M tokens · 98,9 %");
   check("hover co2 fr", pt(detailHover(d.parts[2], "co2", "fr")), "Cache relu · 2,5 kWh · 720 gCO₂ · 72,0 %");

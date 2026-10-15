@@ -14,6 +14,7 @@
 // grid intensity (0.287 kgCO2e/kWh, AWS us-east location-based, data/factors.json
 // _methodology). The stored CO2 is divided back by that intensity to show the energy.
 import { family } from "./co2.ts";
+import { HOVER_LABEL_HEIGHT, hoverLabelSvg } from "./mascot.ts";
 import type { Factors } from "./co2.ts";
 import type { SessionRow, TokenSplit, Window } from "./sessions.ts";
 
@@ -107,21 +108,11 @@ export function periodDetail(
 // also named with its figures in the text under the bars.
 export const DETAIL_COLORS = ["#1b0b45", "#c4b8aa", "#7a6e63", "#f55c0f"] as const;
 export const DETAIL_COLORS_DARK = ["#8b7fd6", "#6b6158", "#a89c8e", "#f55c0f"] as const;
-export const DETAIL_BAR_HEIGHT = 12;
-// The bar, then a band under it where the hovered part's label shows
-const LABEL_TOP = DETAIL_BAR_HEIGHT + 4;
-const LABEL_HEIGHT = 22;
-export const DETAIL_SVG_HEIGHT = LABEL_TOP + LABEL_HEIGHT;
+const BAR_HEIGHT = 12;
+// The bar, then a band under it where the hovered part's label shows, a pixel to spare
+const LABEL_TOP = BAR_HEIGHT + 4;
+export const DETAIL_SVG_HEIGHT = LABEL_TOP + HOVER_LABEL_HEIGHT + 1;
 const GAP = 2;
-const OUTLINE = "#8b8b8b";
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 function colorCss(): string {
   const rule = (colors: readonly string[]) =>
@@ -135,8 +126,9 @@ function colorCss(): string {
 // readable on a light or a dark pane. A CSS :hover and the sibling selector, no script,
 // no <title> (the app's own tooltip would show a second label late). Parts under half a
 // pixel are left out; their figures stay in the text under the bars. `name` prefixes
-// every id and class, so two bars (and the stripes) never answer each other's hover
-// should the app put the drawings in one document.
+// the ids and the hover classes, so two bars (and the stripes) never answer each other's
+// hover should the app put the drawings in one document; the colour classes are the
+// swatches' own, with the same rules.
 export function splitBarSvg(
   shares: readonly number[],
   labels: readonly string[],
@@ -163,21 +155,20 @@ export function splitBarSvg(
   const rects = parts
     .map(
       ({ i, x: px, wd }) =>
-        `<rect id="${name}-p${i}" class="${name}-b k${i}" x="${px.toFixed(2)}" y="0" width="${wd.toFixed(2)}" height="${DETAIL_BAR_HEIGHT}" rx="2"/>`,
+        `<rect id="${name}-p${i}" class="${name}-b k${i}" x="${px.toFixed(2)}" y="0" width="${wd.toFixed(2)}" height="${BAR_HEIGHT}" rx="2"/>`,
     )
     .join("");
   const boxes = parts
-    .map(({ i, x: px, wd }) => {
-      const text = labels[i] ?? "";
-      // About 6 px a character at 12 px, kept inside the drawing
-      const boxW = Math.min(width, text.length * 6 + 14);
-      const centre = px + wd / 2;
-      const boxX = Math.max(0, Math.min(width - boxW, centre - boxW / 2));
-      return (
-        `<g id="${name}-t${i}" class="${name}-t"><rect x="${boxX.toFixed(2)}" y="${LABEL_TOP}" width="${boxW.toFixed(2)}" height="${LABEL_HEIGHT}" rx="4" fill="#1f2328" stroke="${OUTLINE}" stroke-opacity="0.6"/>` +
-        `<text x="${(boxX + 7).toFixed(2)}" y="${LABEL_TOP + 15}" font-size="12" font-family="system-ui,-apple-system,sans-serif" fill="#ffffff">${escapeXml(text)}</text></g>`
-      );
-    })
+    .map(({ i, x: px, wd }) =>
+      hoverLabelSvg({
+        id: `${name}-t${i}`,
+        cls: `${name}-t`,
+        text: labels[i] ?? "",
+        centre: px + wd / 2,
+        y: LABEL_TOP,
+        width,
+      }),
+    )
     .join("");
   const show = parts.map(({ i }) => `#${name}-p${i}:hover~#${name}-t${i}`).join(",");
   const style =
