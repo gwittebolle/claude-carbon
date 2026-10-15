@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-15
+
+### feat: /carbon-card makes its PNGs with the browser already installed
+
+The PNG export needed Playwright and its Chromium, which few people have: everyone else
+got the card as a page in their browser and a screenshot to take. When Playwright is
+missing, the card is now drawn by a Google Chrome, Microsoft Edge, Chromium or Brave
+already on the machine (Windows always has Edge), run headless in a throwaway profile
+through the same local server, at the same 2160x2160. A file that is not a PNG of that
+size counts as no card, and the page opens in the browser as before.
+`CLAUDE_CARBON_BROWSER` names a browser, or `none` to skip the lookup.
+
 ## 2026-10-14
 
 ### feat: the /carbon-panel pane names a newer release

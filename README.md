@@ -109,7 +109,7 @@ Accurate on every plan, including Max 20x.
 **3. Use the slash commands:**
 
 - `/carbon-report` - text report with totals, a car equivalent, this year's share of a 2 t per-person budget, top sessions
-- `/carbon-card` - generate shareable PNG report cards (PNG export needs `playwright-core`, see [Dependencies](#dependencies); without it the card opens in your browser)
+- `/carbon-card` - generate shareable PNG report cards (drawn with the Chrome or Edge already on your machine, see [Dependencies](#dependencies); without one the card opens in your browser)
 - `/carbon-update` - update to the latest version and re-price history (see [Updating](#updating))
 
 ## Example report
@@ -447,19 +447,11 @@ curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/inst
 - `sqlite3` - local database
 - `git` - branch detection in status line (optional)
 - `curl` - 5h quota usage via Anthropic's `/api/oauth/usage` endpoint (optional, 60s cache)
-- `node` + `playwright-core` + Chromium - PNG export for `/carbon-card` (optional)
+- `node` + Google Chrome, Microsoft Edge, Chromium or Brave (or `playwright-core` and its Chromium) - PNG export for `/carbon-card` (optional)
 
 `sqlite3` is pre-installed on every Mac, and `jq` from macOS 15 (Sequoia) on. On an older Mac with no `jq`, the installer downloads the official jq 1.8.1 binary for the Mac's processor, checks it against the SHA-256 the jq project publishes, and puts it in `~/.claude/claude-carbon/bin/`, where the scripts and the slash commands find it; a `jq` installed later (Homebrew, for one) takes precedence. On Linux: `apt install jq sqlite3`. On Windows, see below.
 
-To use `/carbon-card`, install Playwright and its Chromium browser:
-
-```bash
-npm install -g playwright-core
-npx playwright install chromium
-```
-
-The script looks for `playwright-core` in node's own resolution, the global npm root, `~/node_modules`
-and Homebrew's node modules.
+`/carbon-card` draws its PNGs with a Chromium-family browser run headless, in a throwaway profile. It uses Playwright's Chromium when `playwright-core` is installed (looked for in node's own resolution, the global npm root, `~/node_modules` and Homebrew's node modules), and otherwise the first of Google Chrome, Microsoft Edge, Chromium and Brave found in their usual places (on Linux, on the `PATH`). `CLAUDE_CARBON_BROWSER` names another browser, or `none` to skip the lookup. With no browser at all, the card opens in your default browser as a page, and a screenshot of it is the card.
 
 ## Windows
 
