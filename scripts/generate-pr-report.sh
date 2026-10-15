@@ -80,8 +80,8 @@ format_tokens() {
 
 # ── Query the branch's sessions ─────────────────────────────
 # The DB input_tokens column already folds cache write in (schema v2), so the
-# tokens metric is input + output, cache reads shown separately, matching the
-# report and the CI action.
+# tokens metric is input + output, cache reads shown separately, matching
+# /carbon-report and the CI action (the shareable card counts cache reads in its total).
 SQL_PROJECT="${PROJECT//$CC_SQ/$CC_SQ$CC_SQ}"
 SQL_BRANCH="${BRANCH//$CC_SQ/$CC_SQ$CC_SQ}"
 WHERE="WHERE project = '${SQL_PROJECT}' AND git_branch = '${SQL_BRANCH}' AND COALESCE(excluded, 0) = 0"

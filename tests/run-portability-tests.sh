@@ -512,6 +512,7 @@ STUB
   NBSP_CHAR="$(printf '\302\240')"
   is "tokens: label and cache share" "1" "$(grep -c "tokens traités<br>dont 99${NBSP_CHAR}% relus en cache" "$PAGE" 2>/dev/null)"
   is "tokens: no note on a first card" "0" "$(printf '%s\n' "$OUT" | grep -c '^Note:')"
+  is "tokens: stamp written on a first card" "yes" "$([ -f "${FAKE_HOME}/cfg/claude-carbon/card-tokens-with-cache" ] && echo yes || echo no)"
   rm -f "${FAKE_HOME}/cfg/claude-carbon/card-tokens-with-cache" "${FAKE_HOME}/out/"*.html
   OUT="$(CARD_NO_OPEN=1 card "$NO_CHROMIUM")"
   is "tokens: note once after an earlier card, before Totals" "Note:|Totals" \
