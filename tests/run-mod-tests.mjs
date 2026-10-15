@@ -105,7 +105,6 @@ import {
   formatShare,
   detailLine,
   detailTotalLine,
-  detailAssumptions,
   methodologyLabel,
   METHODOLOGY_URL,
   detailWaitText,
@@ -822,7 +821,7 @@ check("no path", historyPath({}), null);
   check("swatch: one square", (swatchSvg(2).match(/<rect /g) ?? []).length, 1);
   for (const lang of ["fr", "en"]) {
     const texts = [
-      detailLine(d.parts[2], lang), detailTotalLine(d, lang), ...detailAssumptions(lang), methodologyLabel(lang), detailWaitText(lang),
+      detailLine(d.parts[2], lang), detailTotalLine(d, lang), methodologyLabel(lang), detailWaitText(lang),
       detailCoverage(1, 3, lang), detailBarLabel("co2", lang), detailAlt("tokens", lang), kindLabel("cacheRead", lang),
     ];
     for (const text of texts) {
@@ -831,7 +830,6 @@ check("no path", historyPath({}), null);
       check(`detail text, no plugin name: ${text}`, text.includes("claude-carbon"), false);
     }
   }
-  check("assumptions fr", pt(detailAssumptions("fr")[0]), "Énergie estimée par token, PUE 1,14 compris, puis convertie en CO₂ avec le réseau AWS us-east (287 gCO₂/kWh).");
   check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
   check("detail line fr", pt(detailLine(d.parts[2], "fr")), "100M tokens (99 %) · 2,5 kWh · 720 gCO₂ (72 %)");
 }

@@ -8,8 +8,7 @@ A new "Détail" switch under the gear of "Mon usage" (off until turned on) split
 period between uncached input, cache writes, cache reads and output. Two coloured bars
 give each kind's share of the tokens and of the CO2, then one line per kind its tokens,
 energy (Wh, kWh) and CO2 with their shares, and a total, in the author's palette
-(Amethyst, sand, Pierre, Tangerine). Under it, the assumptions in plain words (the grid
-intensity and PUE, the source of the factors) and a link to METHODOLOGY.md. The CO2 of each session is the
+(Amethyst, sand, Pierre, Tangerine). Under it, a link to METHODOLOGY.md for the assumptions. The CO2 of each session is the
 stored one, split with the weights the factors already apply, so the parts add up to the
 period's total, frozen months included; the energy is the one the factors start from,
 found back by dividing that CO2 by their grid intensity, 287 gCO2/kWh. `sessions-history.tsv` gains four columns, the tokens by kind,

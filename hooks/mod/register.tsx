@@ -59,7 +59,6 @@ import {
   detailBarLabel,
   detailCoverage,
   detailLine,
-  detailAssumptions,
   METHODOLOGY_URL,
   methodologyLabel,
   detailPartTitle,
@@ -1402,11 +1401,6 @@ export const register: Register = (on, options) => {
                 {detail.sessions < detail.sessionsInPeriod && (
                   <Text dimColor>{detailCoverage(detail.sessions, detail.sessionsInPeriod, lang)}</Text>
                 )}
-                {detailAssumptions(lang).map((line, i) => (
-                  <Text key={`assumption-${i}`} dimColor>
-                    {line}
-                  </Text>
-                ))}
                 <ui.Link href={METHODOLOGY_URL} label={methodologyLabel(lang)} />
               </Box>
             )}

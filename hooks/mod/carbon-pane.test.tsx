@@ -404,7 +404,7 @@ describe("the /carbon-panel pane", () => {
     expect(text).not.toContain("Entrée");
     // The parts add up to the period's CO2; energy back through 287 gCO₂/kWh
     expect(text).toContain("Total : 101M tokens · 3,5 kWh · 1,0 kgCO₂");
-    expect(text).toContain("Énergie estimée par token, PUE 1,14 compris, puis convertie en CO₂ avec le réseau AWS us-east (287 gCO₂/kWh).");
+    expect(text).not.toContain("Hypothèses");
     expect(JSON.stringify(await desk.drawn())).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
     expect(JSON.stringify(await desk.drawn())).toContain("Répartition des tokens entre entrée");
     await desk.unmount();

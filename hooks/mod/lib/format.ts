@@ -665,19 +665,6 @@ export function detailPartTitle(kind: string, share: number, lang: Lang): string
   return `${kindLabel(kind, lang)}${lang === "fr" ? NBSP : ""}: ${formatShare(share, lang)}`;
 }
 
-// The assumptions under the detail; the weights of each kind are in the methodology
-export function detailAssumptions(lang: Lang): string[] {
-  return lang === "fr"
-    ? [
-        `Énergie estimée par token, PUE 1,14 compris, puis convertie en ${UNIT} avec le réseau AWS us-east (287${NBSP}g${UNIT}/kWh).`,
-        "Facteurs tirés de Jegham et al. 2025 (Claude 3.7 Sonnet), les autres modèles extrapolés. Des ordres de grandeur, pas une mesure.",
-      ]
-    : [
-        `Energy estimated per token, PUE 1.14 included, then converted to ${UNIT} with the AWS us-east grid (287${NBSP}g${UNIT}/kWh).`,
-        "Factors from Jegham et al. 2025 (Claude 3.7 Sonnet), the other models extrapolated. Orders of magnitude, not a measurement.",
-      ];
-}
-
 // The methodology, straight from the detail
 export const METHODOLOGY_URL =
   "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md";
