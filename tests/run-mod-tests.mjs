@@ -805,19 +805,18 @@ check("no path", historyPath({}), null);
   check("detail: parts add up to the stored CO2", Math.round(d.grams * 1000), 1000000);
   check("detail: shares add up to one", Math.round(d.parts.reduce((s, p) => s + p.gramShare, 0) * 1e6), 1000000);
   check("detail: energy through 0.287 g/Wh", Math.round(d.wh), 3484);
-  check("detail: same split for every family", JSON.stringify(weightsOf("claude-opus-5-5", DETAIL_FACTORS).output.toFixed(6)), JSON.stringify(weightsOf("", DETAIL_FACTORS).output.toFixed(6)));
+  check("detail: weights per family (Opus and Sonnet 21.18, Haiku 20.7)", ["claude-opus-5-5", "", "claude-haiku-5-5"].map((m) => weightsOf(m, DETAIL_FACTORS).output.toFixed(2)).join(" "), "21.18 21.18 20.70");
   check("detail: none without tokens", periodDetail(rows.slice(1, 2), w, DETAIL_FACTORS), null);
   check("tokens: units", [820, 12345, 371e6, 999.6e6, 25.3e9].map((n) => formatTokens(n, "en")).join(" "), "820 12k 371M 1.0B 25.3B");
   check("tokens: French billions", pt(formatTokens(25.3e9, "fr")), "25,3 Md");
   check("energy: units", [0.4, 820, 21600, 345000, 2.5e6].map((n) => pt(formatWh(n, "fr"))).join(" | "), "0 Wh | 820 Wh | 21,6 kWh | 345 kWh | 2,5 MWh");
   check("share: rounding", [0, 0.001, 0.0049, 0.6123, 0.989].map((s) => pt(formatShare(s, "fr"))).join(" | "), "0 % | < 1 % | < 1 % | 61 % | 99 %");
-  check("share: English", formatShare(0.61, "en"), "61%");
+  check("share: English, spaced as the pane writes it", pt(formatShare(0.61, "en")), "61 %");
   const bar = splitBarSvg([0.5, 0.0001, 0.3, 0.2], ["a & b", "x", "y", "z"], 300);
   check("bar: no script", /<script|on[a-z]+=/i.test(bar), false);
   check("bar: a part under half a pixel left out", (bar.match(/<rect /g) ?? []).length, 3);
   check("bar: titles escaped", bar.includes("<title>a &amp; b</title>"), true);
   check("bar: light and dark colours", DETAIL_COLORS.every((c) => bar.includes(c)) && DETAIL_COLORS_DARK.every((c) => bar.includes(c)), true);
-  check("bar: within its width", Number((bar.match(/x="([\d.]+)" y="0" width="([\d.]+)"[^>]*>(?:(?!<rect).)*$/) ?? [])[1] ?? 0) <= 300, true);
   check("swatch: one square", (swatchSvg(2).match(/<rect /g) ?? []).length, 1);
   for (const lang of ["fr", "en"]) {
     const texts = [
@@ -830,8 +829,23 @@ check("no path", historyPath({}), null);
       check(`detail text, no plugin name: ${text}`, text.includes("claude-carbon"), false);
     }
   }
-  check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
-  check("detail line fr", pt(detailLine(d.parts[2], "fr")), "100M tokens (99 %) · 2,5 kWh · 720 gCO₂ (72 %)");
+  check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md#the-panes-detail-by-kind-of-token");
+  check("detail line fr", pt(detailLine(d.parts[2], "fr")), "100 M tokens (99 %) · 2,5 kWh · 720 gCO₂ (72 %)");
+  {
+    // Stored CO2 far from its tokens under today's factors: left out; zero tokens: left out
+    const odd = parseHistory("x\t100\t4000\t1\tp\t\tclaude-opus-5-5\t0\t1000000\t100000000\t100000\nz\t100\t500\t2\tp\t\tclaude-opus-5-5\t0\t0\t0\t0\n");
+    check("detail: a row stored with older factors is left out", periodDetail(odd, w, DETAIL_FACTORS), null);
+    const mix = periodDetail([...rows, ...odd], w, DETAIL_FACTORS);
+    check("detail: coverage counts what was split", `${mix.sessions}/${mix.sessionsInPeriod}`, "1/5");
+    check("detail: the split stays the stored CO2 of the rows kept", Math.round(mix.grams), 1000);
+  }
+  {
+    // Thin parts drawn at a pixel never push the last part past the right edge
+    const svg = splitBarSvg([0.99, 0.003, 0.003, 0.004], ["a", "b", "c", "d"], 200);
+    const ends = [...svg.matchAll(/x="([\d.]+)" y="0" width="([\d.]+)"/g)].map((m) => Number(m[1]) + Number(m[2]));
+    check("bar: every part ends within the width", ends.every((e) => e <= 200.01), true);
+    check("bar: the last part ends at the right edge", Math.round(ends[ends.length - 1]), 200);
+  }
 }
 // The daily release check's flag, in the config folder whatever CLAUDE_CARBON_DB says
 check("update flag from CLAUDE_CONFIG_DIR", updateFlagPath({ configDir: "/cfg", home: "/h" }), "/cfg/claude-carbon/plugin-update-check.json");

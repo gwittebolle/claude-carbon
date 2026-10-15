@@ -140,6 +140,15 @@ This factor is **not** Anthropic's 0.1x cache_read billing ratio. That is a pric
 
 Sources: Irminsul (arXiv:2605.05696), GreenCache (arXiv:2505.23970, SIGMETRICS 2026), TokenPowerBench (arXiv:2512.03024), Solovyeva & Castor (arXiv:2602.05712), TraceLab (arXiv:2606.30560v2).
 
+## The pane's detail by kind of token
+
+The `/carbon-panel` pane can split a period between uncached input, cache writes, cache reads and output (the "Détail" switch). It computes nothing new:
+
+- **Tokens** are the counts the hooks store for each session (`sessions-history.tsv`, written next to `carbon.db`), plus the running session's, counted live from its requests.
+- **CO2 per kind** is each session's stored CO2, split with the weights the formula above gives each kind: 1 for uncached input and cache writes, `cache_read_factor` (0.08) for cache reads, output/input of the session's family for output (21.2 for Sonnet, Opus and Fable, 20.7 for Haiku). The parts add up to what was stored. Every family weighs its kinds alike, so a session that mixed models splits the same way.
+- **Sessions left out**: a session stored with older factors no longer matches its tokens under today's factors (May and June 2026 rows sit at 2.3 to 6.4 times them, and rows written before cache reads were recorded carry none). Today's weights would misplace its CO2, so a session whose stored CO2 is outside 0.4 to 2.5 times what its tokens give today is left out of the split, and the pane says over how many sessions it splits. A mixed-model session sits between about 0.5 and 2 and is kept.
+- **Energy** is the energy the factors start from: they are energy per token, PUE included, converted to CO2 with the AWS us-east grid at 0.287 kgCO2e/kWh. Dividing a stored CO2 by that same intensity gives that energy back.
+
 ## Cost estimate
 
 The `cost_usd` column is the theoretical API list value of the usage (what it would cost on pay-as-you-go), not the subscription price actually paid. It uses current Anthropic list pricing per million tokens (platform.claude.com/docs/en/about-claude/pricing, re-read 2026-10-09), per model where a model's price differs from its family's, per family otherwise:

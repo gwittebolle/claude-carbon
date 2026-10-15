@@ -343,7 +343,8 @@ cc_ensure_schema() {
 # cc_export_sessions <db>: write sessions-history.tsv next to the DB, one line per
 # session with CO2, oldest first: session id, start time in epoch seconds, grams of CO2,
 # methodology version, project (its folder's name, tabs and line breaks made spaces),
-# API-price cost in dollars (empty when unknown), dominant model. Legacy (v1) rows are
+# API-price cost in dollars (empty when unknown), dominant model, then the tokens by kind
+# (uncached input, cache write, cache read, output; 0 when unknown). Legacy (v1) rows are
 # in it, as stored.
 # The mod's /carbon-panel pane reads it; the mod itself never opens the DB. Read-only
 # (-readonly), so a frozen series cannot be written from here. A unique temp name and a

@@ -384,8 +384,13 @@ describe("the /carbon-panel pane", () => {
   });
   test("the detail block splits the period by kind of token", async ($: any, on: any) => {
     const at = (days: number) => Math.floor((NOW - days * DAY) / 1000);
-    // 1 kgCO₂ of Sonnet: 1M cache writes, 100M cache reads, 100k output
-    const lines = [`a\t${at(2)}\t1000\t2\tsite\t1\tclaude-sonnet-5-5\t0\t1000000\t100000000\t100000`];
+    // Sonnet, 1M cache writes, 100M cache reads, 100k output: 433.6 gCO₂ under today's
+    // factors (39 + 312 + 82.6). A second session stored at four times its tokens' CO2,
+    // as a month frozen under older factors, is left out of the split.
+    const lines = [
+      `a\t${at(2)}\t433.6\t2\tsite\t1\tclaude-sonnet-5-5\t0\t1000000\t100000000\t100000`,
+      `old\t${at(3)}\t1734.4\t1\tsite\t1\tclaude-sonnet-5-5\t0\t1000000\t100000000\t100000`,
+    ];
     const { store } = world(on, { history: `${lines.join("\n")}\n` });
     await startSession($);
     await openPane($);
@@ -399,13 +404,14 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain("Détail\nTokens");
     expect(text).toContain("CO₂ et énergie");
     // Cache reads: 99 % of the tokens, 72 % of the CO2 (weights 1, 1, 0.08, 826/39)
-    expect(text).toContain("Cache relu\n100M tokens (99 %) · 2,5 kWh · 720 gCO₂ (72 %)");
+    expect(text).toContain("Cache relu\n100 M tokens (99 %) · 1,1 kWh · 312 gCO₂ (72 %)");
     // No uncached input: the kind is left out of the list
     expect(text).not.toContain("Entrée");
     // The parts add up to the period's CO2; energy back through 287 gCO₂/kWh
-    expect(text).toContain("Total : 101M tokens · 3,5 kWh · 1,0 kgCO₂");
+    expect(text).toContain("Total : 101 M tokens · 1,5 kWh · 434 gCO₂");
+    expect(text).toContain("Sur 1 des 2 sessions de la période : les autres ont été enregistrées avec des facteurs plus anciens.");
     expect(text).not.toContain("Hypothèses");
-    expect(JSON.stringify(await desk.drawn())).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
+    expect(JSON.stringify(await desk.drawn())).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md#the-panes-detail-by-kind-of-token");
     expect(JSON.stringify(await desk.drawn())).toContain("Répartition des tokens entre entrée");
     await desk.unmount();
   });

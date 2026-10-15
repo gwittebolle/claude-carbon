@@ -9,8 +9,9 @@ period between uncached input, cache writes, cache reads and output. Two coloure
 give each kind's share of the tokens and of the CO2, then one line per kind its tokens,
 energy (Wh, kWh) and CO2 with their shares, and a total, in the author's palette
 (Amethyst, sand, Pierre, Tangerine). Under it, a link to METHODOLOGY.md for the assumptions. The CO2 of each session is the
-stored one, split with the weights the factors already apply, so the parts add up to the
-period's total, frozen months included; the energy is the one the factors start from,
+stored one, split with the weights the factors already apply; a session stored with older
+factors (before July 2026), whose CO2 no longer matches its tokens, is left out, and the
+block says over how many sessions it splits; the energy is the one the factors start from,
 found back by dividing that CO2 by their grid intensity, 287 gCO2/kWh. `sessions-history.tsv` gains four columns, the tokens by kind,
 written by the hooks from this version on; until the next answer rewrites it, the
 block says the detail is on its way. No factor changes.

@@ -157,8 +157,9 @@ export function newerRelease(
 }
 
 // One line per session: id, start in epoch seconds, grams, methodology version, project,
-// API-price cost, model, tab-separated. Fields an older hook did not write read as the
-// current version and as unknown.
+// API-price cost, model, then the tokens by kind (uncached input, cache write, cache
+// read, output), tab-separated. Fields an older hook did not write read as the current
+// version and as unknown.
 // A line that does not read as that is skipped, never guessed.
 export function parseHistory(text: string): SessionRow[] {
   const rows: SessionRow[] = [];

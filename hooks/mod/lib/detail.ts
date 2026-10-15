@@ -3,9 +3,13 @@
 //
 // The CO2 of each session is the one the hooks stored; it is split over the four kinds
 // with the weights the factors give them (input and cache writes 1, cache reads
-// cache_read_factor, output output/input), so the four parts always add up to the
-// figure the pane shows, legacy rows included. Every model's output/input ratio is the
-// same today; the session's own family is used all the same.
+// cache_read_factor, output output/input of the session's family), so the parts add up
+// to what was stored. A session stored with older factors (a frozen month, or a row
+// written before cache reads were recorded) is left out: its stored CO2 no longer matches
+// its tokens under today's factors (2.3 to 6.4 times them in May and June 2026), so
+// today's weights would misplace it. A session that mixed models sits between 0.5 and
+// 2 times the CO2 of its dominant model and splits the same way, as every family weighs
+// its kinds alike: it is kept.
 // The factors start from energy per token (PUE included) and convert it to CO2 with the
 // grid intensity (0.287 kgCO2e/kWh, AWS us-east location-based, data/factors.json
 // _methodology). The stored CO2 is divided back by that intensity to show the energy.
@@ -17,6 +21,9 @@ export const KINDS = ["input", "cacheWrite", "cacheRead", "output"] as const;
 export type Kind = (typeof KINDS)[number];
 
 export const GRID_G_PER_WH = 0.287;
+// How far a stored CO2 may sit from its tokens under today's factors and still be split
+const MIN_RATIO = 0.4;
+const MAX_RATIO = 2.5;
 
 export type DetailPart = {
   kind: Kind;
@@ -59,13 +66,18 @@ export function periodDetail(
   let sessions = 0;
   for (const r of inPeriod) {
     if (r.tokens === null) continue;
-    sessions += 1;
     const wt = weightsOf(r.model, factors);
     const weighted = KINDS.map((k) => r.tokens![k] * wt[k]);
     const sum = weighted.reduce((s, v) => s + v, 0);
+    // The CO2 these tokens make with today's factors, in grams
+    const expected = (sum * factors.models[family(r.model)].input) / 1e6;
+    if (!(expected > 0)) continue;
+    const ratio = r.grams / expected;
+    if (ratio < MIN_RATIO || ratio > MAX_RATIO) continue;
+    sessions += 1;
     KINDS.forEach((k, i) => {
       tokens[k] += r.tokens![k];
-      if (sum > 0) grams[k] += (r.grams * (weighted[i] ?? 0)) / sum;
+      grams[k] += (r.grams * (weighted[i] ?? 0)) / sum;
     });
   }
   if (sessions === 0) return null;
@@ -125,10 +137,15 @@ export function splitBarSvg(
     .filter(({ s }) => s * width >= 0.5);
   const room = width - GAP * Math.max(0, drawn.length - 1);
   const total = drawn.reduce((t, d) => t + d.s, 0) || 1;
+  // A part under a pixel is drawn at one; the others share what is left, so the last
+  // part still ends at the bar's right edge
+  const thin = drawn.filter(({ s }) => (room * s) / total < 1);
+  const thick = total - thin.reduce((t, d) => t + d.s, 0) || 1;
+  const left = Math.max(0, room - thin.length);
   let x = 0;
   const rects = drawn
     .map(({ s, i }) => {
-      const wd = Math.max(1, (room * s) / total);
+      const wd = (room * s) / total < 1 ? 1 : (left * s) / thick;
       const rect =
         `<rect class="k${i}" x="${x.toFixed(2)}" y="0" width="${wd.toFixed(2)}" height="${DETAIL_BAR_HEIGHT}" rx="2">` +
         `<title>${escapeXml(titles[i] ?? "")}</title></rect>`;

@@ -617,8 +617,9 @@ export function detailBarLabel(bar: "tokens" | "co2", lang: Lang): string {
 export function formatTokens(n: number, lang: Lang): string {
   if (n >= 999.5e6)
     return lang === "fr" ? `${decimal(n / 1e9, 1, lang)}${NBSP}Md` : `${decimal(n / 1e9, 1, lang)}B`;
-  if (n >= 999.5e3) return `${Math.round(n / 1e6)}M`;
-  if (n >= 1000) return `${Math.round(n / 1e3)}k`;
+  const space = lang === "fr" ? NBSP : "";
+  if (n >= 999.5e3) return `${Math.round(n / 1e6)}${space}M`;
+  if (n >= 1000) return `${Math.round(n / 1e3)}${space}k`;
   return String(Math.round(n));
 }
 
@@ -631,12 +632,11 @@ export function formatWh(wh: number, lang: Lang): string {
   return `${decimal(kwh / 1000, 1, lang)}${NBSP}MWh`;
 }
 
-// "98 %", "< 1 %" for a share that is there but rounds to nothing, "0 %" for none
-export function formatShare(share: number, lang: Lang): string {
-  const space = lang === "fr" ? NBSP : "";
-  if (share <= 0) return `0${space}%`;
-  if (share < 0.005) return `<${NBSP}1${space}%`;
-  return `${Math.round(share * 100)}${space}%`;
+// "98 %", "< 1 %" for a share that is there but rounds to nothing, "0 %" for none;
+// a space before % in both languages, as the rest of the pane writes it
+export function formatShare(share: number, _lang: Lang): string {
+  if (share <= 0) return `0${NBSP}%`;
+  return percent(share);
 }
 
 // Under a kind's name: "23,8 Md tokens (98 %) · 21,6 kWh · 6,2 kgCO₂ (61 %)"
@@ -667,16 +667,17 @@ export function detailPartTitle(kind: string, share: number, lang: Lang): string
 
 // The methodology, straight from the detail
 export const METHODOLOGY_URL =
-  "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md";
+  "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md#the-panes-detail-by-kind-of-token";
 export function methodologyLabel(lang: Lang): string {
   return lang === "fr" ? "Lire la méthodologie" : "Read the methodology";
 }
 
-// When some sessions of the period carry no detail (recorded by an older hook)
+// When some sessions of the period are left out: stored with older factors, or the
+// running one before its first answer
 export function detailCoverage(n: number, total: number, lang: Lang): string {
   return lang === "fr"
-    ? `Sur ${n} des ${total} sessions de la période.`
-    : `Over ${n} of the period's ${total} sessions.`;
+    ? `Sur ${n} des ${total} sessions de la période${NBSP}: les autres ont été enregistrées avec des facteurs plus anciens.`
+    : `Over ${n} of the period's ${total} sessions: the others were recorded with older factors.`;
 }
 
 // Before the hook has written the tokens by kind: after the next answer

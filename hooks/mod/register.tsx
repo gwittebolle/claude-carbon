@@ -171,7 +171,7 @@ const answers = atom(
 );
 const session = atom(
   { plugin: "claude-carbon", key: "session" } as const,
-  { grams: 0, usd: 0, turns: 0 } as SessionTotal,
+  { grams: 0, usd: 0, turns: 0, tokens: { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 } } as SessionTotal,
 );
 
 const working = atom(
@@ -272,7 +272,7 @@ function isRemoteOnly(surfaces: readonly string[]): boolean {
 async function resetSessionState($: EngineInterface) {
   await $.state.set(
     { plugin: "claude-carbon", key: "session" },
-    { grams: 0, usd: 0, turns: 0 },
+    { grams: 0, usd: 0, turns: 0, tokens: { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 } },
   );
   await $.state.set({ plugin: "claude-carbon", key: "answers" }, []);
   $.ui.status(undefined);
@@ -797,9 +797,21 @@ export const register: Register = (on, options) => {
           if (e.agentId !== undefined && pane.agents.has(e.agentId))
             pane.agents.set(e.agentId, (pane.agents.get(e.agentId) ?? 0) + grams);
           const usd = prices !== null ? costUsd(usage, model, prices) : null;
-          await update($, session, ({ usd: spent, ...total }) => ({
+          await update($, session, ({ usd: spent, tokens: seen, ...total }) => ({
             ...total,
             grams: total.grams + grams,
+            // Counted from the first request of the session on; a total kept without
+            // them stays without them until it starts over
+            ...(seen !== undefined
+              ? {
+                  tokens: {
+                    input: seen.input + usage.input_tokens,
+                    cacheWrite: seen.cacheWrite + usage.cache_creation_input_tokens,
+                    cacheRead: seen.cacheRead + usage.cache_read_input_tokens,
+                    output: seen.output + usage.output_tokens,
+                  },
+                }
+              : {}),
             // A request with no price, or a total kept from code that counted no cost,
             // leaves the cost out until the total starts over.
             ...(usd !== null && spent !== undefined ? { usd: spent + usd } : {}),
@@ -1047,9 +1059,8 @@ export const register: Register = (on, options) => {
               project: own?.project ?? pane.project,
               usd: total.usd ?? null,
               model: own?.model ?? "",
-              // The running session's tokens as the file last saw them: its live CO2
-              // is split with that mix
-              tokens: own?.tokens ?? null,
+              // The running session's tokens counted live, or as the file last saw them
+              tokens: total.tokens ?? own?.tokens ?? null,
             },
           ]
         : past;
