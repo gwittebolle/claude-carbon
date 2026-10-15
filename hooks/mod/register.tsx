@@ -1385,7 +1385,8 @@ export const register: Register = (on, options) => {
                 {detailBar("tokens")}
                 {detailBar("co2")}
                 <Box flexDirection="column">
-                  {detail.parts.map((p, i) => (
+                  {detail.parts.map((p, i) => p.tokens > 0 && (
+                    // A kind with no token says nothing; the others keep their colour
                     <Box key={`detail-${p.kind}`} flexDirection="column">
                       <Box flexDirection="row" columnGap={1} alignItems="center">
                         <ui.Svg source={swatchSvg(i)} alt="" width={10} height={10} />

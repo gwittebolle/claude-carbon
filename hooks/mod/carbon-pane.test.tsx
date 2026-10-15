@@ -400,7 +400,8 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain("CO₂ et énergie");
     // Cache reads: 99 % of the tokens, 72 % of the CO2 (weights 1, 1, 0.08, 826/39)
     expect(text).toContain("Cache relu\n100M tokens (99 %) · 2,5 kWh · 720 gCO₂ (72 %)");
-    expect(text).toContain("Entrée\n0 tokens (0 %) · 0 Wh · < 0,1 gCO₂ (0 %)");
+    // No uncached input: the kind is left out of the list
+    expect(text).not.toContain("Entrée");
     // The parts add up to the period's CO2; energy back through 287 gCO₂/kWh
     expect(text).toContain("Total : 101M tokens · 3,5 kWh · 1,0 kgCO₂");
     expect(text).toContain("Énergie déduite du CO₂, réseau à 287 gCO₂/kWh.");
