@@ -2,12 +2,12 @@
 
 ## 2026-10-15
 
-### fix: /carbon-card waits 45 seconds for the browser's first start
+### fix: /carbon-card waits 60 seconds for the browser's first start
 
-A Chrome started headless with a fresh profile took 19 to 21 seconds on a Windows CI
-runner, and over 25 on one run, so the card fell back to a page in the browser. The
-browser now has 45 seconds before it is stopped; only the first card of a run pays for
-the profile, the next ones reuse it.
+A Chrome started headless with a fresh profile took 19 to over 45 seconds on a Windows CI
+runner, so the card fell back to a page in the browser. The browser now has 60 seconds
+before it is stopped; only the first card of a run pays for the profile, the next ones
+reuse it. When the real-browser test fails, it now prints what the browser did.
 
 ### fix: the detail's bars label the hovered part, percentages to one decimal
 
