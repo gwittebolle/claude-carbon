@@ -2,6 +2,14 @@
 
 ## 2026-10-15
 
+### fix: /carbon-card no longer stalls Chrome on Windows
+
+The card waited for its web fonts through Chrome's virtual time, which on a Windows
+machine stalled the browser's network service: even a blank page never came back, and
+the card fell back to a page in the browser. Each font file the card's stylesheets name is
+now preloaded instead, which Chrome waits for before its screenshot, the same fonts in a
+few seconds. Offline, the card is drawn in the system's fonts rather than not at all.
+
 ### fix: /carbon-card waits 60 seconds for the browser's first start
 
 A Chrome started headless with a fresh profile took 19 to over 45 seconds on a Windows CI

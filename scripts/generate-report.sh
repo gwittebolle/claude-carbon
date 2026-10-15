@@ -720,7 +720,7 @@ spawnSync(browser, [
   "--no-default-browser-check", "--disable-extensions", "--user-data-dir=" + profile,
   "--use-mock-keychain", "--password-store=basic", "--disable-background-networking",
   "--window-size=1080,1080", "--force-device-scale-factor=2",
-  "--virtual-time-budget=5000", "--screenshot=" + out, url,
+  "--screenshot=" + out, url,
 ], { stdio: "ignore", timeout: 60000, killSignal: "SIGKILL" });
 try {
   const b = fs.readFileSync(out);
@@ -759,6 +759,41 @@ const { chromium } = require('$(cc_native_path "$PW_PATH")');
     [ -z "$SYS_BROWSER" ] || SYS_FAILED=1
   fi
 }
+
+# The machine's browser screenshots at the page's load event. A web font only loads once
+# text asks for it, after that event, so each font file the pages' Fontshare stylesheets
+# name gets a <link rel="preload">: a preload is part of the load, and the card is drawn
+# in its own fonts. (Chrome's virtual time did the waiting before; on Windows it stalled
+# the browser's network service and the shot never came.) Offline, the pages stay as
+# they are and the card falls back to the system's fonts.
+if [ -n "$SYS_BROWSER" ]; then
+  node -e '
+const fs = require("fs");
+const pages = process.argv.slice(1).filter((f) => fs.existsSync(f));
+(async () => {
+  const cache = new Map();
+  for (const page of pages) {
+    let html = fs.readFileSync(page, "utf8");
+    const sheets = [...html.matchAll(/href="(https:\/\/api\.fontshare\.com\/[^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, "&"));
+    const fonts = [];
+    for (const sheet of sheets) {
+      if (!cache.has(sheet)) {
+        let css = "";
+        try {
+          const r = await fetch(sheet, { signal: AbortSignal.timeout(10000) });
+          if (r.ok) css = await r.text();
+        } catch (e) {}
+        cache.set(sheet, [...css.matchAll(/url\(\x27(\/\/[^\x27]+\.woff2)\x27\)/g)].map((m) => "https:" + m[1]));
+      }
+      fonts.push(...cache.get(sheet));
+    }
+    if (fonts.length === 0) continue;
+    const links = [...new Set(fonts)].map((u) => `<link rel="preload" as="font" type="font/woff2" crossorigin href="${u}">`).join("");
+    fs.writeFileSync(page, html.replace("</head>", links + "</head>"));
+  }
+})();
+' "$(cc_native_path "$TMP_SUMMARY_FR")" "$(cc_native_path "$TMP_DETAILED_FR")" "$(cc_native_path "$TMP_SUMMARY_EN")" "$(cc_native_path "$TMP_DETAILED_EN")" 2>/dev/null || true
+fi
 
 CARD_OK=""
 SYS_FAILED=""
