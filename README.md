@@ -115,7 +115,7 @@ Accurate on every plan, including Max 20x.
 ## Example report
 
 <p align="center">
-  <img src="docs/example-report-v2.png" alt="Claude Carbon Report" width="540">
+  <img src="docs/example-card.png" alt="claude-carbon summary card: 1190.3 kg of estimated CO2 from January to September 2026, a bar per month, then 25.3B tokens processed, 94% of them cache reads, a car equivalent, the API-price cost and a yearly projection" width="540">
 </p>
 
 Generate yours with `/carbon-card` in Claude Code. The summary and detailed PNGs land in
@@ -127,7 +127,7 @@ card selected on macOS. `CLAUDE_CARBON_EXPORT_DIR` picks another folder;
 Without Playwright or Chromium there is no PNG and the command still finishes: the summary
 card is saved as an HTML page in the same folder and opens in your browser, scaled to fit the
 window, and a screenshot of it does the job.
-The card's footer says where to find the tool, `claude-carbon sur GitHub` / `claude-carbon on GitHub`, with the address below it.
+The token count on the card is every token Claude processed, cache reads included, as `ccusage` counts them; the grey line under it gives the share of cache reads. The card's footer says where to find the tool, `claude-carbon sur GitHub` / `claude-carbon on GitHub`, with the address below it.
 
 From the 1st to the 10th of each month the status line ends with `📊 September: 84.2kgCO₂ · /carbon-card`:
 the total of the month just closed, the bar the card draws for it, in the same format as the
@@ -395,12 +395,14 @@ With the segment in ccstatusline, the [mod](#the-mod-carbon-panel-and-the-co2-of
 
 Factors from [Jegham et al. 2025](https://arxiv.org/abs/2505.09598), an arXiv preprint that estimates the energy consumption of LLM inference on AWS infrastructure from public API performance data (latency, throughput) over inferred hardware configurations.
 
-| Model  | Input (gCO2e/Mtok) | Output (gCO2e/Mtok) | Basis                      |
-| ------ | ------------------ | ------------------- | -------------------------- |
-| Fable  | 156                | 3304                | Extrapolated (2x Opus)     |
-| Opus   | 78                 | 1652                | Extrapolated (2x Sonnet)   |
-| Sonnet | 39                 | 826                 | 3-point fit (Jegham v6)    |
-| Haiku  | 10                 | 207                 | Extrapolated (0.25x Sonnet) |
+| Model  | Read for the first time (input, cache write) | Re-read (cache read) | Written (output) | Basis                       |
+| ------ | -------------------------------------------- | -------------------- | ---------------- | --------------------------- |
+| Fable  | 156                                          | 12.5                 | 3304             | Extrapolated (2x Opus)      |
+| Opus   | 78                                           | 6.2                  | 1652             | Extrapolated (2x Sonnet)    |
+| Sonnet | 39                                           | 3.1                  | 826              | 3-point fit (Jegham v6)     |
+| Haiku  | 10                                           | 0.8                  | 207              | Extrapolated (0.25x Sonnet) |
+
+In gCO2e per million tokens. In a Claude Code session, about 98% of the tokens are context Claude re-reads at each step. Each of them weighs little, but together they make about 60% of the CO2; the text Claude writes is under 1% of the tokens and about 30% of the CO2 (30 days of the author's sessions, October 2026).
 
 **Important: these are order-of-magnitude estimates, not precise measurements.**
 

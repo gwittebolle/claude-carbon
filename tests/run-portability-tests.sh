@@ -498,6 +498,30 @@ STUB
       "$(printf '%s\n' "$OUT" | grep -c FAILED)|$([ $((T1 - T0)) -lt 60 ] && echo yes || echo "no ($((T1 - T0))s)")|$(printf '%s\n' "$OUT" | tail -1)"
   fi
 
+  # The token tile counts every token, cache reads included, in billions past 1e9 (Md in
+  # French), with the share of cache reads under it; a note says so once to someone who
+  # made a card before, never to a new install.
+  TOK_DB="${FAKE_HOME}/tokens.db"
+  sqlite3 "$TOK_DB" "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, methodology_version INTEGER DEFAULT 2, excluded INTEGER DEFAULT 0, git_branch TEXT DEFAULT '');"
+  sqlite3 "$TOK_DB" "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, started_at, cache_read_tokens) VALUES ('t1', 'p', 'claude-opus-5', 1000000, 100000, 1.5, 2500.0, '$(date +%Y-%m)-01T10:00:00Z', 2000000000);"
+  SAVED_DB="$CARD_DB"; CARD_DB="$TOK_DB"
+  rm -f "${FAKE_HOME}/out/"*.html "${FAKE_HOME}/cfg/claude-carbon/last-card-month" "${FAKE_HOME}/cfg/claude-carbon/card-tokens-with-cache"
+  OUT="$(CARD_NO_OPEN=1 card "$NO_CHROMIUM")"
+  PAGE="$(find "${FAKE_HOME}/out" -name 'claude-carbon-summary-fr-*.html' 2>/dev/null | head -1)"
+  is "tokens: cache reads counted, in Md" "1" "$(grep -c '>2,0 Md<' "$PAGE" 2>/dev/null)"
+  NBSP_CHAR="$(printf '\302\240')"
+  is "tokens: label and cache share" "1" "$(grep -c "tokens traités<br>dont 99${NBSP_CHAR}% relus en cache" "$PAGE" 2>/dev/null)"
+  is "tokens: no note on a first card" "0" "$(printf '%s\n' "$OUT" | grep -c '^Note:')"
+  rm -f "${FAKE_HOME}/cfg/claude-carbon/card-tokens-with-cache" "${FAKE_HOME}/out/"*.html
+  OUT="$(CARD_NO_OPEN=1 card "$NO_CHROMIUM")"
+  is "tokens: note once after an earlier card, before Totals" "Note:|Totals" \
+    "$(printf '%s\n' "$OUT" | grep -E '^(Note:|Totals since)' | cut -d' ' -f1 | paste -sd'|' -)"
+  rm -f "${FAKE_HOME}/out/"*.html
+  OUT="$(CARD_NO_OPEN=1 card "$NO_CHROMIUM")"
+  is "tokens: the note never comes back" "0" "$(printf '%s\n' "$OUT" | grep -c '^Note:')"
+  rm -f "${FAKE_HOME}/out/"*.html
+  CARD_DB="$SAVED_DB"
+
   # Variables of the same names inherited from the user's shell are never acted on:
   # a folder named BROWSER_PROFILE survives, a SERVER_PID is not killed.
   KEEP="${FAKE_HOME}/keep-profile"; mkdir -p "$KEEP"; : > "${KEEP}/Bookmarks"
