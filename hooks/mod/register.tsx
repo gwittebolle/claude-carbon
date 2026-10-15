@@ -33,6 +33,7 @@ import {
 } from "./lib/co2.ts";
 import type { Factors, Family } from "./lib/co2.ts";
 import { costUsd, parsePrices } from "./lib/cost.ts";
+import { DETAIL_BAR_HEIGHT, periodDetail, splitBarSvg, swatchSvg } from "./lib/detail.ts";
 import type { Prices } from "./lib/cost.ts";
 import {
   answerLine,
@@ -54,6 +55,15 @@ import {
   moneyValue,
   tileLabel,
   blockLabel,
+  detailAlt,
+  detailBarLabel,
+  detailCoverage,
+  detailLine,
+  detailNote,
+  detailPartTitle,
+  detailTotalLine,
+  detailWaitText,
+  kindLabel,
   buildAnswerCo2,
   cardButtonLabel,
   cardDraftBusy,
@@ -183,8 +193,9 @@ const DEFAULT_BLOCKS: PaneBlocks = {
   cost: true,
   equivalence: true,
   projects: false,
+  detail: false,
 };
-const BLOCKS = ["compare", "cost", "equivalence", "projects"] as const;
+const BLOCKS = ["compare", "cost", "equivalence", "projects", "detail"] as const;
 const paneBlocks = atom(
   { plugin: "claude-carbon", key: "blocks" } as const,
   DEFAULT_BLOCKS,
@@ -1035,6 +1046,9 @@ export const register: Register = (on, options) => {
               project: own?.project ?? pane.project,
               usd: total.usd ?? null,
               model: own?.model ?? "",
+              // The running session's tokens as the file last saw them: its live CO2
+              // is split with that mix
+              tokens: own?.tokens ?? null,
             },
           ]
         : past;
@@ -1336,6 +1350,60 @@ export const register: Register = (on, options) => {
           )}
         </Box>
       );
+      // The period's tokens, energy and CO2 by kind, when the person asked for it: two
+      // stacked bars (tokens, then CO2 and energy, whose shares are the same), then a
+      // line per kind under its colour key
+      const detail =
+        blocks.detail && hasTotals && pane.rows !== null ? periodDetail(rows, w, factors) : null;
+      const detailBar = (bar: "tokens" | "co2") =>
+        detail !== null && (
+          <Box flexDirection="column">
+            <Text dimColor>{detailBarLabel(bar, lang)}</Text>
+            <ui.Svg
+              source={splitBarSvg(
+                detail.parts.map((p) => (bar === "tokens" ? p.tokenShare : p.gramShare)),
+                detail.parts.map((p) =>
+                  detailPartTitle(p.kind, bar === "tokens" ? p.tokenShare : p.gramShare, lang),
+                ),
+                stripesWidth,
+              )}
+              alt={detailAlt(bar, lang)}
+              width={stripesWidth}
+              height={DETAIL_BAR_HEIGHT}
+              isInteractive
+            />
+          </Box>
+        );
+      const detailBlock =
+        blocks.detail && hasTotals && (
+          <Box flexDirection="column" rowGap={1} marginTop={1}>
+            <Text bold>{blockLabel("detail", lang)}</Text>
+            {detail === null ? (
+              <Text dimColor>{detailWaitText(lang)}</Text>
+            ) : (
+              <Box flexDirection="column" rowGap={1}>
+                {detailBar("tokens")}
+                {detailBar("co2")}
+                <Box flexDirection="column">
+                  {detail.parts.map((p, i) => (
+                    <Box key={`detail-${p.kind}`} flexDirection="column">
+                      <Box flexDirection="row" columnGap={1} alignItems="center">
+                        <ui.Svg source={swatchSvg(i)} alt="" width={10} height={10} />
+                        <Text bold>{kindLabel(p.kind, lang)}</Text>
+                      </Box>
+                      <Text dimColor>{detailLine(p, lang)}</Text>
+                    </Box>
+                  ))}
+                </Box>
+                <Text>{detailTotalLine(detail, lang)}</Text>
+                {detail.sessions < detail.sessionsInPeriod && (
+                  <Text dimColor>{detailCoverage(detail.sessions, detail.sessionsInPeriod, lang)}</Text>
+                )}
+                <Text dimColor>{detailNote(lang)}</Text>
+              </Box>
+            )}
+          </Box>
+        );
       // Mods set no font size: the foot stays small by saying little
       const foot = (
         <Box flexDirection="column" marginTop={1}>
@@ -1430,6 +1498,7 @@ export const register: Register = (on, options) => {
             </Box>
           )}
           {projectsList}
+          {detailBlock}
           <Box flexDirection="column" rowGap={1}>
             <Box flexDirection="row">{cardButton}</Box>
             {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}

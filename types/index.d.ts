@@ -39,6 +39,7 @@ export type PaneBlocks = {
   cost: boolean;
   equivalence: boolean;
   projects: boolean;
+  detail: boolean;
 };
 
 declare module "claude-code" {

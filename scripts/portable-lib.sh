@@ -355,7 +355,7 @@ cc_export_sessions() {
   out="$(dirname "$db")/sessions-history.tsv"
   tmp="${out}.tmp.$$"
   if sqlite3 -readonly -cmd ".timeout 5000" -separator "$(printf '\t')" "$db" \
-    "SELECT session_id, CAST(strftime('%s', started_at) AS INTEGER), ROUND(co2_grams, 3), COALESCE(methodology_version, 1), REPLACE(REPLACE(REPLACE(COALESCE(project, ''), char(9), ' '), char(10), ' '), char(13), ' '), COALESCE(ROUND(cost_usd, 4), ''), REPLACE(REPLACE(COALESCE(model, ''), char(9), ' '), char(10), ' ') FROM sessions WHERE COALESCE(excluded, 0) = 0 AND co2_grams > 0 AND strftime('%s', started_at) IS NOT NULL ORDER BY started_at;" \
+    "SELECT session_id, CAST(strftime('%s', started_at) AS INTEGER), ROUND(co2_grams, 3), COALESCE(methodology_version, 1), REPLACE(REPLACE(REPLACE(COALESCE(project, ''), char(9), ' '), char(10), ' '), char(13), ' '), COALESCE(ROUND(cost_usd, 4), ''), REPLACE(REPLACE(COALESCE(model, ''), char(9), ' '), char(10), ' '), MAX(COALESCE(input_tokens, 0) - COALESCE(cache_creation_tokens, 0), 0), COALESCE(cache_creation_tokens, 0), COALESCE(cache_read_tokens, 0), COALESCE(output_tokens, 0) FROM sessions WHERE COALESCE(excluded, 0) = 0 AND co2_grams > 0 AND strftime('%s', started_at) IS NOT NULL ORDER BY started_at;" \
     >"$tmp" 2>/dev/null; then
     mv -f "$tmp" "$out" 2>/dev/null || rm -f "$tmp"
   else

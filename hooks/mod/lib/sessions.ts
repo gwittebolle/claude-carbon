@@ -18,6 +18,17 @@ export type SessionRow = {
   usd: number | null;
   // The session's dominant model as the hooks record it, "" when unknown
   model: string;
+  // Its tokens by kind, null when the file does not carry them (a hook older than
+  // the pane's detail)
+  tokens: TokenSplit | null;
+};
+
+// A session's tokens by kind: uncached input, cache writes, cache reads, output
+export type TokenSplit = {
+  input: number;
+  cacheWrite: number;
+  cacheRead: number;
+  output: number;
 };
 
 // The current methodology: what the running session is measured with
@@ -152,7 +163,8 @@ export function newerRelease(
 export function parseHistory(text: string): SessionRow[] {
   const rows: SessionRow[] = [];
   for (const line of text.split(/\r?\n/)) {
-    const [id, start, grams, version, project, cost, model] = line.split("\t");
+    const [id, start, grams, version, project, cost, model, ...counts] =
+      line.split("\t");
     if (
       id === undefined ||
       id === "" ||
@@ -172,9 +184,17 @@ export function parseHistory(text: string): SessionRow[] {
       project: project ?? "",
       usd: numberOrNull(cost),
       model: model ?? "",
+      tokens: tokenSplitOf(counts),
     });
   }
   return rows.sort((a, b) => a.at - b.at);
+}
+
+function tokenSplitOf(fields: string[]): TokenSplit | null {
+  if (fields.length < 4) return null;
+  const n = fields.slice(0, 4).map((f) => (f === "" ? NaN : Number(f)));
+  if (!n.every((v) => Number.isFinite(v) && v >= 0)) return null;
+  return { input: n[0] ?? 0, cacheWrite: n[1] ?? 0, cacheRead: n[2] ?? 0, output: n[3] ?? 0 };
 }
 
 function numberOrNull(field: string | undefined): number | null {

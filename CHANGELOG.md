@@ -2,6 +2,18 @@
 
 ## 2026-10-15
 
+### feat: the /carbon-panel pane shows the detail by kind of token
+
+A new "Détail" switch under the gear of "Mon usage" (off until turned on) splits the
+period between uncached input, cache writes, cache reads and output. Two coloured bars
+give each kind's share of the tokens and of the CO2, then one line per kind its tokens,
+energy (Wh, kWh) and CO2 with their shares, and a total. The CO2 of each session is the
+stored one, split with the weights the factors already apply, so the parts add up to the
+period's total, frozen months included; the energy is that CO2 over the factors' grid
+intensity, 287 gCO2/kWh. `sessions-history.tsv` gains four columns, the tokens by kind,
+written by the hooks from this version on; until the next answer rewrites it, the
+block says the detail is on its way. No factor changes.
+
 ### fix: the card's token count includes cache reads
 
 The summary card's token tile added input and output only, so it left out cache reads,

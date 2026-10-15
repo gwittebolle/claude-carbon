@@ -590,9 +590,105 @@ const BLOCK_LABELS: Record<string, [string, string]> = {
   cost: ["Coût API", "API cost"],
   equivalence: ["Équivalence", "Equivalence"],
   projects: ["Projets", "Projects"],
+  detail: ["Détail", "Detail"],
 };
 export function blockLabel(block: string, lang: Lang): string {
   return pick(BLOCK_LABELS[block], lang);
+}
+
+// ── The "Détail" block: a period's tokens, energy and CO2 by kind of token ──
+const KIND_LABELS: Record<string, [string, string]> = {
+  input: ["Entrée", "Input"],
+  cacheWrite: ["Cache écrit", "Cache write"],
+  cacheRead: ["Cache relu", "Cache read"],
+  output: ["Sortie", "Output"],
+};
+export function kindLabel(kind: string, lang: Lang): string {
+  return pick(KIND_LABELS[kind], lang);
+}
+
+// Above each bar: what it splits
+export function detailBarLabel(bar: "tokens" | "co2", lang: Lang): string {
+  if (bar === "tokens") return "Tokens";
+  return lang === "fr" ? `${UNIT} et énergie` : `${UNIT} and energy`;
+}
+
+// 820, 12k, 371M, then billions with one decimal: 25,3 Md / 25.3B
+export function formatTokens(n: number, lang: Lang): string {
+  if (n >= 999.5e6)
+    return lang === "fr" ? `${decimal(n / 1e9, 1, lang)}${NBSP}Md` : `${decimal(n / 1e9, 1, lang)}B`;
+  if (n >= 999.5e3) return `${Math.round(n / 1e6)}M`;
+  if (n >= 1000) return `${Math.round(n / 1e3)}k`;
+  return String(Math.round(n));
+}
+
+// Wh under a kWh, then kWh (one decimal under 100), then MWh
+export function formatWh(wh: number, lang: Lang): string {
+  if (wh < 999.5) return `${Math.round(wh)}${NBSP}Wh`;
+  const kwh = wh / 1000;
+  if (kwh < 99.95) return `${decimal(kwh, 1, lang)}${NBSP}kWh`;
+  if (kwh < 999.5) return `${Math.round(kwh)}${NBSP}kWh`;
+  return `${decimal(kwh / 1000, 1, lang)}${NBSP}MWh`;
+}
+
+// "98 %", "< 1 %" for a share that is there but rounds to nothing, "0 %" for none
+export function formatShare(share: number, lang: Lang): string {
+  const space = lang === "fr" ? NBSP : "";
+  if (share <= 0) return `0${space}%`;
+  if (share < 0.005) return `<${NBSP}1${space}%`;
+  return `${Math.round(share * 100)}${space}%`;
+}
+
+// Under a kind's name: "23,8 Md tokens (98 %) · 21,6 kWh · 6,2 kgCO₂ (61 %)"
+export function detailLine(
+  part: { tokens: number; tokenShare: number; wh: number; grams: number; gramShare: number },
+  lang: Lang,
+): string {
+  return (
+    `${formatTokens(part.tokens, lang)} tokens (${formatShare(part.tokenShare, lang)}) · ` +
+    `${formatWh(part.wh, lang)} · ${formatGrams(part.grams, lang)} (${formatShare(part.gramShare, lang)})`
+  );
+}
+
+export function detailTotalLine(
+  total: { tokens: number; wh: number; grams: number },
+  lang: Lang,
+): string {
+  return (
+    `Total${lang === "fr" ? NBSP : ""}: ${formatTokens(total.tokens, lang)} tokens · ` +
+    `${formatWh(total.wh, lang)} · ${formatGrams(total.grams, lang)}`
+  );
+}
+
+// What a hovered part of a bar says
+export function detailPartTitle(kind: string, share: number, lang: Lang): string {
+  return `${kindLabel(kind, lang)}${lang === "fr" ? NBSP : ""}: ${formatShare(share, lang)}`;
+}
+
+export function detailNote(lang: Lang): string {
+  return lang === "fr"
+    ? `Énergie déduite du ${UNIT}, réseau à 287${NBSP}g${UNIT}/kWh.`
+    : `Energy derived from the ${UNIT}, grid at 287${NBSP}g${UNIT}/kWh.`;
+}
+
+// When some sessions of the period carry no detail (recorded by an older hook)
+export function detailCoverage(n: number, total: number, lang: Lang): string {
+  return lang === "fr"
+    ? `Sur ${n} des ${total} sessions de la période.`
+    : `Over ${n} of the period's ${total} sessions.`;
+}
+
+// Before the hook has written the tokens by kind: after the next answer
+export function detailWaitText(lang: Lang): string {
+  return lang === "fr"
+    ? "Le détail s'affichera après la prochaine réponse."
+    : "The detail shows after the next answer.";
+}
+
+export function detailAlt(bar: "tokens" | "co2", lang: Lang): string {
+  return lang === "fr"
+    ? `Répartition ${bar === "tokens" ? "des tokens" : `du ${UNIT}`} entre entrée, cache écrit, cache relu et sortie`
+    : `Share of the ${bar === "tokens" ? "tokens" : UNIT} between input, cache write, cache read and output`;
 }
 
 export function showLabel(lang: Lang): string {

@@ -382,6 +382,45 @@ describe("the /carbon-panel pane", () => {
     expect(await drawn(ui)).toContain("une bande par jour · médiane 300 gCO₂ par jour");
     await ui.unmount();
   });
+  test("the detail block splits the period by kind of token", async ($: any, on: any) => {
+    const at = (days: number) => Math.floor((NOW - days * DAY) / 1000);
+    // 1 kgCO₂ of Sonnet: 1M cache writes, 100M cache reads, 100k output
+    const lines = [`a\t${at(2)}\t1000\t2\tsite\t1\tclaude-sonnet-5-5\t0\t1000000\t100000000\t100000`];
+    const { store } = world(on, { history: `${lines.join("\n")}\n` });
+    await startSession($);
+    await openPane($);
+    const desk = await $.ui.mount({ ...PANE, surface: "desktop" });
+    // Off until the person turns it on
+    expect(await drawn(desk)).not.toContain("Cache relu");
+    await desk.press({ key: "customize" });
+    await desk.press({ key: "block-detail" });
+    expect((store.get("pane.blocks") as any).detail).toBe(true);
+    const text = await drawn(desk);
+    expect(text).toContain("Détail\nTokens");
+    expect(text).toContain("CO₂ et énergie");
+    // Cache reads: 99 % of the tokens, 72 % of the CO2 (weights 1, 1, 0.08, 826/39)
+    expect(text).toContain("Cache relu\n100M tokens (99 %) · 2,5 kWh · 720 gCO₂ (72 %)");
+    expect(text).toContain("Entrée\n0 tokens (0 %) · 0 Wh · < 0,1 gCO₂ (0 %)");
+    // The parts add up to the period's CO2; energy back through 287 gCO₂/kWh
+    expect(text).toContain("Total : 101M tokens · 3,5 kWh · 1,0 kgCO₂");
+    expect(text).toContain("Énergie déduite du CO₂, réseau à 287 gCO₂/kWh.");
+    expect(JSON.stringify(await desk.drawn())).toContain("Répartition des tokens entre entrée");
+    await desk.unmount();
+  });
+
+  test("the detail waits for a history with tokens by kind", async ($: any, on: any) => {
+    world(on, { history: historyText(5) });
+    await startSession($);
+    await openPane($);
+    const desk = await $.ui.mount({ ...PANE, surface: "desktop" });
+    await desk.press({ key: "customize" });
+    await desk.press({ key: "block-detail" });
+    const text = await drawn(desk);
+    expect(text).toContain("Le détail s'affichera après la prochaine réponse.");
+    expect(text).not.toContain("Cache relu");
+    await desk.unmount();
+  });
+
   test("the pane sums the period and names the heaviest projects", async ($: any, on: any) => {
     const lines = [
       ["a", 3, 600, "carbonara"],

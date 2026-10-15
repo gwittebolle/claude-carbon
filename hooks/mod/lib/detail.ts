@@ -1,0 +1,148 @@
+// The pane's "Détail" block: a period's tokens, energy and CO2 by kind of token, with two
+// stacked bars (the share of the tokens, the share of the CO2). Pure.
+//
+// The CO2 of each session is the one the hooks stored; it is split over the four kinds
+// with the weights the factors give them (input and cache writes 1, cache reads
+// cache_read_factor, output output/input), so the four parts always add up to the
+// figure the pane shows, legacy rows included. Every model's output/input ratio is the
+// same today; the session's own family is used all the same.
+// Energy comes back from the CO2 through the grid intensity the factors embed
+// (0.287 kgCO2e/kWh, AWS us-east location-based, data/factors.json _methodology), PUE
+// included.
+import { family } from "./co2.ts";
+import type { Factors } from "./co2.ts";
+import type { SessionRow, TokenSplit, Window } from "./sessions.ts";
+
+export const KINDS = ["input", "cacheWrite", "cacheRead", "output"] as const;
+export type Kind = (typeof KINDS)[number];
+
+export const GRID_G_PER_WH = 0.287;
+
+export type DetailPart = {
+  kind: Kind;
+  tokens: number;
+  grams: number;
+  wh: number;
+  tokenShare: number;
+  gramShare: number;
+};
+
+export type Detail = {
+  parts: DetailPart[];
+  tokens: number;
+  grams: number;
+  wh: number;
+  // Sessions of the period that carry their tokens, out of all of them
+  sessions: number;
+  sessionsInPeriod: number;
+};
+
+export function weightsOf(model: string, factors: Factors): TokenSplit {
+  const f = factors.models[family(model)];
+  return {
+    input: 1,
+    cacheWrite: 1,
+    cacheRead: factors.cacheReadFactor,
+    output: f.input > 0 ? f.output / f.input : 0,
+  };
+}
+
+// The period's detail, or null when none of its sessions carries its tokens yet
+export function periodDetail(
+  rows: readonly SessionRow[],
+  w: Window,
+  factors: Factors,
+): Detail | null {
+  const inPeriod = rows.filter((r) => r.at >= w.start && r.at <= w.end);
+  const tokens: TokenSplit = { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
+  const grams: TokenSplit = { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
+  let sessions = 0;
+  for (const r of inPeriod) {
+    if (r.tokens === null) continue;
+    sessions += 1;
+    const wt = weightsOf(r.model, factors);
+    const weighted = KINDS.map((k) => r.tokens![k] * wt[k]);
+    const sum = weighted.reduce((s, v) => s + v, 0);
+    KINDS.forEach((k, i) => {
+      tokens[k] += r.tokens![k];
+      if (sum > 0) grams[k] += (r.grams * (weighted[i] ?? 0)) / sum;
+    });
+  }
+  if (sessions === 0) return null;
+  const totalTokens = KINDS.reduce((s, k) => s + tokens[k], 0);
+  const totalGrams = KINDS.reduce((s, k) => s + grams[k], 0);
+  return {
+    parts: KINDS.map((kind) => ({
+      kind,
+      tokens: tokens[kind],
+      grams: grams[kind],
+      wh: grams[kind] / GRID_G_PER_WH,
+      tokenShare: totalTokens > 0 ? tokens[kind] / totalTokens : 0,
+      gramShare: totalGrams > 0 ? grams[kind] / totalGrams : 0,
+    })),
+    tokens: totalTokens,
+    grams: totalGrams,
+    wh: totalGrams / GRID_G_PER_WH,
+    sessions,
+    sessionsInPeriod: inPeriod.length,
+  };
+}
+
+// One colour per kind, in the bars' order, a light and a dark step of the same hue
+// (checked for colour-blind separation of neighbours and contrast on each surface)
+export const DETAIL_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"] as const;
+export const DETAIL_COLORS_DARK = ["#3987e5", "#d95926", "#199e70", "#c98500"] as const;
+export const DETAIL_BAR_HEIGHT = 12;
+const GAP = 2;
+
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function colorCss(): string {
+  const rule = (colors: readonly string[]) =>
+    colors.map((c, i) => `.k${i}{fill:${c}}`).join("");
+  return `${rule(DETAIL_COLORS)}@media (prefers-color-scheme: dark){${rule(DETAIL_COLORS_DARK)}}`;
+}
+
+// A bar split by `shares` (in the kinds' order) across `width` CSS pixels, 2 px apart,
+// each part with its own <title> (the app's tooltip); parts under half a pixel are left
+// out, their figure stays in the text under the bars.
+export function splitBarSvg(
+  shares: readonly number[],
+  titles: readonly string[],
+  width: number,
+): string {
+  const drawn = shares
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => s * width >= 0.5);
+  const room = width - GAP * Math.max(0, drawn.length - 1);
+  const total = drawn.reduce((t, d) => t + d.s, 0) || 1;
+  let x = 0;
+  const rects = drawn
+    .map(({ s, i }) => {
+      const wd = Math.max(1, (room * s) / total);
+      const rect =
+        `<rect class="k${i}" x="${x.toFixed(2)}" y="0" width="${wd.toFixed(2)}" height="${DETAIL_BAR_HEIGHT}" rx="2">` +
+        `<title>${escapeXml(titles[i] ?? "")}</title></rect>`;
+      x += wd + GAP;
+      return rect;
+    })
+    .join("");
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${DETAIL_BAR_HEIGHT}" width="${width}" height="${DETAIL_BAR_HEIGHT}">` +
+    `<style>${colorCss()}</style>${rects}</svg>`
+  );
+}
+
+// The colour key of a kind, a small rounded square
+export function swatchSvg(index: number): string {
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" width="10" height="10">` +
+    `<style>${colorCss()}</style><rect class="k${index}" x="0" y="0" width="10" height="10" rx="2"/></svg>`
+  );
+}

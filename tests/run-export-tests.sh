@@ -49,7 +49,11 @@ INSERT INTO sessions VALUES
   ('excluded', 50, '2026-09-02T08:00:00Z', 2, 1, 'x', NULL, NULL, NULL),
   ('null-excluded', 5, '2026-09-03T08:00:00Z', 2, NULL, 'x', NULL, NULL, NULL),
   ('no-co2', 0, '2026-09-04T08:00:00Z', 2, 0, 'x', NULL, NULL, NULL),
-  ('bad-date', 3, 'not a date', 2, 0, 'x', NULL, NULL, NULL);"
+  ('bad-date', 3, 'not a date', 2, 0, 'x', NULL, NULL, NULL);
+ALTER TABLE sessions ADD COLUMN input_tokens INTEGER;
+ALTER TABLE sessions ADD COLUMN cache_creation_tokens INTEGER;
+ALTER TABLE sessions ADD COLUMN cache_read_tokens INTEGER;
+UPDATE sessions SET input_tokens = 5000, cache_creation_tokens = 1000, cache_read_tokens = 200000 WHERE session_id = 'v2-late';"
 BEFORE="$(cksum <"$DB")"
 
 # The temp files the export may leave next to the DB (none expected)
@@ -67,7 +71,9 @@ check "methodology version" "$(cut -f4 "$OUT" | tr '\n' ' ')" "1 2 2 2 "
 check "epoch seconds" "$(grep '^v2-late' "$OUT" | cut -f2)" "1791832195"
 check "milliseconds in the date" "$(grep '^v2-early' "$OUT" | cut -f2)" "1788249600"
 check "grams to the milligram" "$(grep '^v2-late' "$OUT" | cut -f3)" "12.346"
-check "tab-separated, seven fields" "$(awk -F"$TAB" 'NF != 7' "$OUT" | wc -l | tr -d ' ')" "0"
+check "tab-separated, eleven fields" "$(awk -F"$TAB" 'NF != 11' "$OUT" | wc -l | tr -d ' ')" "0"
+check "tokens by kind: uncached input, cache write, cache read, output" "$(grep '^v2-late' "$OUT" | cut -f8-11 | tr "$TAB" ' ')" "4000 1000 200000 1234"
+check "tokens unknown: zeros" "$(grep '^v1' "$OUT" | cut -f8-11 | tr "$TAB" ' ')" "0 0 0 0"
 check "model" "$(grep '^v2-late' "$OUT" | cut -f7)" "claude-opus-5-5"
 check "cost to four decimals" "$(grep '^v2-late' "$OUT" | cut -f6)" "0.4568"
 check "no cost: empty field" "$(grep '^v1' "$OUT" | cut -f6)" ""
