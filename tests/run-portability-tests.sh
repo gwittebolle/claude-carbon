@@ -486,7 +486,7 @@ STUB
     done
   fi
 
-  # A browser that hangs and ignores SIGTERM (seen on a macOS runner): killed after 25 s,
+  # A browser that hangs and ignores SIGTERM (seen on a macOS runner): killed after 45 s,
   # not tried for the other three cards, and the page opens instead.
   if [ "$CC_OS" != "windows" ]; then
     printf '#!/usr/bin/env bash\ntrap "" TERM\nsleep 120\n' > "${FAKE_HOME}/card-bin/hung-chrome"
@@ -495,7 +495,7 @@ STUB
     OUT="$(CARD_NO_OPEN=1 CARD_BROWSER="${FAKE_HOME}/card-bin/hung-chrome" card "$NO_CHROMIUM")"
     T1=$(date +%s)
     is "hung browser: one try, then the page" "1|yes|rc=0" \
-      "$(printf '%s\n' "$OUT" | grep -c FAILED)|$([ $((T1 - T0)) -lt 60 ] && echo yes || echo "no ($((T1 - T0))s)")|$(printf '%s\n' "$OUT" | tail -1)"
+      "$(printf '%s\n' "$OUT" | grep -c FAILED)|$([ $((T1 - T0)) -lt 90 ] && echo yes || echo "no ($((T1 - T0))s)")|$(printf '%s\n' "$OUT" | tail -1)"
   fi
 
   # The token tile counts every token, cache reads included, in billions past 1e9 (Md in

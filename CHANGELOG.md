@@ -2,6 +2,13 @@
 
 ## 2026-10-15
 
+### fix: /carbon-card waits 45 seconds for the browser's first start
+
+A Chrome started headless with a fresh profile took 19 to 21 seconds on a Windows CI
+runner, and over 25 on one run, so the card fell back to a page in the browser. The
+browser now has 45 seconds before it is stopped; only the first card of a run pays for
+the profile, the next ones reuse it.
+
 ### fix: the detail's bars label the hovered part, percentages to one decimal
 
 Hovering a part of a detail bar lights it up and shows, under the bar, its kind and its

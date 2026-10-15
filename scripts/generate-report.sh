@@ -721,7 +721,7 @@ spawnSync(browser, [
   "--use-mock-keychain", "--password-store=basic", "--disable-background-networking",
   "--window-size=1080,1080", "--force-device-scale-factor=2",
   "--virtual-time-budget=5000", "--screenshot=" + out, url,
-], { stdio: "ignore", timeout: 25000, killSignal: "SIGKILL" });
+], { stdio: "ignore", timeout: 45000, killSignal: "SIGKILL" });
 try {
   const b = fs.readFileSync(out);
   if (!(b.length >= 24 && b.readUInt32BE(16) === 2160 && b.readUInt32BE(20) === 2160)) fs.unlinkSync(out);
