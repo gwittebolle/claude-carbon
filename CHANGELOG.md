@@ -2,6 +2,15 @@
 
 ## 2026-10-15
 
+### fix: the detail's bars label the hovered part, percentages to one decimal
+
+Hovering a part of a detail bar lights it up and shows, under the bar, its kind and its
+figures on that bar ("Cache relu · 23,9 Md tokens · 98,4 %", "Sortie · 239 kWh ·
+68,6 kgCO2 · 27,4 %"), the way the stripes show theirs, in place of the system tooltip.
+The detail's percentages carry one decimal. Each bar names its own ids and classes, so
+the two bars and the stripes never answer each other's hover. The colour keys in front of
+the kinds carry a text alternative, without which the desktop app left them out.
+
 ### feat: the /carbon-panel pane shows the detail by kind of token
 
 A new "Détail" switch under the gear of "Mon usage" (off until turned on) splits the

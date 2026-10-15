@@ -104,6 +104,7 @@ import {
   formatWh,
   formatShare,
   detailLine,
+  detailHover,
   detailTotalLine,
   methodologyLabel,
   METHODOLOGY_URL,
@@ -810,12 +811,17 @@ check("no path", historyPath({}), null);
   check("tokens: units", [820, 12345, 371e6, 999.6e6, 25.3e9].map((n) => formatTokens(n, "en")).join(" "), "820 12k 371M 1.0B 25.3B");
   check("tokens: French billions", pt(formatTokens(25.3e9, "fr")), "25,3 Md");
   check("energy: units", [0.4, 820, 21600, 345000, 2.5e6].map((n) => pt(formatWh(n, "fr"))).join(" | "), "0 Wh | 820 Wh | 21,6 kWh | 345 kWh | 2,5 MWh");
-  check("share: rounding", [0, 0.001, 0.0049, 0.6123, 0.989].map((s) => pt(formatShare(s, "fr"))).join(" | "), "0 % | < 1 % | < 1 % | 61 % | 99 %");
-  check("share: English, spaced as the pane writes it", pt(formatShare(0.61, "en")), "61 %");
+  check("share: one decimal", [0, 0.0004, 0.001, 0.0049, 0.6123, 0.989].map((s) => pt(formatShare(s, "fr"))).join(" | "), "0 % | < 0,1 % | 0,1 % | 0,5 % | 61,2 % | 98,9 %");
+  check("share: English, spaced as the pane writes it", pt(formatShare(0.6123, "en")), "61.2 %");
   const bar = splitBarSvg([0.5, 0.0001, 0.3, 0.2], ["a & b", "x", "y", "z"], 300);
   check("bar: no script", /<script|on[a-z]+=/i.test(bar), false);
-  check("bar: a part under half a pixel left out", (bar.match(/<rect /g) ?? []).length, 3);
-  check("bar: titles escaped", bar.includes("<title>a &amp; b</title>"), true);
+  check("bar: a part under half a pixel left out", (bar.match(/<rect id="bar-p/g) ?? []).length, 3);
+  check("bar: labels escaped", bar.includes(">a &amp; b</text>"), true);
+  check("bar: no <title>, the hover label instead", bar.includes("<title>"), false);
+  check("bar: hovering a part shows its label", /#bar-p0:hover~#bar-t0/.test(bar), true);
+  check("bar: ids and classes named after the bar", /id="co2-p0"/.test(splitBarSvg([1], ["x"], 100, "co2")) && !/id="p0"|class="t"/.test(bar), true);
+  check("hover tokens fr", pt(detailHover(d.parts[2], "tokens", "fr")), "Cache relu · 100 M tokens · 98,9 %");
+  check("hover co2 fr", pt(detailHover(d.parts[2], "co2", "fr")), "Cache relu · 2,5 kWh · 720 gCO₂ · 72,0 %");
   check("bar: light and dark colours", DETAIL_COLORS.every((c) => bar.includes(c)) && DETAIL_COLORS_DARK.every((c) => bar.includes(c)), true);
   check("swatch: one square", (swatchSvg(2).match(/<rect /g) ?? []).length, 1);
   for (const lang of ["fr", "en"]) {
@@ -830,7 +836,7 @@ check("no path", historyPath({}), null);
     }
   }
   check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md#the-panes-detail-by-kind-of-token");
-  check("detail line fr", pt(detailLine(d.parts[2], "fr")), "100 M tokens (99 %) · 2,5 kWh · 720 gCO₂ (72 %)");
+  check("detail line fr", pt(detailLine(d.parts[2], "fr")), "100 M tokens (98,9 %) · 2,5 kWh · 720 gCO₂ (72,0 %)");
   {
     // Stored CO2 far from its tokens under today's factors: left out; zero tokens: left out
     const odd = parseHistory("x\t100\t4000\t1\tp\t\tclaude-opus-5-5\t0\t1000000\t100000000\t100000\nz\t100\t500\t2\tp\t\tclaude-opus-5-5\t0\t0\t0\t0\n");

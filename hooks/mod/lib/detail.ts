@@ -108,7 +108,12 @@ export function periodDetail(
 export const DETAIL_COLORS = ["#1b0b45", "#c4b8aa", "#7a6e63", "#f55c0f"] as const;
 export const DETAIL_COLORS_DARK = ["#8b7fd6", "#6b6158", "#a89c8e", "#f55c0f"] as const;
 export const DETAIL_BAR_HEIGHT = 12;
+// The bar, then a band under it where the hovered part's label shows
+const LABEL_TOP = DETAIL_BAR_HEIGHT + 4;
+const LABEL_HEIGHT = 22;
+export const DETAIL_SVG_HEIGHT = LABEL_TOP + LABEL_HEIGHT;
 const GAP = 2;
+const OUTLINE = "#8b8b8b";
 
 function escapeXml(text: string): string {
   return text
@@ -124,13 +129,19 @@ function colorCss(): string {
   return `${rule(DETAIL_COLORS)}@media (prefers-color-scheme: dark){${rule(DETAIL_COLORS_DARK)}}`;
 }
 
-// A bar split by `shares` (in the kinds' order) across `width` CSS pixels, 2 px apart,
-// each part with its own <title> (the app's tooltip); parts under half a pixel are left
-// out, their figure stays in the text under the bars.
+// A bar split by `shares` (in the kinds' order) across `width` CSS pixels, 2 px apart.
+// As on the stripes: all the parts first, then their labels, hidden, in a layer above;
+// hovering part i lights it up and shows label i at once in a dark box under the bar,
+// readable on a light or a dark pane. A CSS :hover and the sibling selector, no script,
+// no <title> (the app's own tooltip would show a second label late). Parts under half a
+// pixel are left out; their figures stay in the text under the bars. `name` prefixes
+// every id and class, so two bars (and the stripes) never answer each other's hover
+// should the app put the drawings in one document.
 export function splitBarSvg(
   shares: readonly number[],
-  titles: readonly string[],
+  labels: readonly string[],
   width: number,
+  name = "bar",
 ): string {
   const drawn = shares
     .map((s, i) => ({ s, i }))
@@ -143,19 +154,39 @@ export function splitBarSvg(
   const thick = total - thin.reduce((t, d) => t + d.s, 0) || 1;
   const left = Math.max(0, room - thin.length);
   let x = 0;
-  const rects = drawn
-    .map(({ s, i }) => {
-      const wd = (room * s) / total < 1 ? 1 : (left * s) / thick;
-      const rect =
-        `<rect class="k${i}" x="${x.toFixed(2)}" y="0" width="${wd.toFixed(2)}" height="${DETAIL_BAR_HEIGHT}" rx="2">` +
-        `<title>${escapeXml(titles[i] ?? "")}</title></rect>`;
-      x += wd + GAP;
-      return rect;
+  const parts = drawn.map(({ s, i }) => {
+    const wd = (room * s) / total < 1 ? 1 : (left * s) / thick;
+    const part = { i, x, wd };
+    x += wd + GAP;
+    return part;
+  });
+  const rects = parts
+    .map(
+      ({ i, x: px, wd }) =>
+        `<rect id="${name}-p${i}" class="${name}-b k${i}" x="${px.toFixed(2)}" y="0" width="${wd.toFixed(2)}" height="${DETAIL_BAR_HEIGHT}" rx="2"/>`,
+    )
+    .join("");
+  const boxes = parts
+    .map(({ i, x: px, wd }) => {
+      const text = labels[i] ?? "";
+      // About 6 px a character at 12 px, kept inside the drawing
+      const boxW = Math.min(width, text.length * 6 + 14);
+      const centre = px + wd / 2;
+      const boxX = Math.max(0, Math.min(width - boxW, centre - boxW / 2));
+      return (
+        `<g id="${name}-t${i}" class="${name}-t"><rect x="${boxX.toFixed(2)}" y="${LABEL_TOP}" width="${boxW.toFixed(2)}" height="${LABEL_HEIGHT}" rx="4" fill="#1f2328" stroke="${OUTLINE}" stroke-opacity="0.6"/>` +
+        `<text x="${(boxX + 7).toFixed(2)}" y="${LABEL_TOP + 15}" font-size="12" font-family="system-ui,-apple-system,sans-serif" fill="#ffffff">${escapeXml(text)}</text></g>`
+      );
     })
     .join("");
+  const show = parts.map(({ i }) => `#${name}-p${i}:hover~#${name}-t${i}`).join(",");
+  const style =
+    `<style>${colorCss()}.${name}-t{opacity:0;pointer-events:none}.${name}-b:hover{opacity:.75}` +
+    (parts.length > 0 ? `${show}{opacity:1}` : "") +
+    `</style>`;
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${DETAIL_BAR_HEIGHT}" width="${width}" height="${DETAIL_BAR_HEIGHT}">` +
-    `<style>${colorCss()}</style>${rects}</svg>`
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${DETAIL_SVG_HEIGHT}" width="${width}" height="${DETAIL_SVG_HEIGHT}">` +
+    `${style}${rects}${boxes}</svg>`
   );
 }
 

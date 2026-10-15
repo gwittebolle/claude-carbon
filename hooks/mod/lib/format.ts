@@ -632,11 +632,12 @@ export function formatWh(wh: number, lang: Lang): string {
   return `${decimal(kwh / 1000, 1, lang)}${NBSP}MWh`;
 }
 
-// "98 %", "< 1 %" for a share that is there but rounds to nothing, "0 %" for none;
-// a space before % in both languages, as the rest of the pane writes it
-export function formatShare(share: number, _lang: Lang): string {
+// One decimal, "98,4 %", "< 0,1 %" for a share that is there but rounds to nothing,
+// "0 %" for none; a space before % in both languages, as the rest of the pane writes it
+export function formatShare(share: number, lang: Lang): string {
   if (share <= 0) return `0${NBSP}%`;
-  return percent(share);
+  if (share < 0.0005) return `<${NBSP}${decimal(0.1, 1, lang)}${NBSP}%`;
+  return `${decimal(share * 100, 1, lang)}${NBSP}%`;
 }
 
 // Under a kind's name: "23,8 Md tokens (98 %) · 21,6 kWh · 6,2 kgCO₂ (61 %)"
@@ -660,9 +661,17 @@ export function detailTotalLine(
   );
 }
 
-// What a hovered part of a bar says
-export function detailPartTitle(kind: string, share: number, lang: Lang): string {
-  return `${kindLabel(kind, lang)}${lang === "fr" ? NBSP : ""}: ${formatShare(share, lang)}`;
+// What a hovered part of a bar says: its kind, its figures on that bar, its share
+// "Cache relu · 23,9 Md tokens · 98 %", "Cache relu · 535 kWh · 153,5 kgCO₂ · 61 %"
+export function detailHover(
+  part: { kind: string; tokens: number; tokenShare: number; wh: number; grams: number; gramShare: number },
+  bar: "tokens" | "co2",
+  lang: Lang,
+): string {
+  const name = kindLabel(part.kind, lang);
+  return bar === "tokens"
+    ? `${name} · ${formatTokens(part.tokens, lang)} tokens · ${formatShare(part.tokenShare, lang)}`
+    : `${name} · ${formatWh(part.wh, lang)} · ${formatGrams(part.grams, lang)} · ${formatShare(part.gramShare, lang)}`;
 }
 
 // The methodology, straight from the detail
