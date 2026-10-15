@@ -16,6 +16,9 @@ EXPORT_DIR="$(cc_path "${CLAUDE_CARBON_EXPORT_DIR:-$(cc_downloads_dir)/claude-ca
 DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon/carbon.db}")"
 # One scratch dir for the temp pages and the logo the local server serves.
 CC_TMP="$(cc_tmpdir)"
+# Set here, never inherited: cleanup kills and removes what these name.
+SERVER_PID=""
+BROWSER_PROFILE=""
 TODAY="$(date +%Y-%m-%d)"
 YEAR="$(date +%Y)"
 
@@ -502,6 +505,56 @@ pw.chromium.launch({ timeout: 30000 }).then((b) => b.close()).then(() => process
 " "$(cc_native_path "$PW_PATH")" >/dev/null 2>&1
 }
 
+# find_system_browser: a Chrome, Edge, Chromium or Brave already on the machine, which
+# draws the card headless as well as Playwright's Chromium does: most people have one
+# (Windows always has Edge) and no Playwright. CLAUDE_CARBON_BROWSER names one, or
+# "none" to skip the lookup.
+find_system_browser() {
+  local c
+  case "${CLAUDE_CARBON_BROWSER:-}" in
+    none) return 1 ;;
+    "") ;;
+    *)
+      c="$(cc_path "$CLAUDE_CARBON_BROWSER")"
+      [ -f "$c" ] && { printf '%s\n' "$c"; return 0; }
+      command -v "$CLAUDE_CARBON_BROWSER" 2>/dev/null && return 0
+      echo "CLAUDE_CARBON_BROWSER: no browser at ${CLAUDE_CARBON_BROWSER}" >&2
+      return 1
+      ;;
+  esac
+  case "$CC_OS" in
+    darwin)
+      for c in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+               "${HOME}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+               "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" \
+               "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+               "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"; do
+        [ -x "$c" ] && { printf '%s\n' "$c"; return 0; }
+      done
+      ;;
+    windows)
+      local pf pf86 lad
+      pf="$(cc_path "${PROGRAMFILES:-C:\\Program Files}")"
+      pf86="$(cc_path "$(printenv 'ProgramFiles(x86)' 2>/dev/null || echo 'C:\Program Files (x86)')")"
+      lad="${LOCALAPPDATA:+$(cc_path "$LOCALAPPDATA")}"
+      for c in "${pf}/Google/Chrome/Application/chrome.exe" \
+               "${pf86}/Google/Chrome/Application/chrome.exe" \
+               "${lad:-/nonexistent}/Google/Chrome/Application/chrome.exe" \
+               "${pf86}/Microsoft/Edge/Application/msedge.exe" \
+               "${pf}/Microsoft/Edge/Application/msedge.exe"; do
+        [ -f "$c" ] && { printf '%s\n' "$c"; return 0; }
+      done
+      ;;
+    *)
+      for c in google-chrome google-chrome-stable chromium chromium-browser \
+               microsoft-edge microsoft-edge-stable brave-browser; do
+        command -v "$c" >/dev/null 2>&1 && { command -v "$c"; return 0; }
+      done
+      ;;
+  esac
+  return 1
+}
+
 # Without Playwright or Chromium the card still exists: the summary page is laid out
 # at 1080x1080, so it opens in the browser and a screenshot of it is the card.
 # The browser gets its own copy, in the export folder next to where the PNGs would
@@ -509,7 +562,11 @@ pw.chromium.launch({ timeout: 30000 }).then((b) => b.close()).then(() => process
 # Firefox) cannot read /tmp at all. The copy carries the logo inline and scales
 # itself down to the window: the page clips its overflow, so on a laptop screen
 # shorter than 1080px the footer was out of reach, even by scrolling.
-if [ -z "$PW_PATH" ] || ! chromium_ready; then
+card_in_browser() {
+  # Called after a failed export too: the server goes, the pages stay until copied.
+  trap - EXIT
+  if [ -n "$SERVER_PID" ]; then kill "$SERVER_PID" 2>/dev/null || true; fi
+  if [ -n "$BROWSER_PROFILE" ]; then rm -rf "$BROWSER_PROFILE" 2>/dev/null || true; fi
   if [ "$LEAD_LANG" = "fr" ]; then LEAD_TMP="$TMP_SUMMARY_FR"; else LEAD_TMP="$TMP_SUMMARY_EN"; fi
   LEAD_HTML="$EXPORT_DIR/claude-carbon-summary-${LEAD_LANG}-${FILE_TAG}.html"
   node -e '
@@ -536,17 +593,34 @@ fs.writeFileSync(dst, html.replace("</head>", fit + "</head>"));
     [ "$f" = "$LEAD_HTML" ] || rm -f "$f"
   done
   stamp_card_month
-  PW_HINT="PNG export: npm install -g playwright-core && npx playwright install chromium"
+  PW_HINT="PNG export: install Google Chrome or Microsoft Edge"
   if open_in_browser "$LEAD_HTML"; then
-    echo "No Chromium, so no PNG: the card is open in your browser, a screenshot of it is enough. ${PW_HINT}"
+    echo "No PNG: the card is open in your browser, a screenshot of it is enough. ${PW_HINT}"
   else
-    echo "No Chromium, so no PNG: open $(cc_native_path "$LEAD_HTML") in a browser, a screenshot of it is enough. ${PW_HINT}"
+    echo "No PNG: open $(cc_native_path "$LEAD_HTML") in a browser, a screenshot of it is enough. ${PW_HINT}"
   fi
   exit 0
+}
+
+# The engine: a browser CLAUDE_CARBON_BROWSER names, else Playwright's Chromium when it
+# starts, else the machine's own browser, else the card opens in the default browser as
+# a page.
+SYS_BROWSER=""
+if [ -n "${CLAUDE_CARBON_BROWSER:-}" ] && [ "$CLAUDE_CARBON_BROWSER" != "none" ] \
+   && SYS_BROWSER="$(find_system_browser)"; then
+  ENGINE_LABEL="$(basename "$SYS_BROWSER")"
+  ENGINE_LABEL="${ENGINE_LABEL%.exe}"
+elif [ -n "$PW_PATH" ] && chromium_ready; then
+  ENGINE_LABEL="Playwright"
+elif SYS_BROWSER="$(find_system_browser)"; then
+  ENGINE_LABEL="$(basename "$SYS_BROWSER")"
+  ENGINE_LABEL="${ENGINE_LABEL%.exe}"
+else
+  card_in_browser
 fi
 
 # ── Export PNGs ──────────────────────────────────────────────
-echo "Exporting PNGs via Playwright..."
+echo "Exporting PNGs via ${ENGINE_LABEL}..."
 
 PORT=8799
 # Copy the logo next to the pages so the server can serve it
@@ -584,6 +658,8 @@ cleanup_server() {
   # the handler before the temp files are removed.
   kill "$SERVER_PID" 2>/dev/null || true
   rm -f "$TMP_SUMMARY_FR" "$TMP_DETAILED_FR" "$TMP_SUMMARY_EN" "$TMP_DETAILED_EN"
+  if [ -n "$BROWSER_PROFILE" ]; then rm -rf "$BROWSER_PROFILE" 2>/dev/null || true; fi
+  return 0
 }
 trap cleanup_server EXIT
 sleep 0.5
@@ -594,6 +670,33 @@ export_png() {
   filename="$(basename "$html_file")"
   url="http://127.0.0.1:${PORT}/${filename}"
 
+  if [ -n "$SYS_BROWSER" ]; then
+    # The machine's browser, headless, in a throwaway profile (a Chrome already open on
+    # the default one would take the page over), through the same local server. Virtual
+    # time lets the web fonts land before the shot. A file that is not a 2160x2160 PNG
+    # is no card: removed, so the export counts as failed.
+    rm -f "$output"
+    # After a first failure the browser is not tried again: a page that never loads
+    # (fonts blocked by a firewall) would cost the timeout four times over.
+    [ -z "$SYS_FAILED" ] || return 0
+    [ -n "$BROWSER_PROFILE" ] || BROWSER_PROFILE="$(mktemp -d "${CC_TMP}/claude-carbon-browser-XXXXXX")"
+    node -e '
+const { spawnSync } = require("child_process");
+const fs = require("fs");
+const [browser, url, out, profile] = process.argv.slice(1);
+spawnSync(browser, [
+  "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
+  "--no-default-browser-check", "--disable-extensions", "--user-data-dir=" + profile,
+  "--use-mock-keychain", "--password-store=basic", "--disable-background-networking",
+  "--window-size=1080,1080", "--force-device-scale-factor=2",
+  "--virtual-time-budget=5000", "--screenshot=" + out, url,
+], { stdio: "ignore", timeout: 25000, killSignal: "SIGKILL" });
+try {
+  const b = fs.readFileSync(out);
+  if (!(b.length >= 24 && b.readUInt32BE(16) === 2160 && b.readUInt32BE(20) === 2160)) fs.unlinkSync(out);
+} catch (e) {}
+' "$(cc_native_path "$SYS_BROWSER")" "$url" "$(cc_native_path "$output")" "$(cc_native_path "$BROWSER_PROFILE")" 2>/dev/null
+  else
   # node is a native binary: a "/c/Users/…" MSYS path means nothing to it, so both
   # the module path and the screenshot target go through cc_native_path first.
   node -e "
@@ -613,6 +716,7 @@ const { chromium } = require('$(cc_native_path "$PW_PATH")');
   await browser.close();
 })();
 " 2>&1
+  fi
 
   if [ -f "$output" ]; then
     local size
@@ -621,10 +725,12 @@ const { chromium } = require('$(cc_native_path "$PW_PATH")');
     CARD_OK=1
   else
     echo "  ${label}: FAILED" >&2
+    [ -z "$SYS_BROWSER" ] || SYS_FAILED=1
   fi
 }
 
 CARD_OK=""
+SYS_FAILED=""
 if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "fr" ]; then
   export_png "$TMP_SUMMARY_FR" "$EXPORT_DIR/claude-carbon-summary-fr-${FILE_TAG}.png" "Summary FR"
   export_png "$TMP_DETAILED_FR" "$EXPORT_DIR/claude-carbon-detailed-fr-${FILE_TAG}.png" "Detailed FR"
@@ -639,6 +745,8 @@ fi
 # nudge up, since the user has no card to share.
 if [ -n "$CARD_OK" ]; then
   stamp_card_month
+elif [ -n "$SYS_BROWSER" ]; then
+  card_in_browser
 fi
 
 # Put the card in front of the user: the folder opens in the file manager, with

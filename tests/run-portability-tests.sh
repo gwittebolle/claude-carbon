@@ -391,7 +391,8 @@ if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && comm
     export HOME="$FAKE_HOME" TMPDIR="${FAKE_HOME}/tmp" DISPLAY=:0 CI="" \
       CLAUDE_CONFIG_DIR="${FAKE_HOME}/cfg" CLAUDE_CARBON_DB="$CARD_DB" \
       CLAUDE_CARBON_EXPORT_DIR="${FAKE_HOME}/out" CLAUDE_CARBON_LOCALE=fr_FR \
-      NODE_PATH="$1" CLAUDE_CARBON_NO_OPEN="${CARD_NO_OPEN:-}"
+      NODE_PATH="$1" CLAUDE_CARBON_NO_OPEN="${CARD_NO_OPEN:-}" \
+      CLAUDE_CARBON_BROWSER="${CARD_BROWSER:-none}"
     bash "${REPO_DIR}/scripts/generate-report.sh" 2>&1
     echo "rc=$?"
   )
@@ -424,7 +425,7 @@ if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && comm
     is "${what}: the browser gets the FR summary" "summary fr" "$(opened)"
     is "${what}: month stamped"                   "$(date +%Y-%m)" "$(cat "${FAKE_HOME}/cfg/claude-carbon/last-card-month" 2>/dev/null)"
     is "${what}: Totals line, then the browser line" "Totals|No" \
-      "$(printf '%s\n' "$OUT" | grep -E '^(Totals since|No Chromium)' | cut -d' ' -f1 | paste -sd'|' -)"
+      "$(printf '%s\n' "$OUT" | grep -E '^(Totals since|No PNG)' | cut -d' ' -f1 | paste -sd'|' -)"
     is "${what}: no PNG written"                  "0" "$(find "${FAKE_HOME}/out" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
     # The browser copy sits in the export folder (a snap browser cannot read /tmp,
     # and the system cleans it), carries its logo and fits itself to the window.
@@ -449,9 +450,75 @@ if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && comm
   OUT="$(CARD_NO_OPEN=1 card "$NO_CHROMIUM")"
   is "CLAUDE_CARBON_NO_OPEN: nothing spawned" "nothing" "$(opened)"
   case "$OUT" in
-    *"No Chromium, so no PNG: open "*claude-carbon-summary-fr-*.html" in a browser"*) ok "CLAUDE_CARBON_NO_OPEN: the line names the page instead" ;;
+    *"No PNG: open "*claude-carbon-summary-fr-*.html" in a browser"*) ok "CLAUDE_CARBON_NO_OPEN: the line names the page instead" ;;
     *) bad "CLAUDE_CARBON_NO_OPEN: the line names the page instead" "$OUT" ;;
   esac
+
+  # The machine's own browser, without Playwright: a stub that writes what Chrome's
+  # --screenshot would, a PNG whose header says 2160x2160 (or a wrong size, which is no
+  # card and leaves the page in the browser). A bash stub cannot be spawned by node on
+  # Windows, where the real browser below stands in.
+  if [ "$CC_OS" != "windows" ]; then
+    for size in 2160 800; do
+      cat > "${FAKE_HOME}/card-bin/fake-chrome" <<STUB
+#!/usr/bin/env bash
+for a in "\$@"; do
+  case "\$a" in --screenshot=*) out="\${a#--screenshot=}" ;; --user-data-dir=*) [ -d "\${a#--user-data-dir=}" ] || exit 9 ;; esac
+done
+printf '\\211PNG\\r\\n\\032\\n\\000\\000\\000\\rIHDR' > "\$out"
+node -e 'const b=Buffer.alloc(8);b.writeUInt32BE(+process.argv[1],0);b.writeUInt32BE(+process.argv[1],4);process.stdout.write(b)' $size >> "\$out"
+STUB
+      chmod +x "${FAKE_HOME}/card-bin/fake-chrome"
+      rm -f "${FAKE_HOME}/out/"*.png "${FAKE_HOME}/out/"*.html "${FAKE_HOME}/cfg/claude-carbon/last-card-month"
+      : > "$MARK"
+      OUT="$(CARD_NO_OPEN=1 CARD_BROWSER="${FAKE_HOME}/card-bin/fake-chrome" card "$NO_CHROMIUM")"
+      PNGS="$(find "${FAKE_HOME}/out" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+      if [ "$size" = 2160 ]; then
+        case "$OUT" in *"Exporting PNGs via fake-chrome"*) ok "system browser: named as the engine" ;; *) bad "system browser: named as the engine" "$OUT" ;; esac
+        is "system browser: the PNGs"            "4" "$PNGS"
+        is "system browser: month stamped"       "$(date +%Y-%m)" "$(cat "${FAKE_HOME}/cfg/claude-carbon/last-card-month" 2>/dev/null)"
+        is "system browser: profile removed"     "0" "$(find "${FAKE_HOME}/tmp" -name 'claude-carbon-browser-*' 2>/dev/null | wc -l | tr -d ' ')"
+      else
+        is "system browser, wrong size: no PNG kept" "0" "$PNGS"
+        case "$OUT" in *"No PNG: open "*claude-carbon-summary-fr-*.html*) ok "system browser, wrong size: the page instead" ;; *) bad "system browser, wrong size: the page instead" "$OUT" ;; esac
+        is "system browser, wrong size: rc"      "rc=0" "$(printf '%s\n' "$OUT" | tail -1)"
+      fi
+    done
+  fi
+
+  # A browser that hangs and ignores SIGTERM (seen on a macOS runner): killed after 25 s,
+  # not tried for the other three cards, and the page opens instead.
+  if [ "$CC_OS" != "windows" ]; then
+    printf '#!/usr/bin/env bash\ntrap "" TERM\nsleep 120\n' > "${FAKE_HOME}/card-bin/hung-chrome"
+    chmod +x "${FAKE_HOME}/card-bin/hung-chrome"
+    T0=$(date +%s)
+    OUT="$(CARD_NO_OPEN=1 CARD_BROWSER="${FAKE_HOME}/card-bin/hung-chrome" card "$NO_CHROMIUM")"
+    T1=$(date +%s)
+    is "hung browser: one try, then the page" "1|yes|rc=0" \
+      "$(printf '%s\n' "$OUT" | grep -c FAILED)|$([ $((T1 - T0)) -lt 60 ] && echo yes || echo "no ($((T1 - T0))s)")|$(printf '%s\n' "$OUT" | tail -1)"
+  fi
+
+  # Variables of the same names inherited from the user's shell are never acted on:
+  # a folder named BROWSER_PROFILE survives, a SERVER_PID is not killed.
+  KEEP="${FAKE_HOME}/keep-profile"; mkdir -p "$KEEP"; : > "${KEEP}/Bookmarks"
+  OUT="$(BROWSER_PROFILE="$KEEP" SERVER_PID=999999 CARD_NO_OPEN=1 card "$NO_CHROMIUM")"
+  is "inherited BROWSER_PROFILE and SERVER_PID: left alone, rc" "yes|rc=0" \
+    "$([ -f "${KEEP}/Bookmarks" ] && echo yes || echo no)|$(printf '%s\n' "$OUT" | tail -1)"
+
+  # A real Chrome, Edge or Chromium when the runner has one: a card of 2160x2160
+  # The script's own lookup, lifted out of it, run as a user's machine would
+  awk '$0 == "find_system_browser() {" { f = 1 } f { print } f && $0 == "}" { exit }' \
+    "${REPO_DIR}/scripts/generate-report.sh" > "${FAKE_HOME}/find-browser.sh"
+  REAL_BROWSER="$(CLAUDE_CARBON_BROWSER="" bash -c '. "$1/scripts/portable-lib.sh" && . "$2" && find_system_browser' _ "$REPO_DIR" "${FAKE_HOME}/find-browser.sh" 2>/dev/null || true)"
+  if [ -n "$REAL_BROWSER" ]; then
+    rm -f "${FAKE_HOME}/out/"*.png "${FAKE_HOME}/out/"*.html
+    OUT="$(CARD_NO_OPEN=1 CARD_BROWSER="$REAL_BROWSER" card "$NO_CHROMIUM")"
+    SUMMARY="$(find "${FAKE_HOME}/out" -name 'claude-carbon-summary-fr-*.png' 2>/dev/null | head -1)"
+    is "real browser ($(basename "$REAL_BROWSER")): a 2160x2160 card" "2160x2160" \
+      "$([ -n "$SUMMARY" ] && node -e 'const b=require("fs").readFileSync(process.argv[1]);console.log(b.readUInt32BE(16)+"x"+b.readUInt32BE(20))' "$(cc_native_path "$SUMMARY")" 2>/dev/null)"
+  else
+    echo "  skip real browser: no Chrome, Edge or Chromium here"
+  fi
 else
   echo "  skip (sqlite3, node and jq are needed)"
 fi
