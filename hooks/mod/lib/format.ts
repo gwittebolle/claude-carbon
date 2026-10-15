@@ -665,22 +665,14 @@ export function detailPartTitle(kind: string, share: number, lang: Lang): string
   return `${kindLabel(kind, lang)}${lang === "fr" ? NBSP : ""}: ${formatShare(share, lang)}`;
 }
 
-// The assumptions under the detail, the weights read from the factors in use
-export function detailAssumptions(
-  cacheReadFactor: number,
-  outputRatio: number,
-  lang: Lang,
-): string[] {
-  const read = Math.round(cacheReadFactor * 100);
-  const out = Math.round(outputRatio);
+// The assumptions under the detail; the weights of each kind are in the methodology
+export function detailAssumptions(lang: Lang): string[] {
   return lang === "fr"
     ? [
-        `Hypothèses${NBSP}: un token relu en cache compte ${read}${NBSP}% d'un token d'entrée, un token de sortie environ ${out} fois un token d'entrée.`,
         `Énergie déduite du ${UNIT}, réseau à 287${NBSP}g${UNIT}/kWh (AWS us-east), PUE 1,14 compris.`,
         "Facteurs tirés de Jegham et al. 2025 (Claude 3.7 Sonnet), les autres modèles extrapolés. Des ordres de grandeur, pas une mesure.",
       ]
     : [
-        `Assumptions: a cache-read token counts ${read}% of an input token, an output token about ${out} times one.`,
         `Energy derived from the ${UNIT}, grid at 287${NBSP}g${UNIT}/kWh (AWS us-east), PUE 1.14 included.`,
         "Factors from Jegham et al. 2025 (Claude 3.7 Sonnet), the other models extrapolated. Orders of magnitude, not a measurement.",
       ];

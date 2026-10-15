@@ -33,7 +33,7 @@ import {
 } from "./lib/co2.ts";
 import type { Factors, Family } from "./lib/co2.ts";
 import { costUsd, parsePrices } from "./lib/cost.ts";
-import { DETAIL_BAR_HEIGHT, periodDetail, splitBarSvg, swatchSvg, weightsOf } from "./lib/detail.ts";
+import { DETAIL_BAR_HEIGHT, periodDetail, splitBarSvg, swatchSvg } from "./lib/detail.ts";
 import type { Prices } from "./lib/cost.ts";
 import {
   answerLine,
@@ -1402,11 +1402,7 @@ export const register: Register = (on, options) => {
                 {detail.sessions < detail.sessionsInPeriod && (
                   <Text dimColor>{detailCoverage(detail.sessions, detail.sessionsInPeriod, lang)}</Text>
                 )}
-                {detailAssumptions(
-                  factors.cacheReadFactor,
-                  weightsOf("", factors).output,
-                  lang,
-                ).map((line, i) => (
+                {detailAssumptions(lang).map((line, i) => (
                   <Text key={`assumption-${i}`} dimColor>
                     {line}
                   </Text>
