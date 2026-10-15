@@ -831,7 +831,7 @@ check("no path", historyPath({}), null);
       check(`detail text, no plugin name: ${text}`, text.includes("claude-carbon"), false);
     }
   }
-  check("assumptions fr", pt(detailAssumptions("fr")[0]), "Énergie déduite du CO₂, réseau à 287 gCO₂/kWh (AWS us-east), PUE 1,14 compris.");
+  check("assumptions fr", pt(detailAssumptions("fr")[0]), "Énergie estimée par token, PUE 1,14 compris, puis convertie en CO₂ avec le réseau AWS us-east (287 gCO₂/kWh).");
   check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
   check("detail line fr", pt(detailLine(d.parts[2], "fr")), "100M tokens (99 %) · 2,5 kWh · 720 gCO₂ (72 %)");
 }

@@ -6,9 +6,9 @@
 // cache_read_factor, output output/input), so the four parts always add up to the
 // figure the pane shows, legacy rows included. Every model's output/input ratio is the
 // same today; the session's own family is used all the same.
-// Energy comes back from the CO2 through the grid intensity the factors embed
-// (0.287 kgCO2e/kWh, AWS us-east location-based, data/factors.json _methodology), PUE
-// included.
+// The factors start from energy per token (PUE included) and convert it to CO2 with the
+// grid intensity (0.287 kgCO2e/kWh, AWS us-east location-based, data/factors.json
+// _methodology). The stored CO2 is divided back by that intensity to show the energy.
 import { family } from "./co2.ts";
 import type { Factors } from "./co2.ts";
 import type { SessionRow, TokenSplit, Window } from "./sessions.ts";

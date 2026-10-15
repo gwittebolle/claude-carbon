@@ -11,8 +11,8 @@ energy (Wh, kWh) and CO2 with their shares, and a total, in the author's palette
 (Amethyst, sand, Pierre, Tangerine). Under it, the assumptions in plain words (the grid
 intensity and PUE, the source of the factors) and a link to METHODOLOGY.md. The CO2 of each session is the
 stored one, split with the weights the factors already apply, so the parts add up to the
-period's total, frozen months included; the energy is that CO2 over the factors' grid
-intensity, 287 gCO2/kWh. `sessions-history.tsv` gains four columns, the tokens by kind,
+period's total, frozen months included; the energy is the one the factors start from,
+found back by dividing that CO2 by their grid intensity, 287 gCO2/kWh. `sessions-history.tsv` gains four columns, the tokens by kind,
 written by the hooks from this version on; until the next answer rewrites it, the
 block says the detail is on its way. No factor changes.
 

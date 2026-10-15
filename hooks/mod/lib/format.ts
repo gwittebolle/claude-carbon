@@ -669,11 +669,11 @@ export function detailPartTitle(kind: string, share: number, lang: Lang): string
 export function detailAssumptions(lang: Lang): string[] {
   return lang === "fr"
     ? [
-        `Énergie déduite du ${UNIT}, réseau à 287${NBSP}g${UNIT}/kWh (AWS us-east), PUE 1,14 compris.`,
+        `Énergie estimée par token, PUE 1,14 compris, puis convertie en ${UNIT} avec le réseau AWS us-east (287${NBSP}g${UNIT}/kWh).`,
         "Facteurs tirés de Jegham et al. 2025 (Claude 3.7 Sonnet), les autres modèles extrapolés. Des ordres de grandeur, pas une mesure.",
       ]
     : [
-        `Energy derived from the ${UNIT}, grid at 287${NBSP}g${UNIT}/kWh (AWS us-east), PUE 1.14 included.`,
+        `Energy estimated per token, PUE 1.14 included, then converted to ${UNIT} with the AWS us-east grid (287${NBSP}g${UNIT}/kWh).`,
         "Factors from Jegham et al. 2025 (Claude 3.7 Sonnet), the other models extrapolated. Orders of magnitude, not a measurement.",
       ];
 }
