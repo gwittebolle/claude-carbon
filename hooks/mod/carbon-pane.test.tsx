@@ -382,6 +382,53 @@ describe("the /carbon-panel pane", () => {
     expect(await drawn(ui)).toContain("une bande par jour · médiane 300 gCO₂ par jour");
     await ui.unmount();
   });
+  test("the detail block splits the period by kind of token", async ($: any, on: any) => {
+    const at = (days: number) => Math.floor((NOW - days * DAY) / 1000);
+    // Sonnet, 1M cache writes, 100M cache reads, 100k output: 433.6 gCO₂ under today's
+    // factors (39 + 312 + 82.6). A second session stored at four times its tokens' CO2,
+    // as a month frozen under older factors, is left out of the split.
+    const lines = [
+      `a\t${at(2)}\t433.6\t2\tsite\t1\tclaude-sonnet-5-5\t0\t1000000\t100000000\t100000`,
+      `old\t${at(3)}\t1734.4\t1\tsite\t1\tclaude-sonnet-5-5\t0\t1000000\t100000000\t100000`,
+    ];
+    const { store } = world(on, { history: `${lines.join("\n")}\n` });
+    await startSession($);
+    await openPane($);
+    const desk = await $.ui.mount({ ...PANE, surface: "desktop" });
+    // Off until the person turns it on
+    expect(await drawn(desk)).not.toContain("Cache relu");
+    await desk.press({ key: "customize" });
+    await desk.press({ key: "block-detail" });
+    expect((store.get("pane.blocks") as any).detail).toBe(true);
+    const text = await drawn(desk);
+    expect(text).toContain("Détail\nTokens");
+    expect(text).toContain("CO₂ et énergie");
+    // Cache reads: 99 % of the tokens, 72 % of the CO2 (weights 1, 1, 0.08, 826/39)
+    expect(text).toContain("Cache relu\n100 M tokens (99 %) · 1,1 kWh · 312 gCO₂ (72 %)");
+    // No uncached input: the kind is left out of the list
+    expect(text).not.toContain("Entrée");
+    // The parts add up to the period's CO2; energy back through 287 gCO₂/kWh
+    expect(text).toContain("Total : 101 M tokens · 1,5 kWh · 434 gCO₂");
+    expect(text).toContain("Sur 1 des 2 sessions de la période : les autres ont été enregistrées avec des facteurs plus anciens.");
+    expect(text).not.toContain("Hypothèses");
+    expect(JSON.stringify(await desk.drawn())).toContain("https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md#the-panes-detail-by-kind-of-token");
+    expect(JSON.stringify(await desk.drawn())).toContain("Répartition des tokens entre entrée");
+    await desk.unmount();
+  });
+
+  test("the detail waits for a history with tokens by kind", async ($: any, on: any) => {
+    world(on, { history: historyText(5) });
+    await startSession($);
+    await openPane($);
+    const desk = await $.ui.mount({ ...PANE, surface: "desktop" });
+    await desk.press({ key: "customize" });
+    await desk.press({ key: "block-detail" });
+    const text = await drawn(desk);
+    expect(text).toContain("Le détail s'affichera après la prochaine réponse.");
+    expect(text).not.toContain("Cache relu");
+    await desk.unmount();
+  });
+
   test("the pane sums the period and names the heaviest projects", async ($: any, on: any) => {
     const lines = [
       ["a", 3, 600, "carbonara"],

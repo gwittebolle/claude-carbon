@@ -23,6 +23,9 @@ export type SessionTotal = {
   grams: number;
   usd?: number;
   turns: number;
+  // The session's tokens by kind, for the pane's detail; absent in a total kept from
+  // code that did not count them
+  tokens?: { input: number; cacheWrite: number; cacheRead: number; output: number };
 };
 
 // What the /carbon-panel pane covers: a preset range, or months picked by the person
@@ -39,6 +42,7 @@ export type PaneBlocks = {
   cost: boolean;
   equivalence: boolean;
   projects: boolean;
+  detail: boolean;
 };
 
 declare module "claude-code" {

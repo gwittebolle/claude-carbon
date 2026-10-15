@@ -33,6 +33,7 @@ import {
 } from "./lib/co2.ts";
 import type { Factors, Family } from "./lib/co2.ts";
 import { costUsd, parsePrices } from "./lib/cost.ts";
+import { DETAIL_BAR_HEIGHT, periodDetail, splitBarSvg, swatchSvg } from "./lib/detail.ts";
 import type { Prices } from "./lib/cost.ts";
 import {
   answerLine,
@@ -54,6 +55,16 @@ import {
   moneyValue,
   tileLabel,
   blockLabel,
+  detailAlt,
+  detailBarLabel,
+  detailCoverage,
+  detailLine,
+  METHODOLOGY_URL,
+  methodologyLabel,
+  detailPartTitle,
+  detailTotalLine,
+  detailWaitText,
+  kindLabel,
   buildAnswerCo2,
   cardButtonLabel,
   cardDraftBusy,
@@ -160,7 +171,7 @@ const answers = atom(
 );
 const session = atom(
   { plugin: "claude-carbon", key: "session" } as const,
-  { grams: 0, usd: 0, turns: 0 } as SessionTotal,
+  { grams: 0, usd: 0, turns: 0, tokens: { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 } } as SessionTotal,
 );
 
 const working = atom(
@@ -183,8 +194,9 @@ const DEFAULT_BLOCKS: PaneBlocks = {
   cost: true,
   equivalence: true,
   projects: false,
+  detail: false,
 };
-const BLOCKS = ["compare", "cost", "equivalence", "projects"] as const;
+const BLOCKS = ["compare", "cost", "equivalence", "projects", "detail"] as const;
 const paneBlocks = atom(
   { plugin: "claude-carbon", key: "blocks" } as const,
   DEFAULT_BLOCKS,
@@ -260,7 +272,7 @@ function isRemoteOnly(surfaces: readonly string[]): boolean {
 async function resetSessionState($: EngineInterface) {
   await $.state.set(
     { plugin: "claude-carbon", key: "session" },
-    { grams: 0, usd: 0, turns: 0 },
+    { grams: 0, usd: 0, turns: 0, tokens: { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 } },
   );
   await $.state.set({ plugin: "claude-carbon", key: "answers" }, []);
   $.ui.status(undefined);
@@ -785,9 +797,21 @@ export const register: Register = (on, options) => {
           if (e.agentId !== undefined && pane.agents.has(e.agentId))
             pane.agents.set(e.agentId, (pane.agents.get(e.agentId) ?? 0) + grams);
           const usd = prices !== null ? costUsd(usage, model, prices) : null;
-          await update($, session, ({ usd: spent, ...total }) => ({
+          await update($, session, ({ usd: spent, tokens: seen, ...total }) => ({
             ...total,
             grams: total.grams + grams,
+            // Counted from the first request of the session on; a total kept without
+            // them stays without them until it starts over
+            ...(seen !== undefined
+              ? {
+                  tokens: {
+                    input: seen.input + usage.input_tokens,
+                    cacheWrite: seen.cacheWrite + usage.cache_creation_input_tokens,
+                    cacheRead: seen.cacheRead + usage.cache_read_input_tokens,
+                    output: seen.output + usage.output_tokens,
+                  },
+                }
+              : {}),
             // A request with no price, or a total kept from code that counted no cost,
             // leaves the cost out until the total starts over.
             ...(usd !== null && spent !== undefined ? { usd: spent + usd } : {}),
@@ -1035,6 +1059,8 @@ export const register: Register = (on, options) => {
               project: own?.project ?? pane.project,
               usd: total.usd ?? null,
               model: own?.model ?? "",
+              // The running session's tokens counted live, or as the file last saw them
+              tokens: total.tokens ?? own?.tokens ?? null,
             },
           ]
         : past;
@@ -1336,6 +1362,61 @@ export const register: Register = (on, options) => {
           )}
         </Box>
       );
+      // The period's tokens, energy and CO2 by kind, when the person asked for it: two
+      // stacked bars (tokens, then CO2 and energy, whose shares are the same), then a
+      // line per kind under its colour key
+      const detail =
+        blocks.detail && hasTotals && pane.rows !== null ? periodDetail(rows, w, factors) : null;
+      const detailBar = (bar: "tokens" | "co2") =>
+        detail !== null && (
+          <Box flexDirection="column">
+            <Text dimColor>{detailBarLabel(bar, lang)}</Text>
+            <ui.Svg
+              source={splitBarSvg(
+                detail.parts.map((p) => (bar === "tokens" ? p.tokenShare : p.gramShare)),
+                detail.parts.map((p) =>
+                  detailPartTitle(p.kind, bar === "tokens" ? p.tokenShare : p.gramShare, lang),
+                ),
+                stripesWidth,
+              )}
+              alt={detailAlt(bar, lang)}
+              width={stripesWidth}
+              height={DETAIL_BAR_HEIGHT}
+              isInteractive
+            />
+          </Box>
+        );
+      const detailBlock =
+        blocks.detail && hasTotals && (
+          <Box flexDirection="column" rowGap={1} marginTop={1}>
+            <Text bold>{blockLabel("detail", lang)}</Text>
+            {detail === null ? (
+              <Text dimColor>{detailWaitText(lang)}</Text>
+            ) : (
+              <Box flexDirection="column" rowGap={1}>
+                {detailBar("tokens")}
+                {detailBar("co2")}
+                <Box flexDirection="column">
+                  {detail.parts.map((p, i) => p.tokens > 0 && (
+                    // A kind with no token says nothing; the others keep their colour
+                    <Box key={`detail-${p.kind}`} flexDirection="column">
+                      <Box flexDirection="row" columnGap={1} alignItems="center">
+                        <ui.Svg source={swatchSvg(i)} alt="" width={10} height={10} />
+                        <Text bold>{kindLabel(p.kind, lang)}</Text>
+                      </Box>
+                      <Text dimColor>{detailLine(p, lang)}</Text>
+                    </Box>
+                  ))}
+                </Box>
+                <Text>{detailTotalLine(detail, lang)}</Text>
+                {detail.sessions < detail.sessionsInPeriod && (
+                  <Text dimColor>{detailCoverage(detail.sessions, detail.sessionsInPeriod, lang)}</Text>
+                )}
+                <ui.Link href={METHODOLOGY_URL} label={methodologyLabel(lang)} />
+              </Box>
+            )}
+          </Box>
+        );
       // Mods set no font size: the foot stays small by saying little
       const foot = (
         <Box flexDirection="column" marginTop={1}>
@@ -1430,6 +1511,7 @@ export const register: Register = (on, options) => {
             </Box>
           )}
           {projectsList}
+          {detailBlock}
           <Box flexDirection="column" rowGap={1}>
             <Box flexDirection="row">{cardButton}</Box>
             {isCardReady && <Text bold>{cardReadyText(lang)}</Text>}

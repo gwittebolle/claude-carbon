@@ -343,7 +343,8 @@ cc_ensure_schema() {
 # cc_export_sessions <db>: write sessions-history.tsv next to the DB, one line per
 # session with CO2, oldest first: session id, start time in epoch seconds, grams of CO2,
 # methodology version, project (its folder's name, tabs and line breaks made spaces),
-# API-price cost in dollars (empty when unknown), dominant model. Legacy (v1) rows are
+# API-price cost in dollars (empty when unknown), dominant model, then the tokens by kind
+# (uncached input, cache write, cache read, output; 0 when unknown). Legacy (v1) rows are
 # in it, as stored.
 # The mod's /carbon-panel pane reads it; the mod itself never opens the DB. Read-only
 # (-readonly), so a frozen series cannot be written from here. A unique temp name and a
@@ -355,7 +356,7 @@ cc_export_sessions() {
   out="$(dirname "$db")/sessions-history.tsv"
   tmp="${out}.tmp.$$"
   if sqlite3 -readonly -cmd ".timeout 5000" -separator "$(printf '\t')" "$db" \
-    "SELECT session_id, CAST(strftime('%s', started_at) AS INTEGER), ROUND(co2_grams, 3), COALESCE(methodology_version, 1), REPLACE(REPLACE(REPLACE(COALESCE(project, ''), char(9), ' '), char(10), ' '), char(13), ' '), COALESCE(ROUND(cost_usd, 4), ''), REPLACE(REPLACE(COALESCE(model, ''), char(9), ' '), char(10), ' ') FROM sessions WHERE COALESCE(excluded, 0) = 0 AND co2_grams > 0 AND strftime('%s', started_at) IS NOT NULL ORDER BY started_at;" \
+    "SELECT session_id, CAST(strftime('%s', started_at) AS INTEGER), ROUND(co2_grams, 3), COALESCE(methodology_version, 1), REPLACE(REPLACE(REPLACE(COALESCE(project, ''), char(9), ' '), char(10), ' '), char(13), ' '), COALESCE(ROUND(cost_usd, 4), ''), REPLACE(REPLACE(COALESCE(model, ''), char(9), ' '), char(10), ' '), MAX(COALESCE(input_tokens, 0) - COALESCE(cache_creation_tokens, 0), 0), COALESCE(cache_creation_tokens, 0), COALESCE(cache_read_tokens, 0), COALESCE(output_tokens, 0) FROM sessions WHERE COALESCE(excluded, 0) = 0 AND co2_grams > 0 AND strftime('%s', started_at) IS NOT NULL ORDER BY started_at;" \
     >"$tmp" 2>/dev/null; then
     mv -f "$tmp" "$out" 2>/dev/null || rm -f "$tmp"
   else
