@@ -541,6 +541,23 @@ STUB
     SUMMARY="$(find "${FAKE_HOME}/out" -name 'claude-carbon-summary-fr-*.png' 2>/dev/null | head -1)"
     is "real browser ($(basename "$REAL_BROWSER")): a 2160x2160 card" "2160x2160" \
       "$([ -n "$SUMMARY" ] && node -e 'const b=require("fs").readFileSync(process.argv[1]);console.log(b.readUInt32BE(16)+"x"+b.readUInt32BE(20))' "$(cc_native_path "$SUMMARY")" 2>/dev/null)"
+    # On a failure, what the browser itself says: the card script's lines, then one
+    # headless shot of a static page with the same flags, its time and its log
+    if [ -z "$SUMMARY" ]; then
+      printf '%s\n' "$OUT" | sed 's/^/    card: /' | tail -12
+      printf '<!doctype html><title>x</title><p>x</p>' > "${FAKE_HOME}/probe.html"
+      node -e '
+const { spawnSync } = require("child_process");
+const { pathToFileURL } = require("url");
+const [browser, page, out, profile] = process.argv.slice(1);
+for (const extra of [["--virtual-time-budget=5000"], []]) {
+  const t0 = Date.now();
+  const r = spawnSync(browser, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--user-data-dir=" + profile + extra.length, "--window-size=200,200", "--enable-logging=stderr", "--v=0", ...extra, "--screenshot=" + out, pathToFileURL(page).href], { encoding: "utf8", timeout: 60000, killSignal: "SIGKILL" });
+  console.log(`    probe ${extra.join(" ") || "(no virtual time)"}: ${Date.now() - t0} ms, status ${r.status}, signal ${r.signal}, png ${require("fs").existsSync(out)}`);
+  console.log(String(r.stderr || "").split("\n").filter(Boolean).slice(-8).map((l) => "      " + l).join("\n"));
+  try { require("fs").unlinkSync(out); } catch (e) {}
+}' "$(cc_native_path "$REAL_BROWSER")" "$(cc_native_path "${FAKE_HOME}/probe.html")" "$(cc_native_path "${FAKE_HOME}/probe.png")" "$(cc_native_path "${FAKE_HOME}/probe-profile")" || true
+    fi
   else
     echo "  skip real browser: no Chrome, Edge or Chromium here"
   fi
