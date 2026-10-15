@@ -105,7 +105,9 @@ import {
   formatShare,
   detailLine,
   detailTotalLine,
-  detailNote,
+  detailAssumptions,
+  methodologyLabel,
+  METHODOLOGY_URL,
   detailWaitText,
   detailCoverage,
   detailBarLabel,
@@ -820,7 +822,7 @@ check("no path", historyPath({}), null);
   check("swatch: one square", (swatchSvg(2).match(/<rect /g) ?? []).length, 1);
   for (const lang of ["fr", "en"]) {
     const texts = [
-      detailLine(d.parts[2], lang), detailTotalLine(d, lang), detailNote(lang), detailWaitText(lang),
+      detailLine(d.parts[2], lang), detailTotalLine(d, lang), ...detailAssumptions(0.08, 21.18, lang), methodologyLabel(lang), detailWaitText(lang),
       detailCoverage(1, 3, lang), detailBarLabel("co2", lang), detailAlt("tokens", lang), kindLabel("cacheRead", lang),
     ];
     for (const text of texts) {
@@ -829,6 +831,8 @@ check("no path", historyPath({}), null);
       check(`detail text, no plugin name: ${text}`, text.includes("claude-carbon"), false);
     }
   }
+  check("assumptions fr", pt(detailAssumptions(0.08, 826 / 39, "fr")[0]), "Hypothèses : un token relu en cache compte 8 % d'un token d'entrée, un token de sortie environ 21 fois un token d'entrée.");
+  check("methodology link", METHODOLOGY_URL, "https://github.com/gwittebolle/claude-carbon/blob/main/METHODOLOGY.md");
   check("detail line fr", pt(detailLine(d.parts[2], "fr")), "100M tokens (99 %) · 2,5 kWh · 720 gCO₂ (72 %)");
 }
 // The daily release check's flag, in the config folder whatever CLAUDE_CARBON_DB says

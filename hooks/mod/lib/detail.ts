@@ -88,10 +88,13 @@ export function periodDetail(
   };
 }
 
-// One colour per kind, in the bars' order, a light and a dark step of the same hue
-// (checked for colour-blind separation of neighbours and contrast on each surface)
-export const DETAIL_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"] as const;
-export const DETAIL_COLORS_DARK = ["#3987e5", "#d95926", "#199e70", "#c98500"] as const;
+// One colour per kind, in the bars' order, from the author's palette: Amethyst for
+// uncached input, sand and Pierre for the cache written and re-read, Tangerine for the
+// output, which weighs far more than its share of the tokens. A light and a dark step;
+// neighbours stay apart for colour-blind readers on both surfaces, and every part is
+// also named with its figures in the text under the bars.
+export const DETAIL_COLORS = ["#1b0b45", "#c4b8aa", "#7a6e63", "#f55c0f"] as const;
+export const DETAIL_COLORS_DARK = ["#8b7fd6", "#6b6158", "#a89c8e", "#f55c0f"] as const;
 export const DETAIL_BAR_HEIGHT = 12;
 const GAP = 2;
 
