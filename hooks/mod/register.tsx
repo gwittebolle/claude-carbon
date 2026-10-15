@@ -33,7 +33,7 @@ import {
 } from "./lib/co2.ts";
 import type { Factors, Family } from "./lib/co2.ts";
 import { costUsd, parsePrices } from "./lib/cost.ts";
-import { DETAIL_BAR_HEIGHT, periodDetail, splitBarSvg, swatchSvg } from "./lib/detail.ts";
+import { DETAIL_SVG_HEIGHT, periodDetail, splitBarSvg, swatchSvg } from "./lib/detail.ts";
 import type { Prices } from "./lib/cost.ts";
 import {
   answerLine,
@@ -61,7 +61,7 @@ import {
   detailLine,
   METHODOLOGY_URL,
   methodologyLabel,
-  detailPartTitle,
+  detailHover,
   detailTotalLine,
   detailWaitText,
   kindLabel,
@@ -1374,14 +1374,13 @@ export const register: Register = (on, options) => {
             <ui.Svg
               source={splitBarSvg(
                 detail.parts.map((p) => (bar === "tokens" ? p.tokenShare : p.gramShare)),
-                detail.parts.map((p) =>
-                  detailPartTitle(p.kind, bar === "tokens" ? p.tokenShare : p.gramShare, lang),
-                ),
+                detail.parts.map((p) => detailHover(p, bar, lang)),
                 stripesWidth,
+                `detail-${bar}`,
               )}
               alt={detailAlt(bar, lang)}
               width={stripesWidth}
-              height={DETAIL_BAR_HEIGHT}
+              height={DETAIL_SVG_HEIGHT}
               isInteractive
             />
           </Box>
@@ -1401,7 +1400,7 @@ export const register: Register = (on, options) => {
                     // A kind with no token says nothing; the others keep their colour
                     <Box key={`detail-${p.kind}`} flexDirection="column">
                       <Box flexDirection="row" columnGap={1} alignItems="center">
-                        <ui.Svg source={swatchSvg(i)} alt="" width={10} height={10} />
+                        <ui.Svg source={swatchSvg(i)} alt={kindLabel(p.kind, lang)} width={10} height={10} />
                         <Text bold>{kindLabel(p.kind, lang)}</Text>
                       </Box>
                       <Text dimColor>{detailLine(p, lang)}</Text>

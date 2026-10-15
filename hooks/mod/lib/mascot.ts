@@ -497,6 +497,29 @@ export const STRIPES_HEIGHT = 72;
 // The hovered stripe's label shows over the stripes' foot: no room kept for it
 export const STRIPES_SVG_HEIGHT = STRIPES_HEIGHT;
 
+// A hover label, shared by the stripes and the detail's bars: a dark box with white
+// text, readable on a light or a dark pane, centred on `centre` and kept inside `width`
+// (half a pixel in, so its outline is not cut). About 6 px a character at 12 px; a text
+// too long for the drawing is set smaller, down to 8 px, rather than cut.
+export const HOVER_LABEL_HEIGHT = 22;
+export function hoverLabelSvg(o: {
+  id: string;
+  cls: string;
+  text: string;
+  centre: number;
+  y: number;
+  width: number;
+}): string {
+  const natural = o.text.length * 6;
+  const size = natural + 14 <= o.width - 1 ? 12 : Math.max(8, (12 * (o.width - 15)) / natural);
+  const boxW = Math.min(o.width - 1, (natural * size) / 12 + 14);
+  const boxX = Math.max(0.5, Math.min(o.width - 0.5 - boxW, o.centre - boxW / 2));
+  return (
+    `<g id="${o.id}" class="${o.cls}"><rect x="${boxX.toFixed(2)}" y="${o.y}" width="${boxW.toFixed(2)}" height="${HOVER_LABEL_HEIGHT}" rx="4" fill="#1f2328" stroke="${OUTLINE}" stroke-opacity="0.6"/>` +
+    `<text x="${(boxX + 7).toFixed(2)}" y="${o.y + 15}" font-size="${Number(size.toFixed(1))}" font-family="system-ui,-apple-system,sans-serif" fill="#ffffff">${escapeXml(o.text)}</text></g>`
+  );
+}
+
 // One rect per stripe across `width` CSS pixels (the viewBox matches the drawn size, so
 // labels keep their shape), oldest on the left; an empty period is a faint grey. All the
 // stripes come first, then all the labels, hidden, in a layer above them: hovering
@@ -519,16 +542,9 @@ export function stripesSvg(
     })
     .join("");
   const labels = stripes
-    .map((s, i) => {
-      // About 6 px a character at 12 px, kept inside the drawing
-      const boxW = Math.min(width, s.title.length * 6 + 14);
-      const centre = i * sw + sw / 2;
-      const boxX = Math.max(0, Math.min(width - boxW, centre - boxW / 2));
-      return (
-        `<g id="t${i}" class="t"><rect x="${boxX.toFixed(2)}" y="${h - 26}" width="${boxW.toFixed(2)}" height="22" rx="4" fill="#1f2328" stroke="${OUTLINE}" stroke-opacity="0.6"/>` +
-        `<text x="${(boxX + 7).toFixed(2)}" y="${h - 11}" font-size="12" font-family="system-ui,-apple-system,sans-serif" fill="#ffffff">${escapeXml(s.title)}</text></g>`
-      );
-    })
+    .map((s, i) =>
+      hoverLabelSvg({ id: `t${i}`, cls: "t", text: s.title, centre: i * sw + sw / 2, y: h - 26, width }),
+    )
     .join("");
   const show = stripes.map((_, i) => `#b${i}:hover~#t${i}`).join(",");
   const style =
