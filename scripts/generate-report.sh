@@ -16,6 +16,9 @@ EXPORT_DIR="$(cc_path "${CLAUDE_CARBON_EXPORT_DIR:-$(cc_downloads_dir)/claude-ca
 DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon/carbon.db}")"
 # One scratch dir for the temp pages and the logo the local server serves.
 CC_TMP="$(cc_tmpdir)"
+# Set here, never inherited: cleanup kills and removes what these name.
+SERVER_PID=""
+BROWSER_PROFILE=""
 TODAY="$(date +%Y-%m-%d)"
 YEAR="$(date +%Y)"
 
@@ -514,6 +517,8 @@ find_system_browser() {
     *)
       c="$(cc_path "$CLAUDE_CARBON_BROWSER")"
       [ -f "$c" ] && { printf '%s\n' "$c"; return 0; }
+      command -v "$CLAUDE_CARBON_BROWSER" 2>/dev/null && return 0
+      echo "CLAUDE_CARBON_BROWSER: no browser at ${CLAUDE_CARBON_BROWSER}" >&2
       return 1
       ;;
   esac
@@ -560,8 +565,8 @@ find_system_browser() {
 card_in_browser() {
   # Called after a failed export too: the server goes, the pages stay until copied.
   trap - EXIT
-  [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null
-  [ -n "${BROWSER_PROFILE:-}" ] && rm -rf "$BROWSER_PROFILE"
+  if [ -n "$SERVER_PID" ]; then kill "$SERVER_PID" 2>/dev/null || true; fi
+  if [ -n "$BROWSER_PROFILE" ]; then rm -rf "$BROWSER_PROFILE" 2>/dev/null || true; fi
   if [ "$LEAD_LANG" = "fr" ]; then LEAD_TMP="$TMP_SUMMARY_FR"; else LEAD_TMP="$TMP_SUMMARY_EN"; fi
   LEAD_HTML="$EXPORT_DIR/claude-carbon-summary-${LEAD_LANG}-${FILE_TAG}.html"
   node -e '
@@ -653,7 +658,7 @@ cleanup_server() {
   # the handler before the temp files are removed.
   kill "$SERVER_PID" 2>/dev/null || true
   rm -f "$TMP_SUMMARY_FR" "$TMP_DETAILED_FR" "$TMP_SUMMARY_EN" "$TMP_DETAILED_EN"
-  [ -n "${BROWSER_PROFILE:-}" ] && rm -rf "$BROWSER_PROFILE"
+  if [ -n "$BROWSER_PROFILE" ]; then rm -rf "$BROWSER_PROFILE" 2>/dev/null || true; fi
   return 0
 }
 trap cleanup_server EXIT
@@ -671,7 +676,10 @@ export_png() {
     # time lets the web fonts land before the shot. A file that is not a 2160x2160 PNG
     # is no card: removed, so the export counts as failed.
     rm -f "$output"
-    [ -n "${BROWSER_PROFILE:-}" ] || BROWSER_PROFILE="$(mktemp -d "${CC_TMP}/claude-carbon-browser-XXXXXX")"
+    # After a first failure the browser is not tried again: a page that never loads
+    # (fonts blocked by a firewall) would cost the timeout four times over.
+    [ -z "$SYS_FAILED" ] || return 0
+    [ -n "$BROWSER_PROFILE" ] || BROWSER_PROFILE="$(mktemp -d "${CC_TMP}/claude-carbon-browser-XXXXXX")"
     node -e '
 const { spawnSync } = require("child_process");
 const fs = require("fs");
@@ -679,9 +687,10 @@ const [browser, url, out, profile] = process.argv.slice(1);
 spawnSync(browser, [
   "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
   "--no-default-browser-check", "--disable-extensions", "--user-data-dir=" + profile,
+  "--use-mock-keychain", "--password-store=basic", "--disable-background-networking",
   "--window-size=1080,1080", "--force-device-scale-factor=2",
   "--virtual-time-budget=5000", "--screenshot=" + out, url,
-], { stdio: "ignore", timeout: 60000 });
+], { stdio: "ignore", timeout: 25000, killSignal: "SIGKILL" });
 try {
   const b = fs.readFileSync(out);
   if (!(b.length >= 24 && b.readUInt32BE(16) === 2160 && b.readUInt32BE(20) === 2160)) fs.unlinkSync(out);
@@ -716,10 +725,12 @@ const { chromium } = require('$(cc_native_path "$PW_PATH")');
     CARD_OK=1
   else
     echo "  ${label}: FAILED" >&2
+    [ -z "$SYS_BROWSER" ] || SYS_FAILED=1
   fi
 }
 
 CARD_OK=""
+SYS_FAILED=""
 if [ -z "$LANG_FILTER" ] || [ "$LANG_FILTER" = "fr" ]; then
   export_png "$TMP_SUMMARY_FR" "$EXPORT_DIR/claude-carbon-summary-fr-${FILE_TAG}.png" "Summary FR"
   export_png "$TMP_DETAILED_FR" "$EXPORT_DIR/claude-carbon-detailed-fr-${FILE_TAG}.png" "Detailed FR"

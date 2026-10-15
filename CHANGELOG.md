@@ -10,7 +10,8 @@ missing, the card is now drawn by a Google Chrome, Microsoft Edge, Chromium or B
 already on the machine (Windows always has Edge), run headless in a throwaway profile
 through the same local server, at the same 2160x2160. A file that is not a PNG of that
 size counts as no card, and the page opens in the browser as before.
-`CLAUDE_CARBON_BROWSER` names a browser, or `none` to skip the lookup.
+A browser that has drawn nothing after 25 seconds is stopped and not tried again.
+`CLAUDE_CARBON_BROWSER` names a browser, by path or by command, or `none` to skip the lookup.
 
 ## 2026-10-14
 

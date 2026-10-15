@@ -486,6 +486,25 @@ STUB
     done
   fi
 
+  # A browser that hangs and ignores SIGTERM (seen on a macOS runner): killed after 25 s,
+  # not tried for the other three cards, and the page opens instead.
+  if [ "$CC_OS" != "windows" ]; then
+    printf '#!/usr/bin/env bash\ntrap "" TERM\nsleep 120\n' > "${FAKE_HOME}/card-bin/hung-chrome"
+    chmod +x "${FAKE_HOME}/card-bin/hung-chrome"
+    T0=$(date +%s)
+    OUT="$(CARD_NO_OPEN=1 CARD_BROWSER="${FAKE_HOME}/card-bin/hung-chrome" card "$NO_CHROMIUM")"
+    T1=$(date +%s)
+    is "hung browser: one try, then the page" "1|yes|rc=0" \
+      "$(printf '%s\n' "$OUT" | grep -c FAILED)|$([ $((T1 - T0)) -lt 60 ] && echo yes || echo "no ($((T1 - T0))s)")|$(printf '%s\n' "$OUT" | tail -1)"
+  fi
+
+  # Variables of the same names inherited from the user's shell are never acted on:
+  # a folder named BROWSER_PROFILE survives, a SERVER_PID is not killed.
+  KEEP="${FAKE_HOME}/keep-profile"; mkdir -p "$KEEP"; : > "${KEEP}/Bookmarks"
+  OUT="$(BROWSER_PROFILE="$KEEP" SERVER_PID=999999 CARD_NO_OPEN=1 card "$NO_CHROMIUM")"
+  is "inherited BROWSER_PROFILE and SERVER_PID: left alone, rc" "yes|rc=0" \
+    "$([ -f "${KEEP}/Bookmarks" ] && echo yes || echo no)|$(printf '%s\n' "$OUT" | tail -1)"
+
   # A real Chrome, Edge or Chromium when the runner has one: a card of 2160x2160
   # The script's own lookup, lifted out of it, run as a user's machine would
   awk '$0 == "find_system_browser() {" { f = 1 } f { print } f && $0 == "}" { exit }' \
