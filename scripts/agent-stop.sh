@@ -148,16 +148,20 @@ automatic() {
 
 wt_info "$AGENT_CWD" || exit 0
 A_COMMON="$W_COMMON"; A_LINKED="$W_LINKED"; A_TOP="$W_TOP"; A_BRANCH="$W_BRANCH"
-# The repository's key, as generate-pr-report.sh spells it: Windows paths in any case
-cc_is_windows && A_COMMON="$(printf '%s' "$A_COMMON" | tr 'A-Z' 'a-z')"
 S_TOP=""
 if [ -n "$SESSION_CWD" ] && [ -d "$SESSION_CWD" ]; then
   if [ "$SESSION_CWD" = "$AGENT_CWD" ]; then
     S_TOP="$A_TOP"
   elif wt_info "$SESSION_CWD"; then
     S_TOP="$W_TOP"
+    # An agent that worked in another repository than its session's stays with its
+    # session: the report of its session's branch keeps it (an agent leaves a branch only
+    # for one of the same repository), so the other repository's must not count it too
+    [ "$W_COMMON" = "$A_COMMON" ] || exit 0
   fi
 fi
+# The repository's key, as generate-pr-report.sh spells it: Windows paths in any case
+cc_is_windows && A_COMMON="$(printf '%s' "$A_COMMON" | tr 'A-Z' 'a-z')"
 
 BRANCH=""
 WT=""
@@ -190,10 +194,14 @@ fi
 [ -n "$HOW" ] || exit 0
 
 # The agent's final message, when its transcript does not hold it yet: read again every
-# 0.2 s, for at most 1 s (the hook holds back the agent's result meanwhile)
+# 0.2 s, for at most 1 s (the hook holds back the agent's result meanwhile). It is there
+# when the last line of assistant text in the transcript's tail holds the message's end
+# (the key goes through the environment: awk -v would read its backslashes as escapes).
 if [ -n "$LAST_KEY" ]; then
   k=0
-  while ! tail -n 40 "$AGENT_T" 2>/dev/null | LC_ALL=C grep -qF -- "$LAST_KEY" 2>/dev/null; do
+  while ! tail -n 40 "$AGENT_T" 2>/dev/null | LC_ALL=C CC_LAST_KEY="$LAST_KEY" awk '
+      index($0, "\"type\":\"assistant\"") && index($0, "\"type\":\"text\"") { last = index($0, ENVIRON["CC_LAST_KEY"]) > 0 }
+      END { exit !last }' 2>/dev/null; do
     [ "$k" -lt 5 ] || break
     sleep 0.2 2>/dev/null || break
     k=$((k + 1))

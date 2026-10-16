@@ -145,9 +145,10 @@ format_tokens() {
 #   - their agents that worked on another branch of this repository, or on another one
 #   + the agents of the repository's other sessions that worked on it
 # An agent is moved only when its session's row is present, not excluded, holds all its
-# agents (agents_collected), is of the current methodology and was written after the
-# agent's last message (an agent that ended after its session's last Stop is not in that
-# row yet: taking it out would leave less than nothing). The branches then add up to the
+# agents (agents_collected), is of the current methodology and was written in a later
+# second than the agent's last message (an agent that ended after its session's last Stop
+# is not in that row yet: taking it out would leave less than nothing; the row's end has
+# whole seconds, so one that ended in the same second waits for the next Stop). The branches then add up to the
 # sessions. An agent recorded in another repository (or in this one before it moved, its
 # common folder spelled otherwise) stays with its session. Without agent rows for this
 # repository, or without the table (a database that could not be migrated), this is the
@@ -179,8 +180,15 @@ add_project() {
 if [ "$HAS_AGENTS" = "1" ]; then
   LOCATED=1
   if [ "$BRANCH" != "$CURRENT" ]; then
-    WT_PATH="$(git -C "$TOPLEVEL" worktree list --porcelain 2>/dev/null \
-      | awk -v want="branch refs/heads/${BRANCH}" '{ sub(/\r$/, "") } /^worktree / { p = substr($0, 10) } $0 == want { print p; exit }' || true)"
+    # Two lines: the repository's main folder (its sessions on the branch are the
+    # branch's), then the worktree the branch is checked out in, if any
+    WT_PATHS="$(git -C "$TOPLEVEL" worktree list --porcelain 2>/dev/null \
+      | awk -v want="branch refs/heads/${BRANCH}" '{ sub(/\r$/, "") } /^worktree / { p = substr($0, 10); if (main == "") main = p }
+          $0 == want { found = p } END { print main; print found }' || true)"
+    WT_MAIN="${WT_PATHS%%$'\n'*}"
+    WT_PATH="${WT_PATHS#*$'\n'}"
+    [ "$WT_PATH" != "$WT_PATHS" ] || WT_PATH=""
+    add_project "${WT_MAIN##*/}"
     if [ -n "$WT_PATH" ]; then add_project "${WT_PATH##*/}"; else LOCATED=0; fi
   fi
   while IFS= read -r W; do
@@ -200,7 +208,7 @@ EOF
 fi
 
 BASE="s.project IN (${PROJECT_LIST}) AND s.git_branch = '${SQL_BRANCH}' AND COALESCE(s.excluded, 0) = 0"
-AGENT_OK="COALESCE(s.excluded, 0) = 0 AND COALESCE(s.methodology_version, 1) >= 2 AND COALESCE(s.agents_collected, 0) >= 2 AND substr(COALESCE(a.last_ts, ''), 1, 19) <= substr(COALESCE(s.ended_at, ''), 1, 19)"
+AGENT_OK="COALESCE(s.excluded, 0) = 0 AND COALESCE(s.methodology_version, 1) >= 2 AND COALESCE(s.agents_collected, 0) >= 2 AND substr(COALESCE(a.last_ts, ''), 1, 19) < substr(COALESCE(s.ended_at, ''), 1, 19)"
 HERE="a.git_branch = '${SQL_BRANCH}' AND a.repo = ${Q_REPO}"
 OUT_AGENTS="FROM agent_usage a JOIN sessions s ON s.session_id = a.session_id WHERE ${BASE} AND ${AGENT_OK} AND a.repo = ${Q_REPO} AND a.git_branch <> '${SQL_BRANCH}'"
 IN_AGENTS="FROM agent_usage a JOIN sessions s ON s.session_id = a.session_id WHERE ${HERE} AND ${AGENT_OK} AND NOT (${BASE})"
@@ -222,8 +230,13 @@ EOF
 
 if [ "$N_SESSIONS" = "0" ]; then
   echo "No sessions recorded for branch '${BRANCH}' of project ${PROJECT_NAMES}: nothing posted."
-  echo "A session counts for the branch it ended on, and so do its agents, except an agent"
-  echo "that worked in a worktree of another branch, recorded as it ended: it counts there."
+  if [ "$HAS_AGENTS" = "1" ]; then
+    echo "A session counts for the branch it ended on, and so do its agents, except an agent"
+    echo "that worked in a worktree of another branch, recorded as it ended: it counts there."
+  else
+    echo "A session counts for the branch it ended on: work driven from a session on another"
+    echo "branch (agents in a worktree, for one) is recorded under that session's branch."
+  fi
   echo "Sessions captured before the git_branch column (v1.4.0) carry no branch;"
   echo "run scripts/backfill.sh to repair them while their transcripts still exist."
   exit 0

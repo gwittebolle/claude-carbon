@@ -21,17 +21,17 @@ to a new `agent_usage` table, with the repository and the worktree's folder. Cla
 writes transcripts asynchronously: when the agent's final message is not in its
 transcript yet, the hook reads it again every 0.2 s, for 1 s at most. `/carbon-pr` takes
 the agent out of its session's branch and adds it to its own when the session's row holds
-all its agents (`agents_collected = 2`), was written after the agent ended and is not a
-frozen v1 row, and says how many sessions recorded elsewhere it includes. An agent
-recorded in another repository, or in this one before it was moved, stays with its
-session. A session's own row does not change, the branches still add up to the sessions,
+all its agents (`agents_collected = 2`), was written after the agent ended (in a later
+second) and is not a frozen v1 row, and says how many sessions recorded elsewhere it
+includes. An agent that worked in another repository than its session's is not recorded,
+and one recorded before its repository was moved stays with its session. A session's own row does not change, the branches still add up to the sessions,
 and `recompute.sh` re-derives the agents' share with them. Without any agent row for the
 repository, or on a database that cannot be migrated, the comment is unchanged.
 
 Once agents of the repository are on record, `--pr` run from another folder than the
-branch's (the main one, often) also counts the sessions of the worktree the branch is
-checked out in, and of the worktrees its agents worked in, even removed since: it summed
-the agents without the PR's own sessions. A branch checked out nowhere whose name sessions
+branch's (the main one, often) also counts the sessions of the repository's main folder,
+of the worktree the branch is checked out in and of the worktrees its agents worked in,
+even removed since: it summed the agents without the PR's own sessions. A branch checked out nowhere whose name sessions
 of other folders also carry is refused, rather than posted without them. The branch is
 read in full (`refs/heads/...`): a tag of the same name made it `heads/<name>`, and the
 report found no session.

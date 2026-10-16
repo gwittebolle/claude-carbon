@@ -20,9 +20,11 @@
 #      transcript its session does not read), forks (meta.json or agent type); a resumed
 #      agent's rows are replaced, or kept when no branch is found any more; twenty agents
 #      ending at once are all recorded; a tag of a branch's name changes nothing; the
-#      worktree's folder is recorded with the branch;
+#      worktree's folder is recorded with the branch; an agent in another repository
+#      than its session's is not recorded;
 #  4b. a transcript that lags: the final message (last_assistant_message) is waited for,
-#      0.2 s at a time, five times at most;
+#      0.2 s at a time, five times at most, also when its words already appear in an
+#      earlier tool call or result;
 #   5. the C:/, c:/, /c/ and ~/ spellings of a Windows worktree are recognised;
 #   6. the report: a branch sums its sessions, minus their agents gone elsewhere, plus the
 #      agents of other sessions come to it, and says so, per model too (a model left with
@@ -33,7 +35,9 @@
 #      the worktree the branch is checked out in, or of the one its agents recorded once
 #      it is removed, and refuses a branch checked out nowhere whose name sessions of
 #      other folders carry; an agent recorded in a repository that moved since stays with
-#      its session; the row's end is the time the session's pass started;
+#      its session; the row's end is the time the session's pass started, and an agent
+#      that ended in that same second stays with its session; the main folder's sessions
+#      on the branch count, whatever folder --pr runs from;
 #   7. recompute.sh re-derives agent_usage, also for a session not recorded yet, never a
 #      v1 session's;
 #   8. no jq is started with more than 30,000 bytes of arguments (150 worktrees);
@@ -270,6 +274,17 @@ stop "$S" ghost "$P_ISO1"
 check "Claude Code's own agents (no type, a transcript elsewhere or none): nothing" "0" \
   "$(q "SELECT COUNT(*) FROM agent_usage WHERE agent_id IN ('int', 'int2', 'int3', 'ghost');")"
 
+# An agent in a worktree of another repository than its session's: the session's branch
+# keeps it, so nothing is recorded
+OTHER="${CODE}/other"
+mkdir -p "$OTHER"
+git -C "$OTHER" init -q -b main 2>/dev/null || { git -C "$OTHER" init -q; git -C "$OTHER" checkout -q -b main; }
+git_q -C "$OTHER" commit -q --allow-empty -m init
+git_q -C "$OTHER" worktree add -q -b feat/elsewhere "${CODE}/other-wt"
+agent "$S" xrp 10 1 "${CODE}/other-wt"
+stop "$S" xrp "${CODE}/other-wt"
+check "an agent in a worktree of another repository: nothing" "" "$(branch_of "$S" xrp)"
+
 # Resumed: aaa wrote more and ends again; bbb then names the main folder far more often
 msg "aaa-r" 1000 100 "$P_MAIN" "[$(cmd "cd '$P_1013'")]" >> "${PROJ}/${S}/subagents/agent-aaa.jsonl"
 stop "$S" aaa "$P_MAIN"
@@ -352,6 +367,13 @@ agent "$S3" lg3 100 10 "$P_ISO1"
 lagstop lg3 "A final message the transcript never gets"
 check "a final message that never comes: five waits of 0.2 s, then what is there" "5|0.2|100|10" \
   "$(waits)|$(sort -u "${TMPROOT}/sleeps")|$(usage_of lg3)"
+# The final message's words already in an earlier tool result (a report's path it wrote)
+agent "$S3" lg6 100 10 "$P_ISO1"
+jq -n -c --arg t "$LAST" '{type: "user", message: {role: "user", content: [{type: "tool_result", tool_use_id: "x", content: $t}]}}' \
+  >> "${PROJ}/${S3}/subagents/agent-lg6.jsonl"
+final lg6f "$LAST" > "${TMPROOT}/lag-line"
+lagstop lg6 "$LAST"
+check "its words in an earlier tool result: still waited for" "1|1100|110" "$(waits)|$(usage_of lg6)"
 agent "$S3" lg4 100 10 "$P_ISO1"
 lagstop lg4 ""
 check "no closing text (an agent that reported through a tool): no wait" "0|100|10" "$(waits)|$(usage_of lg4)"
@@ -494,6 +516,10 @@ check "a row older than its agents: main counts it whole" "$(( $(tok "$S") + $(t
 check "a row older than its agents: they are not counted elsewhere yet" "$(atok "git_branch = 'feat/iso' AND session_id <> '$S'")" \
   "$(raw "$P_MAIN" --pr 1 | awk -F '|' '{ print $4 }')"
 check "a row older than its agents: no figure below zero" "no" "$(has '| -' "$(report "$P_MAIN" --pr 2)$(report "$P_MAIN" --pr 1)")"
+# The same second as its agents' last message: the row may not hold them yet
+q "UPDATE sessions SET ended_at = '2026-01-01T10:00:00Z' WHERE session_id='${S}';"
+check "a row of the same second as its agents: main counts it whole" "$(( $(tok "$S") + $(tok "$S3") - $(atok "session_id = '$S3'") ))" \
+  "$(raw "$P_MAIN" --pr 2 | awk -F '|' '{ print $4 }')"
 q "UPDATE sessions SET ended_at = '2026-10-16T12:00:00Z' WHERE session_id='${S}';"
 
 # An agent recorded under another spelling of the repository (it moved since): it stays
@@ -529,6 +555,12 @@ GONE="$(raw "$P_GONE")"
 check "setup: feat/gone, its session and an agent of main" "2|$(( $(tok "$S5") + $(atok "agent_id = 'gn1'") ))|1" "$(printf '%s' "$GONE" | awk -F '|' '{ print $1 "|" $4 "|" $6 }')"
 git_q -C "$MAIN" worktree remove --force "$P_GONE"
 check "--pr, a worktree removed since: the sessions of the folder its agents recorded" "$GONE" "$(raw "$P_MAIN" --pr 11)"
+# The main folder once had the branch checked out: its session counts, also with --pr
+# from a linked worktree (here the one of feat/side)
+q "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, methodology_version, git_branch, agents_collected) VALUES ('in-main', 'proj', 'claude-opus-5-5', 40, 4, 0, 0.1, 2, 'feat/gone', 2);"
+check "--pr from a linked worktree: the main folder's sessions on the branch count" \
+  "3|$(( $(printf '%s' "$GONE" | cut -d '|' -f 4) + 44 ))" "$(raw "$P_SIDE" --pr 11 | cut -d '|' -f 1,4)"
+q "DELETE FROM sessions WHERE session_id = 'in-main';"
 # Then a session on a branch of that name in a folder nothing ties to it: refused
 q "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, methodology_version, git_branch, agents_collected) VALUES ('stray', 'proj-gone-old', 'claude-opus-5-5', 50, 5, 0, 0.1, 2, 'feat/gone', 2);"
 ERR="$(report "$P_MAIN" --pr 11 2>&1)"
@@ -659,8 +691,12 @@ case "$*" in
 esac
 STUB
 check "no agent row for the repository, --pr from another folder: what 1.15.7 said" \
-  "No sessions recorded for branch 'feat/h' of project 'proj': nothing posted." \
-  "$(cd "$G_DIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$G_DB" bash "$PR_SCRIPT" --dry-run --pr 12 2>/dev/null | head -n 1)"
+  "No sessions recorded for branch 'feat/h' of project 'proj': nothing posted.
+A session counts for the branch it ended on: work driven from a session on another
+branch (agents in a worktree, for one) is recorded under that session's branch.
+Sessions captured before the git_branch column (v1.4.0) carry no branch;
+run scripts/backfill.sh to repair them while their transcripts still exist." \
+  "$(cd "$G_DIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$G_DB" bash "$PR_SCRIPT" --dry-run --pr 12 2>/dev/null | tr -d '\r')"
 
 # ---------------------------------------------------------------- 10. the plugin wires it
 check "hooks.json: SubagentStop runs agent-stop.sh, for agents with a type" \
