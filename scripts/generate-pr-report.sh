@@ -69,12 +69,21 @@ if [ -n "$PR_NUMBER" ]; then
     echo "Error: gh is required to read the branch of PR #${PR_NUMBER}." >&2
     exit 1
   fi
-  PR_HEAD="$(gh pr view "$PR_NUMBER" --json headRefName,isCrossRepository --jq '.headRefName + " " + (.isCrossRepository | tostring)' 2>/dev/null || true)"
+  # gh's own message is shown when it fails: an older gh that lacks a field says so there
+  GH_ERR="$(mktemp "$(cc_tmpdir)/carbon-pr-gh.XXXXXX")"
+  PR_HEAD="$(gh pr view "$PR_NUMBER" --json headRefName,isCrossRepository --jq '.headRefName + " " + (.isCrossRepository | tostring)' 2>"$GH_ERR" || true)"
   BRANCH="${PR_HEAD% *}"
   if [ -z "$PR_HEAD" ] || [ -z "$BRANCH" ] || [ "$BRANCH" = "$PR_HEAD" ]; then
-    echo "Error: could not read the branch of PR #${PR_NUMBER} (gh auth, or a PR of another repository?)." >&2
+    if [ -s "$GH_ERR" ]; then
+      echo "Error: could not read the branch of PR #${PR_NUMBER} through gh:" >&2
+      sed 's/^/  /' "$GH_ERR" >&2
+    else
+      echo "Error: could not read the branch of PR #${PR_NUMBER} (gh auth, or a PR of another repository?)." >&2
+    fi
+    rm -f "$GH_ERR"
     exit 1
   fi
+  rm -f "$GH_ERR"
   # A fork's branch is not a branch of this repository: a local branch of the same name
   # (its main, often) would be summed as the PR's footprint
   if [ "${PR_HEAD##* }" = "true" ]; then

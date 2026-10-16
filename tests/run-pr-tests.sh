@@ -145,6 +145,8 @@ case "$*" in
   "pr view 42 --json headRefName,isCrossRepository --jq "*) echo "feat/x false" ;;
   # A PR from a fork, opened from the contributor's main
   "pr view 43 --json headRefName,isCrossRepository --jq "*) echo "main true" ;;
+  # An older gh without the field
+  "pr view 44 --json headRefName,isCrossRepository --jq "*) echo 'Unknown JSON field: "isCrossRepository"' >&2; exit 1 ;;
   *) exit 1 ;;
 esac
 STUB
@@ -159,6 +161,9 @@ ERR="$(cd "$WORKDIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$DB2" bash "$PR_
 RC=$?
 check "--pr: a PR from a fork is refused, main not summed" "1|yes|no" \
   "$RC|$(echo "$ERR" | grep -q 'comes from a fork' && echo yes || echo no)|$(echo "$ERR" | grep -q 'developing this PR' && echo yes || echo no)"
+ERR="$(cd "$WORKDIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$DB2" bash "$PR_SCRIPT" --dry-run --pr 44 2>&1)"
+RC=$?
+check "--pr: gh's own message shown when it fails" "1|yes" "$RC|$(echo "$ERR" | grep -q 'Unknown JSON field' && echo yes || echo no)"
 for BAD in "feat/x" "https://github.com/o/r/pull/42" ""; do
   ERR="$(cd "$WORKDIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$DB2" bash "$PR_SCRIPT" --dry-run --pr "$BAD" 2>&1)"
   RC=$?

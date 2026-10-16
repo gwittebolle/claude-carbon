@@ -137,18 +137,20 @@ cc_num_ge() {
 
 # ── Filesystem ──────────────────────────────────────────────────────────────
 # cc_mtime <file> — modification time in epoch seconds, 0 when unavailable.
-# Picked by platform, not by trial: GNU stat (Linux, Git Bash) reads `-f %m` as
-# "file-system status of the files %m and <file>", prints a multi-line block for
-# the real file and only then fails, so a `stat -f … || stat -c …` chain returned
-# that block with the epoch appended, and every caller doing arithmetic on it died.
-# Off macOS, `-f %m` stays as a fallback for the other BSDs, after `-c` has failed
-# without printing anything.
+# BSD stat first on macOS, GNU stat elsewhere; the other one only when the first gives
+# no plain number (a GNU stat ahead of /usr/bin on a Mac, coreutils' gnubin; the other
+# BSDs off macOS). Never a `stat -f … || stat -c …` chain: GNU stat reads `-f %m` as
+# "file-system status of the files %m and <file>", prints a multi-line block for the
+# real file and only then fails, so the chain returned that block with the epoch
+# appended, and every caller doing arithmetic on it died.
 cc_mtime() {
   local m
   if [ "$CC_OS" = "darwin" ]; then
     m="$(stat -f %m "$1" 2>/dev/null)"
+    case "$m" in ''|*[!0-9]*) m="$(stat -c %Y "$1" 2>/dev/null)" ;; esac
   else
-    m="$(stat -c %Y "$1" 2>/dev/null)" || m="$(stat -f %m "$1" 2>/dev/null)"
+    m="$(stat -c %Y "$1" 2>/dev/null)"
+    case "$m" in ''|*[!0-9]*) m="$(stat -f %m "$1" 2>/dev/null)" ;; esac
   fi
   case "$m" in ''|*[!0-9]*) m=0 ;; esac
   printf '%s\n' "$m"
@@ -338,7 +340,7 @@ CC_AGENTS_COLLECTED=2
 CC_SESSION_MODELS_DDL="CREATE TABLE IF NOT EXISTS session_models (session_id TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0, co2_grams REAL DEFAULT 0, PRIMARY KEY (session_id, model));"
 cc_ensure_schema() {
   local db="$1" probe col
-  probe="$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT (SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name IN ('cache_read_tokens','cache_creation_tokens','methodology_version','excluded','git_branch','cache_creation_1h_tokens','output_context_sum','agents_collected')) || '|' || (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_models');" 2>/dev/null)" || probe=""
+  probe="$(cc_sql -cmd ".timeout 5000" "$db" "SELECT (SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name IN ('cache_read_tokens','cache_creation_tokens','methodology_version','excluded','git_branch','cache_creation_1h_tokens','output_context_sum','agents_collected')) || '|' || (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_models');" 2>/dev/null)" || probe=""
   [ "$probe" = "8|1" ] && return 0
   for col in "cache_read_tokens INTEGER DEFAULT 0" "cache_creation_tokens INTEGER DEFAULT 0" \
              "methodology_version INTEGER DEFAULT 1" "excluded INTEGER DEFAULT 0" \
@@ -366,17 +368,33 @@ cc_collect_subagents() {
 }
 
 # cc_max_mtime <file>…: the latest modification time of the files, in epoch seconds, in
-# one stat call (0 when none can be read).
+# one stat call (0 when none can be read). BSD stat first on macOS, GNU stat elsewhere,
+# and the other one when the first gives nothing: a GNU stat ahead of /usr/bin on a Mac
+# (coreutils' gnubin) reads -f as --file-system.
 cc_max_mtime() {
-  local out=""
+  local m
   [ $# -gt 0 ] || { printf '0\n'; return 0; }
   if [ "$CC_OS" = "darwin" ]; then
-    out="$(stat -f %m "$@" 2>/dev/null || true)"
+    m="$(cc_max_of "$(stat -f %m "$@" 2>/dev/null || true)")"
+    [ "$m" != "0" ] || m="$(cc_max_of "$(stat -c %Y "$@" 2>/dev/null || true)")"
   else
-    out="$(stat -c %Y "$@" 2>/dev/null || true)"
-    [ -n "$out" ] || out="$(stat -f %m "$@" 2>/dev/null || true)"
+    m="$(cc_max_of "$(stat -c %Y "$@" 2>/dev/null || true)")"
+    [ "$m" != "0" ] || m="$(cc_max_of "$(stat -f %m "$@" 2>/dev/null || true)")"
   fi
-  printf '%s\n' "$out" | tr -d '\r' | awk 'BEGIN { m = 0 } /^[0-9]+$/ { if ($1 + 0 > m) m = $1 + 0 } END { printf "%.0f\n", m }'
+  printf '%s\n' "$m"
+}
+
+# cc_max_of <lines>: the largest of the lines that are a plain number, 0 when none is.
+cc_max_of() {
+  printf '%s\n' "$1" | awk 'BEGIN { m = 0 } { sub(/\r$/, "") } /^[0-9]+$/ { if ($1 + 0 > m) m = $1 + 0 } END { printf "%.0f\n", m }'
+}
+
+# cc_sql <sqlite3 arguments>: sqlite3 with the CR removed from its output (an older
+# sqlite3.exe on Windows ends its lines in CRLF, and "0\r" is no number), exit status kept.
+cc_sql() {
+  local out
+  out="$(sqlite3 "$@")" || return $?
+  printf '%s\n' "${out//$'\r'/}"
 }
 
 # cc_export_sessions <db>: write sessions-history.tsv next to the DB, one line per

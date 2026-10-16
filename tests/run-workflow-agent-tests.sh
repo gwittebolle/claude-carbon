@@ -11,7 +11,10 @@
 #   6. a write that fails leaves the row unstamped, and the next rescan retries it;
 #   7. a rewritten row ends when its last transcript was written, agents included, so
 #      the next rescan does not parse it again;
-#   8. an agent transcript that cannot be read does not cost the session.
+#   8. an agent transcript that cannot be read does not cost the session;
+#   9. all of it holds when sqlite3 ends its lines in CRLF (an older sqlite3.exe);
+#  10. a row holding more tokens than its transcripts now give is left as it is, its
+#      child rows too, and only its end moves, so the next rescan does not parse it.
 #
 # Throwaway dirs only (CLAUDE_CONFIG_DIR, CLAUDE_CARBON_DB); the real ~/.claude is never
 # read or written. bash 3.2 compatible.
@@ -226,6 +229,47 @@ else
   check "unreadable agent: the session recorded from the others" "$WITH" "$(tokens "$S8")"
 fi
 chmod 644 "${PROJ}/${S8}/subagents/agent-locked.jsonl"
+
+# ---------------------------------------------------------------- 9. CRLF from sqlite3
+# A new session to add and a row an older Stop hook wrote, through a sqlite3 whose every
+# line ends in CRLF: "0\r" must still read as 0
+S9="11111111-aaaa-bbbb-cccc-000000000009"
+make_session "$S9" yes
+S10="11111111-aaaa-bbbb-cccc-000000000010"
+make_session "$S10" no
+payload "$S10" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+add_workflow "$S10"
+old_writer "$S10" 1000 100
+CRLF="${TMPROOT}/crlf"
+mkdir -p "$CRLF"
+REAL_SQLITE="$(command -v sqlite3)"
+cat > "${CRLF}/sqlite3" <<EOF
+#!/usr/bin/env bash
+# sqlite3 as an older sqlite3.exe answers: every line ends in CRLF
+set -o pipefail
+"${REAL_SQLITE}" "\$@" | awk '{ printf "%s\\r\\n", \$0 }'
+EOF
+chmod +x "${CRLF}/sqlite3"
+OUT="$(PATH="${CRLF}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
+check "CRLF: the new session added, the old row repaired" "$WITH|$WITH|2" "$(tokens "$S9")|$(tokens "$S10")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S10}';")"
+check "CRLF: counted, no error" "yes|yes|yes" \
+  "$(has "1 sessions added" "$OUT")|$(has "Counted the workflow agents of 1 session(s)" "$OUT")|$(has " 0 errors" "$OUT")"
+
+# ---------------------------------------------------------------- 10. the monotone guard
+# A row with 1,000 more tokens than its transcripts give (a Stop hook saw more) and an old
+# end: the rescan leaves the row and its child rows, only moves the end
+S11="11111111-aaaa-bbbb-cccc-000000000011"
+make_session "$S11" yes
+payload "$S11" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+q "UPDATE sessions SET input_tokens = input_tokens + 1000, ended_at = '2026-01-01T00:00:00Z' WHERE session_id='${S11}';"
+CHILDREN="$(q "SELECT group_concat(model || ':' || input_tokens || ':' || co2_grams, ',') FROM session_models WHERE session_id='${S11}';")"
+CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "guard: the row and its child rows as they were" "12000|100000|1100|$CHILDREN" \
+  "$(tokens "$S11")|$(q "SELECT group_concat(model || ':' || input_tokens || ':' || co2_grams, ',') FROM session_models WHERE session_id='${S11}';")"
+check "guard: the end moved forward" "yes" "$(q "SELECT CASE WHEN ended_at > '2026-01-02' THEN 'yes' ELSE ended_at END FROM sessions WHERE session_id='${S11}';")"
+: > "${TMPROOT}/jq-calls"
+PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "guard: no parse on the next rescan" "0" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')"
 
 echo
 echo "$PASSED passed, $FAILED failed"
