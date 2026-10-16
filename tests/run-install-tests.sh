@@ -389,6 +389,27 @@ sl_first() {
 check "statusline: first turn takes the transcript, as the Stop hook will" "4gCO₂" "$(sl_first "$SL_TRANSCRIPT")"
 check "statusline: first turn, transcript gone, falls back to the window"  "6gCO₂" "$(sl_first "${TMPROOT}/statusline/none.jsonl")"
 
+# The transcripts are read only without a row, and at most every 10 seconds: a jq on PATH
+# counts the per-file passes (the only jq calls given --arg main)
+SL_SHIM="${TMPROOT}/statusline/shim"
+mkdir -p "$SL_SHIM"
+printf '#!/usr/bin/env bash\ncase "$*" in *"--arg main"*) echo x >> "%s" ;; esac\nexec "%s" "$@"\n' "${TMPROOT}/statusline/passes" "$(command -v jq)" > "${SL_SHIM}/jq"
+chmod +x "${SL_SHIM}/jq"
+sl_tx() {
+  printf '{"session_id":"%s","transcript_path":"%s","model":{"id":"claude-opus-5-5","display_name":"M"},"context_window":{"total_input_tokens":80202,"total_output_tokens":113,"used_percentage":8},"cost":{"total_cost_usd":0.41},"workspace":{"current_dir":"/tmp/p"}}' "$1" "$2" \
+    | PATH="${SL_SHIM}:$PATH" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+}
+passes() { wc -l < "${TMPROOT}/statusline/passes" | tr -d ' '; }
+SL_X="sess-excluded-claude-$$"
+sqlite3 "$SL_DB" "INSERT INTO sessions (session_id, project, model, co2_grams, cost_usd, excluded) VALUES ('${SL_X}', 'p', 'claude-opus-5-5', 0.0, 0.0, 1);"
+: > "${TMPROOT}/statusline/passes"
+check "statusline: an excluded Claude session shows its row, transcripts unread" "0gCO₂|0" "$(sl_tx "$SL_X" "$SL_TRANSCRIPT")|$(passes)"
+SL_T="sess-throttle-$$"
+: > "${TMPROOT}/statusline/passes"
+FIRST="$(sl_tx "$SL_T" "$SL_TRANSCRIPT")"
+SECOND="$(sl_tx "$SL_T" "$SL_TRANSCRIPT")"
+check "statusline: no row, the transcripts read once in 10 seconds" "4gCO₂|4gCO₂|1" "${FIRST}|${SECOND}|$(passes)"
+
 # ------------------------------------------------------- 11. decode-context sum
 
 # Every session stores sum(output_tokens x context) over its assistant messages, main

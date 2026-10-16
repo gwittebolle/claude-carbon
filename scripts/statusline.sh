@@ -56,7 +56,11 @@ fi
 # draws, and nothing redraws the status line after it. The transcript is short then, so
 # the status line makes the hook's own computation on it (cc_session_usage) and shows the
 # figure the database and the mod will show. Without it, the context-window estimate
-# counted cache reads at the full input factor: 6 g for an answer of 4.3 g.
+# counted cache reads at the full input factor: 6 g for an answer of 4.3 g. Only without a
+# row: a session whose row says 0 (excluded, or no usage yet) shows 0 rather than reading
+# its transcripts at every refresh. A first turn that starts a workflow can grow large
+# before its row exists, so the computation is kept for 10 seconds in a temporary file
+# (never in the database) and reused while the transcript is the same.
 #
 # Last fallback, the context-window estimate (no database, no transcript): a SNAPSHOT of
 # the current context, not a session total, and it drops back every time the context is
@@ -65,19 +69,35 @@ fi
 CO2_G=""
 if [ -n "$SESSION_ID" ] && [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>&1; then
   SESSION_ID_SQL="${SESSION_ID//$CC_SQ/$CC_SQ$CC_SQ}"
-  CO2_G="$(sqlite3 -cmd ".timeout 300" "$DB_PATH" "SELECT printf('%.0f', co2_grams) FROM sessions WHERE session_id='${SESSION_ID_SQL}' AND COALESCE(excluded, 0) = 0 AND co2_grams > 0;" 2>/dev/null || true)"
+  # The row's CO2, 0 for an excluded session; nothing when there is no row
+  CO2_G="$(cc_sql -cmd ".timeout 300" "$DB_PATH" "SELECT CASE WHEN COALESCE(excluded, 0) = 1 THEN '0' ELSE printf('%.0f', COALESCE(co2_grams, 0)) END FROM sessions WHERE session_id='${SESSION_ID_SQL}';" 2>/dev/null || true)"
   case "$CO2_G" in ''|*[!0-9]*) CO2_G="" ;; esac
   TRANSCRIPT_PATH=""
   if [ -z "$CO2_G" ] && [ "$FACTOR_IN" != "0" ]; then
     TRANSCRIPT_PATH="$(cc_path "$(echo "$INPUT" | jq -r '.transcript_path // ""')")"
   fi
   if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-    cc_collect_subagents "$(dirname "$TRANSCRIPT_PATH")/${SESSION_ID}/subagents"
-    SUB_FILES=(${CC_SUB_FILES[@]+"${CC_SUB_FILES[@]}"})
-    if USAGE="$(cc_session_usage "$FACTORS_FILE" "$PRICES_FILE" "$TRANSCRIPT_PATH" ${SUB_FILES[@]+"${SUB_FILES[@]}"})"; then
-      cc_parse_usage "$USAGE"
-      CO2_G="$(printf '%s\n' "$CC_U_CO2" | LC_ALL=C awk '{printf "%.0f", $1}')"
-      case "$CO2_G" in ''|*[!0-9]*) CO2_G="" ;; esac
+    SL_CACHE="$(cc_tmpdir)/claude-carbon-statusline-${SESSION_ID//[!A-Za-z0-9-]/}"
+    SL_NOW="$(date +%s 2>/dev/null || echo 0)"
+    SL_AT=""; SL_CO2=""; SL_PATH=""
+    if [ -f "$SL_CACHE" ]; then
+      IFS="$(printf '\t')" read -r SL_AT SL_CO2 SL_PATH < "$SL_CACHE" 2>/dev/null || true
+    fi
+    case "${SL_AT}${SL_CO2}" in ''|*[!0-9]*) SL_AT="" ;; esac
+    if [ -n "$SL_AT" ] && [ "$SL_PATH" = "$TRANSCRIPT_PATH" ] && [ $((SL_NOW - SL_AT)) -ge 0 ] && [ $((SL_NOW - SL_AT)) -lt 10 ]; then
+      CO2_G="$SL_CO2"
+    else
+      cc_collect_subagents "$(dirname "$TRANSCRIPT_PATH")/${SESSION_ID}/subagents"
+      SUB_FILES=(${CC_SUB_FILES[@]+"${CC_SUB_FILES[@]}"})
+      if USAGE="$(cc_session_usage "$FACTORS_FILE" "$PRICES_FILE" "$TRANSCRIPT_PATH" ${SUB_FILES[@]+"${SUB_FILES[@]}"})"; then
+        cc_parse_usage "$USAGE"
+        CO2_G="$(printf '%s\n' "$CC_U_CO2" | LC_ALL=C awk '{printf "%.0f", $1}')"
+        case "$CO2_G" in ''|*[!0-9]*) CO2_G="" ;; esac
+        if [ -n "$CO2_G" ]; then
+          { printf '%s\t%s\t%s\n' "$SL_NOW" "$CO2_G" "$TRANSCRIPT_PATH" > "${SL_CACHE}.tmp.$$" \
+              && mv -f "${SL_CACHE}.tmp.$$" "$SL_CACHE"; } 2>/dev/null || rm -f "${SL_CACHE}.tmp.$$" 2>/dev/null || true
+        fi
+      fi
     fi
   fi
 fi

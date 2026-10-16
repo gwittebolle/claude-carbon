@@ -14,6 +14,13 @@ same lines, byte for byte, on every session tested.
 A transcript cut mid-line with no final newline also lost the first line of the transcript
 read after it; only the cut line is lost now.
 
+### fix: the status line reads transcripts only for a session without a row
+
+The status line falls back to reading a session's transcripts when the database has
+nothing for it yet, on its first turn. It also did so for a session whose row it set
+aside (an excluded model, or no CO2 yet), at every refresh. It now shows that row's
+figure, and reads the transcripts only without a row, at most once every 10 seconds.
+
 ### fix: sessions rewritten by an older Stop hook get their workflow agents back
 
 The rescan compared each session that ran workflows once, then set a marker. A session
