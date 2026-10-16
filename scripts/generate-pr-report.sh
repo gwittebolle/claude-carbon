@@ -7,7 +7,8 @@
 # the developer runs it.
 # Usage: generate-pr-report.sh [--dry-run] [--pr <number>]
 #   --dry-run  print the comment body and post nothing (no gh needed)
-#   --pr N     target PR number (default: the PR of the current branch via gh)
+#   --pr N     report PR N: its own branch (read through gh), wherever the command runs
+#              (default: the current branch and its open PR)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,12 +51,26 @@ if ! TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"; then
   echo "Error: not inside a git repository." >&2
   exit 1
 fi
-# symbolic-ref rather than rev-parse: it resolves the branch name even before
-# the first commit, and returns nothing (not "HEAD") when detached.
-BRANCH="$(git symbolic-ref --short -q HEAD 2>/dev/null || echo "")"
-if [ -z "$BRANCH" ]; then
-  echo "Error: no current branch (detached HEAD?)." >&2
-  exit 1
+# With --pr, the PR's own head branch: run from main, the command once summed main's
+# sessions and posted them on the PR as if they were its footprint. Otherwise the
+# current branch: symbolic-ref rather than rev-parse resolves it even before the first
+# commit, and returns nothing (not "HEAD") when detached.
+if [ -n "$PR_NUMBER" ]; then
+  if ! command -v gh &>/dev/null; then
+    echo "Error: gh is required to read the branch of PR #${PR_NUMBER}." >&2
+    exit 1
+  fi
+  BRANCH="$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName' 2>/dev/null || true)"
+  if [ -z "$BRANCH" ]; then
+    echo "Error: could not read the branch of PR #${PR_NUMBER} (gh auth, or a PR of another repository?)." >&2
+    exit 1
+  fi
+else
+  BRANCH="$(git symbolic-ref --short -q HEAD 2>/dev/null || echo "")"
+  if [ -z "$BRANCH" ]; then
+    echo "Error: no current branch (detached HEAD?)." >&2
+    exit 1
+  fi
 fi
 # Project name = basename of the repo root, matching how the Stop hook derives
 # it from the session's last cwd (sessions that end in a subdirectory store the
@@ -92,7 +107,9 @@ $(sqlite3 "$DB_PATH" "SELECT COUNT(*), COALESCE(SUM(co2_grams), 0), COALESCE(SUM
 EOF
 
 if [ "$N_SESSIONS" = "0" ]; then
-  echo "No sessions recorded for branch '${BRANCH}' of project '${PROJECT}'."
+  echo "No sessions recorded for branch '${BRANCH}' of project '${PROJECT}': nothing posted."
+  echo "A session counts for the branch it ended on: work driven from a session on another"
+  echo "branch (agents in a worktree, for one) is recorded under that session's branch."
   echo "Sessions captured before the git_branch column (v1.4.0) carry no branch;"
   echo "run scripts/backfill.sh to repair them while their transcripts still exist."
   exit 0

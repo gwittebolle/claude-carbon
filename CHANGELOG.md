@@ -16,6 +16,15 @@ its transcripts are still on disk (Claude Code keeps them about 30 days); older 
 as they were. Rows of the legacy methodology (v1), a frozen series, are never touched.
 Reported by a user.
 
+### fix: /carbon-pr --pr reports that PR's own branch
+
+`--pr <number>` chose where to post, but the sessions summed were still those of the
+branch the command ran on: run from main, it would have posted main's footprint on the PR
+as its own. It now reads the PR's head branch through `gh` and sums that branch's
+sessions, wherever it runs; a PR it cannot read stops the command. When a branch has no
+session, it says nothing was posted and why work done by agents in a worktree, driven
+from a session on another branch, is not on it.
+
 ## 2026-10-15
 
 ### fix: /carbon-card no longer stalls Chrome on Windows
