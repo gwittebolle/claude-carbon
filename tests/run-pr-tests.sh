@@ -134,6 +134,29 @@ check "no sessions: exit code"       "0"   "$RC"
 check "no sessions: says so"         "yes" "$(echo "$OUT" | grep -q "No sessions recorded for branch 'feat/x'" && echo yes || echo no)"
 check "no sessions: backfill hint"   "yes" "$(echo "$OUT" | grep -q 'backfill.sh' && echo yes || echo no)"
 
+# ---------------------------------------------------------------- 4b. --pr reports the PR's branch
+# Run from another branch: a stub gh says PR 42's head is feat/x, so the report sums
+# feat/x, not the branch the command runs on.
+STUBS="${TMPROOT}/stubs"
+mkdir -p "$STUBS"
+cat > "${STUBS}/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  "pr view 42 --json headRefName --jq .headRefName") echo "feat/x" ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "${STUBS}/gh"
+git -C "$WORKDIR" checkout -q -b main-like 2>/dev/null
+OUT="$(cd "$WORKDIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$DB2" CLAUDE_CARBON_LOCALE=world bash "$PR_SCRIPT" --dry-run --pr 42)"
+check "--pr: the PR's branch, not the current one" "yes" "$(echo "$OUT" | grep -qF 'sessions on `feat/x`' && echo "$OUT" | grep -q '| 2 |' && echo yes || echo no)"
+ERR="$(cd "$WORKDIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$DB2" bash "$PR_SCRIPT" --dry-run --pr 7 2>&1)"
+RC=$?
+check "--pr: an unreadable PR stops, nothing posted" "1|yes" "$RC|$(echo "$ERR" | grep -q 'could not read the branch of PR #7' && echo yes || echo no)"
+OUT="$(cd "$WORKDIR" && CLAUDE_CARBON_DB="$DB3" bash "$PR_SCRIPT" --dry-run)"
+check "no sessions: nothing posted, worktree hint" "yes" "$(echo "$OUT" | grep -q 'nothing posted' && echo "$OUT" | grep -q 'worktree' && echo yes || echo no)"
+git -C "$WORKDIR" checkout -q feat/x 2>/dev/null
+
 # ---------------------------------------------------------------- 5. guards
 
 ERR="$(cd "$WORKDIR" && CLAUDE_CARBON_DB="${TMPROOT}/absent.db" bash "$PR_SCRIPT" --dry-run 2>&1)"
