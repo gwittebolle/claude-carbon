@@ -622,19 +622,31 @@ END {
 # reads it, fails the pass (exit 1), and the session keeps its previous row.
 #
 # jq runs in the session's folder and is given relative paths, in batches of at most
-# CC_JQ_ARGV_MAX bytes of arguments, program included: a session with hundreds of agents
-# passed every absolute path to one jq, and on Windows, where a program's command line
-# stops at 32,767 characters, jq did not start and the session stayed as it was. Relative
-# paths are also left as they are by MSYS, which converts /c/... arguments for jq.exe.
-# A batch that does not parse (a line cut by a concurrent write) is read again as raw
-# text, skipping the lines that are not JSON. Raw reading runs a file's last line, if it
-# has no newline, into the next file's first: the files around one with a line that did
-# not parse are read again alone, so only the cut line is lost.
+# CC_JQ_ARGV_MAX bytes of arguments, program included (see cc_usage_read).
+#
+# Cache (opt-in: CC_USAGE_CACHE_DIR, set by the Stop hook, the rescan and the status
+# line; CLAUDE_CARBON_NO_USAGE_CACHE=1 leaves it empty and unwritten). An agent's
+# transcript stops changing once the agent is done, so its file line (CC_JQ_FILE_USAGE)
+# is kept, keyed by its path relative to the session's folder, its size, its mtime and
+# its inode, all read by one stat before the files are read, and reused while they are
+# the same: the session's files are then read again only for the main transcript (never
+# kept: it grows) and the agents that changed. A stat that does not answer as expected
+# (a missing file, an unknown flavour) means no cache for that pass. A file jq could not
+# read is never kept. The cache file is rewritten only when an agent's entry changed, and
+# a cache that does not parse is ignored and rewritten from a full read. One file per
+# session, CC_USAGE_CACHE_VERSION in its name; the rescan removes those unused for 45
+# days. One JSON line per agent:
+#   {"p": path, "s": size, "m": mtime, "i": inode, "a": <its file line>}
+# Readers ignore the keys they do not know, so facts kept per agent for another use (the
+# worktree an agent worked in, say) can go under a key of their own, with a version of
+# their own, without touching "a".
 CC_JQ_ARGV_MAX=16000
+CC_USAGE_CACHE_VERSION=1
 cc_session_usage() {
   local factors="$1" prices="$2" main="$3" raw_out line tag model rest exre="" rows="" s_line="" f
-  local LC_ALL=C dir sid base mainrel budget size len i all="" part bad redo
-  local rels=() batch=()
+  local LC_ALL=C dir sid base mainrel cachefile="" stats="" joined="" kept="" hits="" misses=""
+  local fresh="" newlines="" changed=0 attempt
+  local agents=() toread=()
   shift 3
   [ -r "$main" ] || return 1
   case "$main" in */*) dir="${main%/*}" ;; *) dir="." ;; esac
@@ -642,66 +654,66 @@ cc_session_usage() {
   sid="${main##*/}"
   sid="${sid%.jsonl}"
   if [ -d "$dir/$sid" ]; then base="$dir/$sid"; mainrel="../$sid.jsonl"; else base="$dir"; mainrel="$sid.jsonl"; fi
-  rels=("$mainrel")
   for f in "$@"; do
     [ -r "$f" ] || continue
     case "$f" in
-      "$base"/*) rels+=("${f#"$base"/}") ;;
-      *) rels+=("$f") ;;
+      "$base"/*) agents+=("${f#"$base"/}") ;;
+      *) agents+=("$f") ;;
     esac
   done
-  # Bytes left for the paths, each with its terminating NUL, once the program and the other
-  # arguments are counted (LC_ALL=C: ${#} counts bytes)
-  budget=$((CC_JQ_ARGV_MAX - ${#CC_JQ_FILE_USAGE} - ${#mainrel} - 64))
-  i=0
-  size=0
-  batch=()
-  while [ "$i" -le "${#rels[@]}" ]; do
-    if [ "$i" -lt "${#rels[@]}" ]; then
-      len=$(( ${#rels[$i]} + 1 ))
-      if [ "${#batch[@]}" -eq 0 ] || [ $((size + len)) -le "$budget" ]; then
-        batch+=("${rels[$i]}")
-        size=$((size + len))
-        i=$((i + 1))
-        continue
-      fi
-    else
-      i=$((i + 1))
-    fi
-    # Read the batch: strict, then raw, then the files around a line that did not parse
-    part="$(cd "$base" && jq -n -c --arg main "$mainrel" --argjson raw false "$CC_JQ_FILE_USAGE" "${batch[@]}" 2>/dev/null)" \
-      || {
-        part="$(cd "$base" && jq -n -c -R --arg main "$mainrel" --argjson raw true "$CC_JQ_FILE_USAGE" "${batch[@]}" 2>/dev/null)" \
-          || return 1
-        part="${part//$'\r'/}"
-        bad="$(printf '%s\n' "$part" | jq -r 'select(.bad > 0) | .f' 2>/dev/null)" || return 1
-        bad="${bad//$'\r'/}"
-        if [ -n "$bad" ]; then
-          redo="$(cc_redo_neighbours "$base" "$bad" "${batch[@]}")"
-          while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            part="$(printf '%s\n' "$part" | grep -vF "{\"f\":\"${f}\"," || true)"
-            part="${part}
-$(cd "$base" && jq -n -c -R --arg main "$mainrel" --argjson raw true "$CC_JQ_FILE_USAGE" "$f" 2>/dev/null)" \
-              || return 1
-            part="${part//$'\r'/}"
-          done <<EOF
-$redo
+  if [ -n "${CC_USAGE_CACHE_DIR:-}" ] && [ "${CLAUDE_CARBON_NO_USAGE_CACHE:-0}" != "1" ] && [ "${#agents[@]}" -gt 0 ]; then
+    cachefile="${CC_USAGE_CACHE_DIR}/$(printf '%s__%s' "${dir##*/}" "$sid" | tr -c 'A-Za-z0-9._-' '_').v${CC_USAGE_CACHE_VERSION}.jsonl"
+    stats="$(cc_usage_stat "$base" "${agents[@]}")" || cachefile=""
+  fi
+  # Two attempts: with the cache, then, if what it gave does not merge, from a full read
+  for attempt in 1 2; do
+    toread=("$mainrel")
+    kept=""; hits=""; misses=""; changed=""
+    if [ -n "$cachefile" ]; then
+      joined="$({ printf '%s\n' "$stats"; printf '\t--cache--\n'
+                  if [ "$attempt" = "1" ] && [ -f "$cachefile" ]; then cat "$cachefile" 2>/dev/null || true; fi; } \
+        | awk "$CC_AWK_USAGE_CACHE")" || joined=""
+      while IFS= read -r line; do
+        case "$line" in
+          "K	"*) kept="${kept}${line#K	}
+" ;;
+          "A	"*) hits="${hits}${line#A	}
+" ;;
+          "M	"*) rest="${line#M	}"; toread+=("${rest%%	*}"); misses="${misses}${rest}
+" ;;
+          "C	"*) changed="${line#C	}" ;;
+        esac
+      done <<EOF
+$joined
 EOF
-        fi
-      }
-    all="${all}${part}
-"
-    batch=()
-    size=0
+      # No answer from the join: no cache for this pass
+      if [ -z "$changed" ]; then
+        cachefile=""; kept=""; hits=""; misses=""
+        toread=("$mainrel")
+      fi
+    fi
+    if [ -z "$cachefile" ]; then
+      toread+=(${agents[@]+"${agents[@]}"})
+    fi
+    fresh="$(cc_usage_read "$base" "$mainrel" "${toread[@]}")" || return 1
+    raw_out="$(printf '%s\n%s\n' "$hits" "$fresh" | jq -n -r --slurpfile f "$factors" --slurpfile p "$prices" \
+                 "${CC_JQ_MODEL_DEFS}${CC_JQ_MERGE_USAGE}" 2>/dev/null)" || raw_out=""
+    # jq.exe ends its lines in CRLF, and MSYS bash only drops the CR of the last one: the
+    # others reached the exclusion patterns (X) and the session's last timestamp (S), which
+    # backfill stored with a CR as the end of a session it added
+    raw_out="${raw_out//$'\r'/}"
+    [ -n "$raw_out" ] && break
+    # Nothing merges without the cache: the transcripts themselves are the trouble
+    [ -n "$hits" ] || return 1
   done
-  raw_out="$(printf '%s' "$all" | jq -n -r --slurpfile f "$factors" --slurpfile p "$prices" \
-               "${CC_JQ_MODEL_DEFS}${CC_JQ_MERGE_USAGE}" 2>/dev/null)" || return 1
-  # jq.exe ends its lines in CRLF, and MSYS bash only drops the CR of the last one: the
-  # others reached the exclusion patterns (X) and the session's last timestamp (S), which
-  # backfill stored with a CR as the end of a session it added
-  raw_out="${raw_out//$'\r'/}"
   [ -n "$raw_out" ] || return 1
+  # The agents read this time, with their stat, join the entries kept
+  if [ -n "$cachefile" ] && { [ "$changed" != "0" ] || [ "$attempt" = "2" ]; }; then
+    newlines="$({ printf '%s' "$misses"; printf '\t--fresh--\n'; printf '%s\n' "$fresh"; } | awk "$CC_AWK_USAGE_ENTRIES")" || newlines=""
+    mkdir -p "$CC_USAGE_CACHE_DIR" 2>/dev/null || true
+    { printf '%s%s' "$kept" "$newlines" > "${cachefile}.tmp.$$" && mv -f "${cachefile}.tmp.$$" "$cachefile"; } 2>/dev/null \
+      || rm -f "${cachefile}.tmp.$$" 2>/dev/null || true
+  fi
   # Exclusion is decided in bash, with grep -E as it always was: user patterns are ERE.
   while IFS= read -r line; do
     tag="${line%%	*}"
@@ -726,6 +738,163 @@ EOF
   printf '%s\n' "$s_line"
   printf '%s' "$rows" | LC_ALL=C awk "$CC_AWK_PRICE"
 }
+
+# cc_usage_read <base> <main, relative> <file…>: the file lines (CC_JQ_FILE_USAGE) of the
+# files, read from <base> in batches of at most CC_JQ_ARGV_MAX bytes of arguments: a
+# session with hundreds of agents passed every absolute path to one jq, and on Windows,
+# where a program's command line stops at 32,767 characters, jq did not start and the
+# session stayed as it was. Relative paths are also left as they are by MSYS, which
+# converts /c/... arguments for jq.exe. A batch that does not parse (a line cut by a
+# concurrent write) is read again as raw text, skipping the lines that are not JSON. Raw
+# reading runs a file's last line, if it has no newline, into the next file's first: the
+# files around one with a line that did not parse are read again alone, so only the cut
+# line is lost. Fails when a batch cannot be read at all.
+cc_usage_read() {
+  local base="$1" mainrel="$2" LC_ALL=C budget size len i part bad redo f all=""
+  local rels=() batch=()
+  shift 2
+  rels=("$@")
+  # Bytes left for the paths, each with its terminating NUL, once the program and the other
+  # arguments are counted (LC_ALL=C: ${#} counts bytes)
+  budget=$((CC_JQ_ARGV_MAX - ${#CC_JQ_FILE_USAGE} - ${#mainrel} - 64))
+  i=0
+  size=0
+  while [ "$i" -le "${#rels[@]}" ]; do
+    if [ "$i" -lt "${#rels[@]}" ]; then
+      len=$(( ${#rels[$i]} + 1 ))
+      if [ "${#batch[@]}" -eq 0 ] || [ $((size + len)) -le "$budget" ]; then
+        batch+=("${rels[$i]}")
+        size=$((size + len))
+        i=$((i + 1))
+        continue
+      fi
+    else
+      i=$((i + 1))
+    fi
+    [ "${#batch[@]}" -gt 0 ] || continue
+    # Read the batch: strict, then raw, then the files around a line that did not parse
+    part="$(cd "$base" && jq -n -c --arg main "$mainrel" --argjson raw false "$CC_JQ_FILE_USAGE" "${batch[@]}" 2>/dev/null)" \
+      || {
+        part="$(cd "$base" && jq -n -c -R --arg main "$mainrel" --argjson raw true "$CC_JQ_FILE_USAGE" "${batch[@]}" 2>/dev/null)" \
+          || return 1
+        part="${part//$'\r'/}"
+        bad="$(printf '%s\n' "$part" | jq -r 'select(.bad > 0) | .f' 2>/dev/null)" || return 1
+        bad="${bad//$'\r'/}"
+        if [ -n "$bad" ]; then
+          redo="$(cc_redo_neighbours "$base" "$bad" "${batch[@]}")"
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            part="$(printf '%s\n' "$part" | grep -vF "{\"f\":\"${f}\"," || true)"
+            part="${part}
+$(cd "$base" && jq -n -c -R --arg main "$mainrel" --argjson raw true "$CC_JQ_FILE_USAGE" "$f" 2>/dev/null)" \
+              || return 1
+          done <<EOF
+$redo
+EOF
+        fi
+      }
+    all="${all}${part//$'\r'/}
+"
+    batch=()
+    size=0
+  done
+  printf '%s' "$all"
+}
+
+# cc_usage_stat <base> <file…>: one line per file, "size<TAB>mtime<TAB>inode<TAB>path",
+# from one stat run in <base>, GNU flavour first, then BSD. Fails, printing nothing,
+# unless every file gets plain numbers, an mtime above 0 and its own path back: no cache
+# then for that pass.
+cc_usage_stat() {
+  local base="$1" out
+  shift
+  out="$(cd "$base" && stat -c '%s %Y %i %n' "$@" 2>/dev/null)" || out=""
+  if ! cc_usage_stat_check "$out" "$@"; then
+    out="$(cd "$base" && stat -f '%z %m %i %N' "$@" 2>/dev/null)" || out=""
+    cc_usage_stat_check "$out" "$@" || return 1
+  fi
+}
+
+# cc_usage_stat_check <stat output> <file…>: prints the checked lines (see cc_usage_stat)
+cc_usage_stat_check() {
+  local out="$1"
+  shift
+  [ -n "$out" ] || return 1
+  { printf '%s\n' "$@"; printf '\t--stat--\n'; printf '%s\n' "$out"; } | awk '
+    { sub(/\r$/, "") }
+    $0 == "\t--stat--" { s = 1; next }
+    !s { want[++w] = $0; next }
+    {
+      k++
+      name = $0; sub(/^[^ ]+ [^ ]+ [^ ]+ /, "", name)
+      if ($1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/ || $2 + 0 <= 0 || name != want[k]) bad = 1
+      line[k] = $1 "\t" $2 "\t" $3 "\t" name
+    }
+    END { if (bad || k != w || w == 0) exit 1; for (j = 1; j <= k; j++) print line[j] }'
+}
+
+# CC_AWK_USAGE_CACHE: the stat lines, a "\t--cache--" line, then the cache file. Prints
+#   K <entry>   an entry whose file did not change, kept
+#   A <file line>   its file line, for the merge
+#   M <path> <size> <mtime> <inode>   a file to read (new, changed, or its entry unusable)
+#   C <n>   entries changed: files to read, and entries of files gone
+# An entry that does not have the expected shape is ignored, its file read again.
+CC_AWK_USAGE_CACHE='
+BEGIN { FS = "\t" }
+{ sub(/\r$/, "") }
+$0 == "\t--cache--" { c = 1; next }
+!c { n++; path[n] = $4; sz[n] = $1; mt[n] = $2; ino[n] = $3; at[$4] = n; next }
+{
+  line = $0; pre = "{\"p\":\""
+  if (index(line, pre) != 1) next
+  r = substr(line, length(pre) + 1)
+  i = index(r, "\",\"s\":"); if (!i) next
+  p = substr(r, 1, i - 1); r = substr(r, i + 6)
+  i = index(r, ",\"m\":"); if (!i) next
+  s = substr(r, 1, i - 1); r = substr(r, i + 5)
+  i = index(r, ",\"i\":"); if (!i) next
+  m = substr(r, 1, i - 1); r = substr(r, i + 5)
+  i = index(r, ",\"a\":{"); if (!i) next
+  o = substr(r, 1, i - 1); a = substr(r, i + 5)
+  if (s !~ /^[0-9]+$/ || m !~ /^[0-9]+$/ || o !~ /^[0-9]+$/ || substr(a, length(a) - 1) != "}}") next
+  a = substr(a, 1, length(a) - 1)
+  if (!(p in at)) { gone++; next }
+  k = at[p]
+  if (seen[k] || s != sz[k] || m != mt[k] || o != ino[k]) next
+  seen[k] = 1; keep[k] = line; agg[k] = a
+}
+END {
+  for (k = 1; k <= n; k++) {
+    if (seen[k]) { print "K\t" keep[k]; print "A\t" agg[k] }
+    else { print "M\t" path[k] "\t" sz[k] "\t" mt[k] "\t" ino[k]; changed++ }
+  }
+  print "C\t" (changed + gone)
+}'
+
+# CC_AWK_USAGE_ENTRIES: the files read ("path<TAB>size<TAB>mtime<TAB>inode" lines), a
+# "\t--fresh--" line, then the file lines jq gave: one cache entry per file read. A file
+# with no line (no message in it) is kept with no model; a path that JSON would have to
+# escape is not kept.
+CC_AWK_USAGE_ENTRIES='
+BEGIN { FS = "\t" }
+{ sub(/\r$/, "") }
+$0 == "\t--fresh--" { f = 1; next }
+!f { if ($1 != "") { n++; path[n] = $1; sz[$1] = $2; mt[$1] = $3; ino[$1] = $4 } next }
+{
+  pre = "{\"f\":\""
+  if (index($0, pre) != 1) next
+  r = substr($0, length(pre) + 1); i = index(r, "\""); if (!i) next
+  p = substr(r, 1, i - 1)
+  if (p in sz) agg[p] = $0
+}
+END {
+  for (k = 1; k <= n; k++) {
+    p = path[k]
+    if (p ~ /["\\]/) continue
+    a = (p in agg) ? agg[p] : "{\"f\":\"" p "\",\"m\":[]}"
+    print "{\"p\":\"" p "\",\"s\":" sz[p] ",\"m\":" mt[p] ",\"i\":" ino[p] ",\"a\":" a "}"
+  }
+}'
 
 # cc_redo_neighbours <base> <files, one per line> <batch…>: those files and the ones just
 # before and after each in the batch, once each, one per line (see cc_session_usage). An

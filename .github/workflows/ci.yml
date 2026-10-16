@@ -127,6 +127,11 @@ jobs:
       - name: Assert tokens per model and the session invariant
         run: bash tests/run-per-model-tests.sh
 
+      # The per-agent usage cache: same lines without it, cold and warm; stale and broken
+      # caches; concurrent Stop hooks; purge. Throwaway CLAUDE_CONFIG_DIR.
+      - name: Usage cache
+        run: bash tests/run-usage-cache-tests.sh
+
   portability:
     name: portability contract
     runs-on: ubuntu-latest
@@ -201,6 +206,10 @@ jobs:
       - name: Per-model split
         if: always()
         run: /bin/bash tests/run-per-model-tests.sh
+
+      - name: Usage cache
+        if: always()
+        run: /bin/bash tests/run-usage-cache-tests.sh
 
       - name: Session history export
         if: always()
@@ -304,6 +313,10 @@ jobs:
       - name: Per-model split
         if: always()
         run: bash tests/run-per-model-tests.sh
+
+      - name: Usage cache
+        if: always()
+        run: bash tests/run-usage-cache-tests.sh
 
       - name: Session history export
         if: always()

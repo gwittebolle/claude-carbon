@@ -369,7 +369,7 @@ sqlite3 "$SL_DB" "INSERT INTO sessions (session_id, project, model, co2_grams, c
 # A 200k context window on Opus factors is ~16 g; the stored session total is 26.3 kg.
 sl_co2() {
   printf '{"session_id":"%s","model":{"id":"%s","display_name":"M"},"context_window":{"total_input_tokens":200000,"total_output_tokens":0,"used_percentage":20},"cost":{"total_cost_usd":1342.13},"workspace":{"current_dir":"/tmp/p"}}' "$1" "${2:-claude-opus-5}" \
-    | TMPDIR="$TMPROOT" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+    | TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
 }
 
 check "statusline: cumulative total from the DB, not the context window" "26.3kgCO₂" "$(sl_co2 sess-known)"
@@ -384,7 +384,7 @@ SL_TRANSCRIPT="${TMPROOT}/statusline/sess-first.jsonl"
 printf '%s\n' '{"type":"assistant","requestId":"r1","timestamp":"2026-10-13T13:53:55Z","message":{"id":"m1","model":"claude-opus-5-5","usage":{"input_tokens":2,"cache_creation_input_tokens":50784,"cache_creation":{"ephemeral_1h_input_tokens":50784},"cache_read_input_tokens":29416,"output_tokens":113}}}' > "$SL_TRANSCRIPT"
 sl_first() {
   printf '{"session_id":"sess-first","transcript_path":"%s","model":{"id":"claude-opus-5-5","display_name":"M"},"context_window":{"total_input_tokens":80202,"total_output_tokens":113,"used_percentage":8},"cost":{"total_cost_usd":0.41},"workspace":{"current_dir":"/tmp/p"}}' "$1" \
-    | TMPDIR="$TMPROOT" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+    | TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
 }
 check "statusline: first turn takes the transcript, as the Stop hook will" "4gCO₂" "$(sl_first "$SL_TRANSCRIPT")"
 check "statusline: first turn, transcript gone, falls back to the window"  "6gCO₂" "$(sl_first "${TMPROOT}/statusline/none.jsonl")"
@@ -397,7 +397,7 @@ printf '#!/usr/bin/env bash\ncase "$*" in *"--arg main"*) echo x >> "%s" ;; esac
 chmod +x "${SL_SHIM}/jq"
 sl_tx() {
   printf '{"session_id":"%s","transcript_path":"%s","model":{"id":"claude-opus-5-5","display_name":"M"},"context_window":{"total_input_tokens":80202,"total_output_tokens":113,"used_percentage":8},"cost":{"total_cost_usd":0.41},"workspace":{"current_dir":"/tmp/p"}}' "$1" "$2" \
-    | PATH="${SL_SHIM}:$PATH" TMPDIR="$TMPROOT" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+    | PATH="${SL_SHIM}:$PATH" TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
 }
 passes() { wc -l < "${TMPROOT}/statusline/passes" | tr -d ' '; }
 SL_X="sess-excluded-claude-$$"
