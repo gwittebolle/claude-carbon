@@ -16,11 +16,13 @@ Also in the rescan:
 
 - a session is counted as repaired once its row is written; a write that fails leaves the
   row for the next rescan;
-- a rewritten row ends when its last transcript was written, agents included, and a row
-  written from all its transcripts is not parsed again for the cache-write or context
-  repairs, so an unchanged session is not parsed at every rescan;
-- a row is rewritten only if it holds no more tokens than the transcripts now give: a
-  Stop hook may have recorded more in the meantime;
+- a row is rewritten only if no Stop hook recorded it while the rescan read its
+  transcripts, and if it holds no more tokens than they now give: a turn recorded in the
+  meantime, even by an older hook, is never overwritten, and lands on the next rescan;
+- a rewritten row ends when its transcripts were last written, agents included. A row
+  written from all its transcripts is no longer parsed again for the cache-write or
+  context repairs, nor a row without tokens, nor one whose agent last wrote a line
+  without usage;
 - an agent transcript that cannot be read, or that disappears during the rescan, is left
   out instead of failing the whole session.
 

@@ -14,7 +14,12 @@
 #   8. an agent transcript that cannot be read does not cost the session;
 #   9. all of it holds when sqlite3 ends its lines in CRLF (an older sqlite3.exe);
 #  10. a row holding more tokens than its transcripts now give is left as it is, its
-#      child rows too, and only its end moves, so the next rescan does not parse it.
+#      child rows too, and only its end moves, so the next rescan does not parse it;
+#  11. an older Stop hook recording one more turn while the rescan parses is not
+#      overwritten by that parse, nor its child rows by the split pass; both land on the
+#      next rescan;
+#  12. a stamped row whose agent wrote a line without usage after it ended, and a row
+#      with no tokens and no child rows, are parsed once, not at every rescan.
 #
 # Throwaway dirs only (CLAUDE_CONFIG_DIR, CLAUDE_CARBON_DB); the real ~/.claude is never
 # read or written. bash 3.2 compatible.
@@ -270,6 +275,91 @@ check "guard: the end moved forward" "yes" "$(q "SELECT CASE WHEN ended_at > '20
 : > "${TMPROOT}/jq-calls"
 PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "guard: no parse on the next rescan" "0" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')"
+
+# ---------------------------------------------------------------- 11. an older Stop hook mid-rescan
+# race_shim <dir> <tool> <match>: <tool> on PATH that, the first time its arguments match,
+# runs ${TMPROOT}/race.sh (one more turn, recorded by an older Stop hook): after the parse
+# for jq, before the transaction for sqlite3
+race_shim() {
+  mkdir -p "$1"
+  local real
+  real="$(command -v "$2")"
+  if [ "$2" = "jq" ]; then
+    cat > "$1/jq" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+  $3) if [ ! -e "${TMPROOT}/race-done" ]; then
+        out="\$("${real}" "\$@")"; rc=\$?
+        : > "${TMPROOT}/race-done"; bash "${TMPROOT}/race.sh"
+        printf '%s\\n' "\$out"; exit \$rc
+      fi ;;
+esac
+exec "${real}" "\$@"
+EOF
+  else
+    cat > "$1/$2" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+  $3) if [ ! -e "${TMPROOT}/race-done" ]; then : > "${TMPROOT}/race-done"; bash "${TMPROOT}/race.sh"; fi ;;
+esac
+exec "${real}" "\$@"
+EOF
+  fi
+  chmod +x "$1/$2"
+}
+# race_script <sid>: the turn (5000 in, 200 out) appended to the transcript, then the row
+# as the older hook writes it from the main transcript alone: 6000|0|300, a new end
+race_script() {
+  cat > "${TMPROOT}/race.sh" <<EOF
+printf '%s\\n' '{"type":"assistant","requestId":"r2","timestamp":"2026-10-15T10:05:00Z","message":{"id":"m2","model":"claude-sonnet-5-5","usage":{"input_tokens":5000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":200}}}' >> "${PROJ}/$1.jsonl"
+"$(command -v sqlite3)" "$DB" "DELETE FROM session_models WHERE session_id='$1'; INSERT INTO session_models (session_id, model, input_tokens, output_tokens) VALUES ('$1', 'claude-sonnet-5-5', 6000, 300); INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('$1', 'wfproj', 'claude-sonnet-5-5', 6000, 300, 0, 0, 0.02, 0.4818, '2026-10-15T10:00:00Z', '2099-01-01T00:00:00Z', 'live', 2, 0, '');"
+EOF
+}
+children() { q "SELECT SUM(input_tokens)||'|'||SUM(cache_read_tokens)||'|'||SUM(output_tokens) FROM session_models WHERE session_id='$1';"; }
+MORE="16000|100000|1300"
+# The workflow pass parses (agent included) while the turn is recorded without it
+S12="11111111-aaaa-bbbb-cccc-000000000012"
+make_session "$S12" yes
+old_writer "$S12" 1000 100
+race_script "$S12"
+race_shim "${TMPROOT}/race-jq" jq "*--slurpfile*"
+PATH="${TMPROOT}/race-jq:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "mid-rescan turn: the parse does not overwrite it" "6000|0|300|0" "$(tokens "$S12")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S12}';")"
+CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "mid-rescan turn: the next rescan has both" "$MORE|2" "$(tokens "$S12")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S12}';")"
+# The split pass: a row with no child rows, the turn recorded just before its transaction
+rm -f "${TMPROOT}/race-done"
+S13="11111111-aaaa-bbbb-cccc-000000000013"
+make_session "$S13" yes
+payload "$S13" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+q "DELETE FROM session_models WHERE session_id='${S13}'; UPDATE sessions SET agents_collected = 0 WHERE session_id='${S13}';"
+race_script "$S13"
+race_shim "${TMPROOT}/race-sql" sqlite3 "*BEGIN\ IMMEDIATE*output_context_sum\ =*"
+PATH="${TMPROOT}/race-sql:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "split race: the row keeps its own child rows" "6000|0|300|6000|0|300|0" "$(tokens "$S13")|$(children "$S13")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S13}';")"
+CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "split race: the next rescan has both" "$MORE|$MORE|2" "$(tokens "$S13")|$(children "$S13")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S13}';")"
+
+# ---------------------------------------------------------------- 12. parsed once
+# An agent's last line, without usage, written 2 minutes after the stamped row ended
+S14="11111111-aaaa-bbbb-cccc-000000000014"
+make_session "$S14" yes
+payload "$S14" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+q "UPDATE sessions SET ended_at = '2026-10-15T08:00:00Z' WHERE session_id='${S14}';"
+touch -t 202610150900 "${PROJ}/${S14}.jsonl"
+A14="${PROJ}/${S14}/subagents/workflows/wf_abc123-def/agent-a1b2c3.jsonl"
+echo '{"type":"user","isSidechain":true,"timestamp":"2026-10-15T10:02:00Z","message":{"role":"user","content":"done"}}' >> "$A14"
+touch -t 202610151002 "$A14"
+# A row with no tokens and no child rows, its transcript without usage
+S15="11111111-aaaa-bbbb-cccc-000000000015"
+echo '{"type":"user","cwd":"/tmp/wfproj","timestamp":"2026-10-15T10:00:00Z","message":{"role":"user","content":"go"}}' > "${PROJ}/${S15}.jsonl"
+q "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd, co2_grams, started_at, ended_at, source, methodology_version) VALUES ('${S15}', 'wfproj', 'claude-sonnet-5-5', 0, 0, 0, 0, 0, 0, '2026-10-15T10:00:00Z', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'live', 2);"
+: > "${TMPROOT}/jq-calls"
+PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "parsed once: this rescan reads both" "2" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')"
+: > "${TMPROOT}/jq-calls"
+PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "parsed once: not the next" "0|$WITH|2" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')|$(tokens "$S14")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S15}';")"
 
 echo
 echo "$PASSED passed, $FAILED failed"

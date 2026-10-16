@@ -75,11 +75,22 @@ session_usage() {
 # TOKENS_SQL: what a row holds, for the comparisons with a parse (input + cache read + output)
 TOKENS_SQL="COALESCE(input_tokens, 0) + COALESCE(cache_read_tokens, 0) + COALESCE(output_tokens, 0)"
 
+# take_end: END_EPOCH, the last time the current session's transcripts (main and agents)
+# were written, read once per session and always before they are parsed: content written
+# after it is newer than the end a rewritten row takes, so the next rescan sees it.
+take_end() {
+  if [ -z "$END_EPOCH" ]; then
+    cc_collect_subagents "$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents"
+    END_EPOCH="$(cc_max_mtime "$JSONL_FILE" ${CC_SUB_FILES[@]+"${CC_SUB_FILES[@]}"})"
+  fi
+}
+
 # parse_once: parse the current session (JSONL_FILE, SESSION_ID) the first time a repair
 # pass needs it, then reuse the result. Exit 0 when the transcript yielded something.
 parse_once() {
   if [ "$PARSED" = "0" ]; then
     PARSED=1
+    take_end
     USAGE="$(session_usage "$JSONL_FILE" "$SESSION_ID" 2>/dev/null)" || USAGE=""
     cc_parse_usage "$USAGE"
   fi
@@ -106,9 +117,18 @@ while IFS= read -r JSONL_FILE; do
 
   # Skip if already in DB (SESSION_ID is a validated UUID, safe for SQL)
   # A database busy past the timeout skips the session this time; nothing is stamped, so
-  # the next rescan looks at it again
-  EXISTS="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
-  case "$EXISTS" in ''|*[!0-9]*) ERRORS=$((ERRORS + 1)); continue ;; esac
+  # the next rescan looks at it again. The row's end and token total are read here, before
+  # any parse: a pass writes only if the row still has both when it writes (every Stop
+  # hook sets the end to its own time), so a turn an older Stop hook records meanwhile is
+  # never overwritten by a parse that did not see it.
+  ROW_SNAP="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COUNT(*) || '|' || COALESCE(MAX(ended_at), '') || '|' || COALESCE(MAX(${TOKENS_SQL}), 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
+  EXISTS="${ROW_SNAP%%|*}"
+  ROW_END="${ROW_SNAP#*|}"; ROW_END="${ROW_END%|*}"
+  ROW_TOKENS="${ROW_SNAP##*|}"
+  case "$EXISTS$ROW_TOKENS" in ''|*[!0-9]*) ERRORS=$((ERRORS + 1)); continue ;; esac
+  ROW_END="${ROW_END//$CC_SQ/$CC_SQ$CC_SQ}"
+  UNCHANGED="COALESCE(ended_at, '') = '${ROW_END}' AND (${TOKENS_SQL}) = ${ROW_TOKENS}"
+  END_EPOCH=""
   # Refresh check: a row whose transcript was written well after its ended_at is missing
   # the session's tail (a turn interrupted before the Stop hook, then a crash, a kill, or a
   # window closed without SessionEnd running). Such a row is re-aggregated below instead of
@@ -154,10 +174,12 @@ while IFS= read -r JSONL_FILE; do
           if [ "$((CC_U_IN + CC_U_CR + CC_U_OUT))" -gt "$WF_ROW" ] 2>/dev/null; then
             STALE=1
             WF_TRIGGER=1
-          elif [ "$WF_SEEN" -lt "$CC_AGENTS_COLLECTED" ]; then
-            # Nothing missing: stamped, unless the row changed since it was read, or still
-            # lacks a column the repair passes below fill (they skip stamped rows)
-            sqlite3 -cmd ".timeout 5000" "$DB_PATH" "UPDATE sessions SET agents_collected = ${CC_AGENTS_COLLECTED} WHERE session_id='${SESSION_ID}' AND COALESCE(agents_collected, 0) < ${CC_AGENTS_COLLECTED} AND (${TOKENS_SQL}) = ${WF_ROW} AND NOT (COALESCE(cache_creation_1h_tokens, 0) = 0 AND COALESCE(cache_creation_tokens, 0) > 0) AND NOT (COALESCE(output_context_sum, 0) = 0 AND COALESCE(output_tokens, 0) > 0) AND EXISTS (SELECT 1 FROM session_models m WHERE m.session_id = sessions.session_id);" >/dev/null 2>&1 || true
+          else
+            # Nothing missing. The row takes the end of what was parsed, so an agent's last
+            # write without usage does not bring it back at every rescan, and is stamped
+            # unless it still lacks a column the repair passes below fill (they skip stamped
+            # rows); both only if the row did not change since it was read.
+            sqlite3 -cmd ".timeout 5000" "$DB_PATH" "UPDATE sessions SET ended_at = MAX(COALESCE(ended_at, ''), strftime('%Y-%m-%dT%H:%M:%SZ', ${END_EPOCH:-0}, 'unixepoch')), agents_collected = CASE WHEN NOT (COALESCE(cache_creation_1h_tokens, 0) = 0 AND COALESCE(cache_creation_tokens, 0) > 0) AND NOT (COALESCE(output_context_sum, 0) = 0 AND COALESCE(output_tokens, 0) > 0) AND EXISTS (SELECT 1 FROM session_models m WHERE m.session_id = sessions.session_id) THEN ${CC_AGENTS_COLLECTED} ELSE agents_collected END WHERE session_id='${SESSION_ID}' AND ${UNCHANGED};" >/dev/null 2>&1 || true
           fi
         fi
       fi
@@ -183,24 +205,36 @@ while IFS= read -r JSONL_FILE; do
     # are left as stored; co2_grams and cost_usd become the per-model sum; the 1-hour
     # cache-write subset and output_context_sum are refilled from the same parse, which
     # covers the two repair passes below.
-    SPLIT_MISSING="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COUNT(*) FROM sessions s WHERE s.session_id='${SESSION_ID}' AND COALESCE(s.methodology_version, 1) >= 2 AND NOT EXISTS (SELECT 1 FROM session_models m WHERE m.session_id = s.session_id);" 2>/dev/null || echo 0)"
+    # A stamped row was written from all its transcripts: its child rows are complete,
+    # none for a session without usage. Child rows and the row change only if the row
+    # still holds what was compared with the parse, and has not been rewritten since it
+    # was read (a Stop hook in between would leave its tokens over these child rows).
+    SPLIT_MISSING="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COUNT(*) FROM sessions s WHERE s.session_id='${SESSION_ID}' AND COALESCE(s.methodology_version, 1) >= 2 AND COALESCE(s.agents_collected, 0) < ${CC_AGENTS_COLLECTED} AND NOT EXISTS (SELECT 1 FROM session_models m WHERE m.session_id = s.session_id);" 2>/dev/null || echo 0)"
     if [ "$SPLIT_MISSING" = "1" ] && parse_once; then
       STORED="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COALESCE(input_tokens, 0) || '|' || COALESCE(cache_creation_tokens, 0) || '|' || COALESCE(cache_read_tokens, 0) || '|' || COALESCE(output_tokens, 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null || echo "")"
-      case "$USAGE" in
-        *"
+      if [ "$STORED" = "${CC_U_IN}|${CC_U_CW}|${CC_U_CR}|${CC_U_OUT}" ]; then
+        SAME="COALESCE(input_tokens, 0) = ${CC_U_IN} AND COALESCE(cache_creation_tokens, 0) = ${CC_U_CW} AND COALESCE(cache_read_tokens, 0) = ${CC_U_CR} AND COALESCE(output_tokens, 0) = ${CC_U_OUT} AND COALESCE(ended_at, '') = '${ROW_END}'"
+        case "$USAGE" in
+          *"
 R	"*)
-          if [ "$STORED" = "${CC_U_IN}|${CC_U_CW}|${CC_U_CR}|${CC_U_OUT}" ]; then
-            if sqlite3 -cmd ".timeout 5000" "$DB_PATH" "BEGIN IMMEDIATE;
-$(cc_session_models_sql "$SESSION_ID" "$USAGE")
-UPDATE sessions SET cache_creation_1h_tokens = ${CC_U_CW1H}, output_context_sum = ${CC_U_OCTX}, co2_grams = ${CC_U_CO2}, cost_usd = ${CC_U_COST}, agents_collected = ${CC_AGENTS_COLLECTED} WHERE session_id='${SESSION_ID}';
-COMMIT;" >/dev/null 2>&1; then
+            SPLIT_DONE="$(cc_sql -bail -cmd ".timeout 5000" "$DB_PATH" "BEGIN IMMEDIATE;
+$(cc_session_models_sql "$SESSION_ID" "$USAGE" "(SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}' AND ${SAME}) = 1")
+UPDATE sessions SET cache_creation_1h_tokens = ${CC_U_CW1H}, output_context_sum = ${CC_U_OCTX}, co2_grams = ${CC_U_CO2}, cost_usd = ${CC_U_COST}, agents_collected = ${CC_AGENTS_COLLECTED} WHERE session_id='${SESSION_ID}' AND ${SAME};
+SELECT changes();
+COMMIT;" 2>/dev/null || echo "")"
+            if [ "$SPLIT_DONE" = "1" ]; then
               SPLIT=$((SPLIT + 1))
               SKIPPED=$((SKIPPED + 1))
               continue
             fi
-          fi
-          ;;
-      esac
+            ;;
+          *)
+            # No usage in the transcripts, none in the row (0 tokens): nothing to split,
+            # stamped so the session is not parsed again at every rescan
+            [ "$STORED" = "0|0|0|0" ] && sqlite3 -cmd ".timeout 5000" "$DB_PATH" "UPDATE sessions SET agents_collected = ${CC_AGENTS_COLLECTED} WHERE session_id='${SESSION_ID}' AND ${SAME};" >/dev/null 2>&1
+            ;;
+        esac
+      fi
     fi
 
     # Repair pass: rows captured before the cache-write TTL split existed carry
@@ -254,6 +288,7 @@ COMMIT;" >/dev/null 2>&1; then
   # /carbon-pr), its first timestamp, and the last timestamp across all files.
   # Already parsed by the workflow pass: its result stands
   if [ "$PARSED" != "1" ] || [ -z "$USAGE" ]; then
+    [ "$EXISTS" -gt 0 ] && take_end
     USAGE="$(session_usage "$JSONL_FILE" "$SESSION_ID")" || { ERRORS=$((ERRORS + 1)); continue; }
   fi
   cc_parse_usage "$USAGE"
@@ -283,30 +318,35 @@ COMMIT;" >/dev/null 2>&1; then
   GIT_BRANCH="${GIT_BRANCH//$CC_SQ/$CC_SQ$CC_SQ}"
 
   # Refresh a stale row. It keeps when it started and which path first recorded it, and
-  # ends when its transcripts were last written (the main one or any agent's): that is
-  # also what the refresh and workflow checks compare against, so the same session is not
-  # parsed again on the next rescan. The whole write, stamp included, holds only if the row
-  # has no more tokens than this parse. A statement that fails (a lock held past the
-  # timeout, for one) stops sqlite3, which exits with the transaction open, so nothing is
-  # written; -bail keeps that true should the SQL ever come through stdin. A row left as it
-  # is still takes the new end, so a transcript that now yields less is not parsed at
-  # every rescan.
+  # ends when its transcripts were last written (the main one or any agent's, read before
+  # the parse): that is also what the refresh and workflow checks compare against, so the
+  # same session is not parsed again on the next rescan. Nothing is written if the row
+  # changed since it was read (UNCHANGED): a Stop hook recorded it meanwhile, and an older
+  # one left it unstamped for the next rescan. A row holding more tokens than this parse
+  # (a Stop hook saw more of the session) is kept, and only takes the new end, so a
+  # transcript that now yields less is not parsed at every rescan. A statement that fails
+  # (a lock held past the timeout, for one) stops sqlite3, which exits with the transaction
+  # open, so nothing is written; -bail keeps that true should the SQL ever come through
+  # stdin.
   if [ "$EXISTS" -gt 0 ]; then
-    cc_collect_subagents "$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents"
-    END_EPOCH="$(cc_max_mtime "$JSONL_FILE" ${CC_SUB_FILES[@]+"${CC_SUB_FILES[@]}"})"
+    take_end
     # Without a modification time (stat unusable), the last timestamp in the transcripts
     if [ "$END_EPOCH" -gt 0 ] 2>/dev/null; then
       LAST_TS="$(cc_sql :memory: "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ${END_EPOCH}, 'unixepoch');" 2>/dev/null)" || LAST_TS="$CC_U_LAST_TS"
     else
       LAST_TS="$CC_U_LAST_TS"
     fi
-    NO_MORE="(SELECT ${TOKENS_SQL} FROM sessions WHERE session_id='${SESSION_ID}') <= ${NEW_TOKENS}"
-    WROTE="$(cc_sql -bail -cmd ".timeout 5000" "$DB_PATH" "BEGIN IMMEDIATE;
-UPDATE sessions SET ended_at = MAX(COALESCE(ended_at, ''), '${LAST_TS}') WHERE session_id='${SESSION_ID}' AND NOT (${NO_MORE});
-$(cc_session_models_sql "$SESSION_ID" "$USAGE" "$NO_MORE")
-INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch, agents_collected) SELECT '${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${CC_U_IN}, ${CC_U_OUT}, ${CC_U_CR}, ${CC_U_CW}, ${CC_U_CW1H}, ${CC_U_OCTX}, ${CC_U_COST}, ${CC_U_CO2}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${FIRST_TS}'), '${LAST_TS}', COALESCE((SELECT source FROM sessions WHERE session_id='${SESSION_ID}'), 'backfill'), ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}', ${CC_AGENTS_COLLECTED} WHERE ${NO_MORE};
+    if [ "$ROW_TOKENS" -le "$NEW_TOKENS" ]; then
+      KEEP="(SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}' AND ${UNCHANGED}) = 1"
+      WROTE="$(cc_sql -bail -cmd ".timeout 5000" "$DB_PATH" "BEGIN IMMEDIATE;
+$(cc_session_models_sql "$SESSION_ID" "$USAGE" "$KEEP")
+INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch, agents_collected) SELECT '${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${CC_U_IN}, ${CC_U_OUT}, ${CC_U_CR}, ${CC_U_CW}, ${CC_U_CW1H}, ${CC_U_OCTX}, ${CC_U_COST}, ${CC_U_CO2}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${FIRST_TS}'), '${LAST_TS}', COALESCE((SELECT source FROM sessions WHERE session_id='${SESSION_ID}'), 'backfill'), ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}', ${CC_AGENTS_COLLECTED} WHERE ${KEEP};
 SELECT changes();
 COMMIT;" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
+    else
+      sqlite3 -cmd ".timeout 5000" "$DB_PATH" "UPDATE sessions SET ended_at = MAX(COALESCE(ended_at, ''), '${LAST_TS}') WHERE session_id='${SESSION_ID}' AND ${UNCHANGED};" >/dev/null 2>&1 || { ERRORS=$((ERRORS + 1)); continue; }
+      WROTE=0
+    fi
     # Counted once written, under the workflow pass when it was the cause
     if [ "$WROTE" = "1" ]; then
       if [ "$WF_TRIGGER" = "1" ]; then WORKFLOWS=$((WORKFLOWS + 1)); else REFRESHED=$((REFRESHED + 1)); fi

@@ -232,8 +232,8 @@ q "DELETE FROM sessions WHERE session_id='${MOVED}'; DELETE FROM session_models 
 rm -f "${CFG}/projects/-tmp-root/${MOVED}.jsonl"
 
 # Split pass: the row as a pre-session_models Stop hook left it (same totals, CO2 and cost
-# computed per file at the file's dominant model, no children, up to date).
-q "DELETE FROM session_models WHERE session_id='${SESSION}'; UPDATE sessions SET co2_grams = 1.0, cost_usd = 1.0, ended_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE session_id='${SESSION}';"
+# computed per file at the file's dominant model, no children, up to date, unstamped).
+q "DELETE FROM session_models WHERE session_id='${SESSION}'; UPDATE sessions SET co2_grams = 1.0, cost_usd = 1.0, agents_collected = 0, ended_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE session_id='${SESSION}';"
 BF_OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "$BACKFILL" 2>/dev/null)"
 check "backfill split: children written for an existing row" "5" "$(q "SELECT COUNT(*) FROM session_models WHERE session_id='${SESSION}';")"
 check "backfill split: CO2 becomes the per-model sum"  "$LIVE_CO2"  "$(q "SELECT printf('%.4f', co2_grams) FROM sessions WHERE session_id='${SESSION}';")"
