@@ -142,7 +142,11 @@ mkdir -p "$STUBS"
 cat > "${STUBS}/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
-  "pr view 42 --json headRefName --jq .headRefName") echo "feat/x" ;;
+  "pr view 42 --json headRefName,isCrossRepository --jq "*) echo "feat/x false" ;;
+  # A PR from a fork, opened from the contributor's main
+  "pr view 43 --json headRefName,isCrossRepository --jq "*) echo "main true" ;;
+  # An older gh without the field
+  "pr view 44 --json headRefName,isCrossRepository --jq "*) echo 'Unknown JSON field: "isCrossRepository"' >&2; exit 1 ;;
   *) exit 1 ;;
 esac
 STUB
@@ -153,6 +157,18 @@ check "--pr: the PR's branch, not the current one" "yes" "$(echo "$OUT" | grep -
 ERR="$(cd "$WORKDIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$DB2" bash "$PR_SCRIPT" --dry-run --pr 7 2>&1)"
 RC=$?
 check "--pr: an unreadable PR stops, nothing posted" "1|yes" "$RC|$(echo "$ERR" | grep -q 'could not read the branch of PR #7' && echo yes || echo no)"
+ERR="$(cd "$WORKDIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$DB2" bash "$PR_SCRIPT" --dry-run --pr 43 2>&1)"
+RC=$?
+check "--pr: a PR from a fork is refused, main not summed" "1|yes|no" \
+  "$RC|$(echo "$ERR" | grep -q 'comes from a fork' && echo yes || echo no)|$(echo "$ERR" | grep -q 'developing this PR' && echo yes || echo no)"
+ERR="$(cd "$WORKDIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$DB2" bash "$PR_SCRIPT" --dry-run --pr 44 2>&1)"
+RC=$?
+check "--pr: gh's own message shown when it fails" "1|yes" "$RC|$(echo "$ERR" | grep -q 'Unknown JSON field' && echo yes || echo no)"
+for BAD in "feat/x" "https://github.com/o/r/pull/42" ""; do
+  ERR="$(cd "$WORKDIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$DB2" bash "$PR_SCRIPT" --dry-run --pr "$BAD" 2>&1)"
+  RC=$?
+  check "--pr: '${BAD}' is not a PR number" "2|yes" "$RC|$(echo "$ERR" | grep -q 'takes a PR number' && echo yes || echo no)"
+done
 OUT="$(cd "$WORKDIR" && CLAUDE_CARBON_DB="$DB3" bash "$PR_SCRIPT" --dry-run)"
 check "no sessions: nothing posted, worktree hint" "yes" "$(echo "$OUT" | grep -q 'nothing posted' && echo "$OUT" | grep -q 'worktree' && echo yes || echo no)"
 git -C "$WORKDIR" checkout -q feat/x 2>/dev/null

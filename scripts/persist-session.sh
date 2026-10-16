@@ -102,10 +102,11 @@ GIT_BRANCH="${GIT_BRANCH//$CC_SQ/$CC_SQ$CC_SQ}"
 # Child rows and the session row in one transaction: the SessionEnd hook's detached run
 # can overlap a Stop hook on the same session, and a reader must never see one without
 # the other. The busy timeout makes the second writer wait instead of failing.
-# (cost = theoretical API list price, source='live')
+# (cost = theoretical API list price, source='live'). agents_collected records that every
+# agent transcript was read (see cc_ensure_schema).
 sqlite3 -cmd ".timeout 5000" "$DB_PATH" "BEGIN IMMEDIATE;
 $(cc_session_models_sql "$SESSION_ID" "$USAGE")
-INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('${SQL_SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${CC_U_IN}, ${CC_U_OUT}, ${CC_U_CR}, ${CC_U_CW}, ${CC_U_CW1H}, ${CC_U_OCTX}, ${CC_U_COST}, ${CC_U_CO2}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SQL_SESSION_ID}'), '${NOW}'), '${NOW}', 'live', ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}');
+INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch, agents_collected) VALUES ('${SQL_SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${CC_U_IN}, ${CC_U_OUT}, ${CC_U_CR}, ${CC_U_CW}, ${CC_U_CW1H}, ${CC_U_OCTX}, ${CC_U_COST}, ${CC_U_CO2}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SQL_SESSION_ID}'), '${NOW}'), '${NOW}', 'live', ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}', ${CC_AGENTS_COLLECTED});
 COMMIT;" >/dev/null 2>&1 || true
 
 # The history the mod's /carbon-panel pane draws, refreshed with this session's new total.

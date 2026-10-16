@@ -2,6 +2,37 @@
 
 ## 2026-10-16
 
+### fix: sessions rewritten by an older Stop hook get their workflow agents back
+
+The rescan compared each session that ran workflows once, then set a marker. A session
+opened before the update keeps running the previous version's Stop hook until it is
+closed, and that hook rewrote the row without its workflow agents after the pass; no
+rescan looked at it again. Each row now records whether the version that wrote it read
+every agent transcript (a new `agents_collected` column). An older hook resets it when it
+rewrites the row, and the first daily rescan after the session closes re-aggregates it.
+The marker file is no longer used.
+
+Also in the rescan:
+
+- a session is counted as repaired once its row is written; a write that fails leaves the
+  row for the next rescan;
+- a row is rewritten only if no Stop hook recorded it while the rescan read its
+  transcripts, and if it holds no more tokens than they now give: a turn recorded in the
+  meantime, even by an older hook, is never overwritten, and lands on the next rescan;
+- a rewritten row ends when its transcripts were last written, agents included. A row
+  written from all its transcripts is no longer parsed again for the cache-write or
+  context repairs, nor a row without tokens, nor one whose agent last wrote a line
+  without usage;
+- an agent transcript that cannot be read, or that disappears during the rescan, is left
+  out instead of failing the whole session;
+- on Windows, the lines jq returns no longer keep a CR: the end of a session the rescan
+  added was stored with one, which kept the rescan from rewriting that row, and the last
+  of the `exclude_models` patterns never matched. Rows stored that way are refreshed.
+
+`/carbon-pr --pr` takes a PR number only, and refuses a PR opened from a fork: its branch
+is not one of this repository's, and a local branch of the same name (often `main`) would
+have been summed in its place.
+
 ### fix: the agents a workflow starts are counted
 
 Claude Code writes the transcript of an agent a workflow starts to
@@ -11,9 +42,9 @@ the CO2 and cost recorded were 10% to over five times too low. The Stop hook, th
 backfill and the status line's fallback now read them (the workflow's `journal.jsonl`,
 which carries no usage, is not read).
 
-A session already recorded without them is re-aggregated by the next daily rescan, while
-its transcripts are still on disk (Claude Code keeps them about 30 days); older ones stay
-as they were. Rows of the legacy methodology (v1), a frozen series, are never touched.
+A session already recorded without them is re-aggregated by a daily rescan, while its
+transcripts are still on disk (Claude Code keeps them about 30 days); older ones stay as
+they were. Rows of the legacy methodology (v1), a frozen series, are never touched.
 Reported by a user.
 
 ### fix: /carbon-pr --pr reports that PR's own branch

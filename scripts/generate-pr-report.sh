@@ -6,9 +6,10 @@
 # CI runner never sees this data. Opt-in by nature: nothing is posted unless
 # the developer runs it.
 # Usage: generate-pr-report.sh [--dry-run] [--pr <number>]
-#   --dry-run  print the comment body and post nothing (no gh needed)
+#   --dry-run  print the comment body and post nothing (no gh needed, except with --pr,
+#              whose branch is read through gh)
 #   --pr N     report PR N: its own branch (read through gh), wherever the command runs
-#              (default: the current branch and its open PR)
+#              (default: the current branch and its open PR). A PR from a fork is refused.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,14 +22,22 @@ REPO_URL="https://github.com/gwittebolle/claude-carbon"
 MARKER="<!-- claude-carbon-dev-report -->"
 
 DRY_RUN=0
+PR_GIVEN=0
 PR_NUMBER=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
-    --pr) PR_NUMBER="${2:-}"; shift 2 ;;
+    --pr) PR_GIVEN=1; PR_NUMBER="${2:-}"; shift; [ $# -gt 0 ] && shift ;;
     *) echo "Unknown option: $1" >&2; echo "Usage: generate-pr-report.sh [--dry-run] [--pr <number>]" >&2; exit 2 ;;
   esac
 done
+
+# A number only: gh would also take a branch name or a URL, and read another PR than meant
+if [ "$PR_GIVEN" = "1" ]; then
+  case "$PR_NUMBER" in
+    ''|*[!0-9]*) echo "Error: --pr takes a PR number, not '${PR_NUMBER}'." >&2; exit 2 ;;
+  esac
+fi
 
 # ── Deps check ──────────────────────────────────────────────
 for cmd in sqlite3 jq awk git; do
@@ -60,9 +69,26 @@ if [ -n "$PR_NUMBER" ]; then
     echo "Error: gh is required to read the branch of PR #${PR_NUMBER}." >&2
     exit 1
   fi
-  BRANCH="$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName' 2>/dev/null || true)"
-  if [ -z "$BRANCH" ]; then
-    echo "Error: could not read the branch of PR #${PR_NUMBER} (gh auth, or a PR of another repository?)." >&2
+  # gh's own message is shown when it fails: an older gh that lacks a field says so there
+  GH_ERR="$(mktemp "$(cc_tmpdir)/carbon-pr-gh.XXXXXX")"
+  PR_HEAD="$(gh pr view "$PR_NUMBER" --json headRefName,isCrossRepository --jq '.headRefName + " " + (.isCrossRepository | tostring)' 2>"$GH_ERR" || true)"
+  BRANCH="${PR_HEAD% *}"
+  if [ -z "$PR_HEAD" ] || [ -z "$BRANCH" ] || [ "$BRANCH" = "$PR_HEAD" ]; then
+    if [ -s "$GH_ERR" ]; then
+      echo "Error: could not read the branch of PR #${PR_NUMBER} through gh:" >&2
+      sed 's/^/  /' "$GH_ERR" >&2
+    else
+      echo "Error: could not read the branch of PR #${PR_NUMBER} (gh auth, or a PR of another repository?)." >&2
+    fi
+    rm -f "$GH_ERR"
+    exit 1
+  fi
+  rm -f "$GH_ERR"
+  # A fork's branch is not a branch of this repository: a local branch of the same name
+  # (its main, often) would be summed as the PR's footprint
+  if [ "${PR_HEAD##* }" = "true" ]; then
+    echo "Error: PR #${PR_NUMBER} comes from a fork, so its branch '${BRANCH}' is not one of this repository's; nothing posted." >&2
+    echo "Run /carbon-pr without --pr from the fork's clone, on the PR's branch." >&2
     exit 1
   fi
 else
