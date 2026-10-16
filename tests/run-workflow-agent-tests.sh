@@ -105,15 +105,31 @@ S3="11111111-aaaa-bbbb-cccc-000000000003"
 make_session "$S3" no
 payload "$S3" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
 check "repair: the row before" "$WITHOUT" "$(tokens "$S3")"
+BEFORE_START="$(q "SELECT started_at||'|'||source FROM sessions WHERE session_id='${S3}';")"
 add_workflow "$S3"
+# As on an install updated to this version: no workflow pass has run yet
+rm -f "${CFG}/claude-carbon/.workflow-agents-counted"
 OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
 check "repair: the row now counts the workflow agent" "$WITH" "$(tokens "$S3")"
 check "repair: CO2 re-derived" "$CO2_WITH" "$(q "SELECT printf('%.4f', co2_grams) FROM sessions WHERE session_id='${S3}';")"
 check "repair: child rows match the row" "11000" "$(q "SELECT SUM(input_tokens) FROM session_models WHERE session_id='${S3}';")"
 case "$OUT" in *"Counted the workflow agents of 1 session(s)"*) check "repair: said once" "yes" "yes" ;; *) check "repair: said once" "yes" "$OUT" ;; esac
+check "repair: start and source kept" "$BEFORE_START" "$(q "SELECT started_at||'|'||source FROM sessions WHERE session_id='${S3}';")"
+check "repair: the pass is marked done" "yes" "$([ -f "${CFG}/claude-carbon/.workflow-agents-counted" ] && echo yes || echo no)"
 OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
 case "$OUT" in *"Counted the workflow agents"*) check "repair: nothing on the next rescan" "no" "yes" ;; *) check "repair: nothing on the next rescan" "no" "no" ;; esac
 check "repair: unchanged on the next rescan" "$WITH" "$(tokens "$S3")"
+
+# ---------------------------------------------------------------- 3b. an agent that ends after the last Stop
+# Once the pass is done, a session is looked at again only when an agent transcript is
+# newer than its row: here the row ended long before the workflow agent wrote.
+S5="11111111-aaaa-bbbb-cccc-000000000005"
+make_session "$S5" no
+payload "$S5" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+q "UPDATE sessions SET ended_at = '2026-10-15T10:00:01Z' WHERE session_id='${S5}';"
+add_workflow "$S5"
+CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "late agent: counted by the next rescan" "$WITH" "$(tokens "$S5")"
 
 # ---------------------------------------------------------------- 4. frozen rows
 S4="11111111-aaaa-bbbb-cccc-000000000004"
@@ -121,6 +137,7 @@ make_session "$S4" no
 payload "$S4" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
 q "UPDATE sessions SET methodology_version = 1, co2_grams = 42 WHERE session_id='${S4}';"
 add_workflow "$S4"
+rm -f "${CFG}/claude-carbon/.workflow-agents-counted"
 CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "frozen (v1) row: tokens untouched" "$WITHOUT" "$(tokens "$S4")"
 check "frozen (v1) row: CO2 untouched" "42.0" "$(q "SELECT co2_grams FROM sessions WHERE session_id='${S4}';")"

@@ -52,6 +52,11 @@ ERRORS=0
 # the row's ended_at. The slack absorbs the transcript's asynchronous writes landing just
 # after the Stop hook recorded the turn.
 REFRESH_SLACK=60
+# Set once a backfill has compared every session with workflow agents against its row:
+# after that, only a session with an agent transcript newer than its row is looked at
+WF_STAMP="$(dirname "$DB_PATH")/.workflow-agents-counted"
+WF_FULL=1
+[ -f "$WF_STAMP" ] && WF_FULL=0
 
 # UUID regex pattern
 UUID_PATTERN='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
@@ -106,17 +111,32 @@ while IFS= read -r JSONL_FILE; do
   fi
   # Workflow pass: a v2 row recorded before workflow agents were read (their transcripts
   # sit in <session>/subagents/workflows/) gets re-aggregated with them, while they are
-  # still on disk, when they hold tokens the row lacks. Legacy (v1) rows, a frozen
-  # series, are never touched.
+  # still on disk, when they hold tokens the row lacks. Every such session is compared
+  # once; after that, only one with an agent transcript written after its row ended (an
+  # agent that finished after the last Stop). Legacy (v1) rows, a frozen series, are
+  # never touched.
   USAGE=""
   PARSED=0
+  WF_TRIGGER=0
   if [ "$EXISTS" -gt 0 ] && [ "$STALE" != "1" ]; then
     WF_DIR="$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents/workflows"
-    if [ -d "$WF_DIR" ] && [ -n "$(find "$WF_DIR" -name 'agent-*.jsonl' 2>/dev/null | head -1)" ]; then
-      WF_ROW="$(sqlite3 "$DB_PATH" "SELECT COALESCE(input_tokens, 0) + COALESCE(cache_read_tokens, 0) + COALESCE(output_tokens, 0) FROM sessions WHERE session_id='${SESSION_ID}' AND COALESCE(methodology_version, 1) >= 2;" 2>/dev/null || echo "")"
-      if [ -n "$WF_ROW" ] && parse_once; then
-        if [ "$((CC_U_IN + CC_U_CR + CC_U_OUT))" -gt "$WF_ROW" ] 2>/dev/null; then
+    if [ -d "$WF_DIR" ]; then
+      WF_LOOK=0
+      WF_END="$(sqlite3 "$DB_PATH" "SELECT COALESCE(CAST(strftime('%s', ended_at) AS INTEGER), 0) FROM sessions WHERE session_id='${SESSION_ID}' AND COALESCE(methodology_version, 1) >= 2;" 2>/dev/null || echo "")"
+      if [ -n "$WF_END" ]; then
+        for WF_FILE in "$WF_DIR"/*/agent-*.jsonl; do
+          [ -f "$WF_FILE" ] || continue
+          if [ "$WF_FULL" = "1" ] || [ "$(cc_mtime "$WF_FILE")" -gt "$((WF_END + REFRESH_SLACK))" ]; then
+            WF_LOOK=1
+            break
+          fi
+        done
+      fi
+      if [ "$WF_LOOK" = "1" ] && parse_once; then
+        WF_ROW="$(sqlite3 "$DB_PATH" "SELECT COALESCE(input_tokens, 0) + COALESCE(cache_read_tokens, 0) + COALESCE(output_tokens, 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null || echo "")"
+        if [ -n "$WF_ROW" ] && [ "$((CC_U_IN + CC_U_CR + CC_U_OUT))" -gt "$WF_ROW" ] 2>/dev/null; then
           STALE=1
+          WF_TRIGGER=1
           WORKFLOWS=$((WORKFLOWS + 1))
         fi
       fi
@@ -209,7 +229,10 @@ COMMIT;" >/dev/null 2>&1; then
   # One pass over main + subagents: tokens per model, CO2 and cost, the main transcript's
   # dominant model, its git branch at session end (last non-empty gitBranch, feeds
   # /carbon-pr), its first timestamp, and the last timestamp across all files.
-  USAGE="$(session_usage "$JSONL_FILE" "$SESSION_ID")" || { ERRORS=$((ERRORS + 1)); continue; }
+  # Already parsed by the workflow pass: its result stands
+  if [ "$PARSED" != "1" ] || [ -z "$USAGE" ]; then
+    USAGE="$(session_usage "$JSONL_FILE" "$SESSION_ID")" || { ERRORS=$((ERRORS + 1)); continue; }
+  fi
   cc_parse_usage "$USAGE"
   FIRST_TS="$CC_U_FIRST_TS"
   LAST_TS="$CC_U_LAST_TS"
@@ -246,7 +269,8 @@ COMMIT;" >/dev/null 2>&1; then
 ${CHILD_SQL}
 INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('${SESSION_ID}', '${PROJECT}', '${MODEL_RAW}', ${CC_U_IN}, ${CC_U_OUT}, ${CC_U_CR}, ${CC_U_CW}, ${CC_U_CW1H}, ${CC_U_OCTX}, ${CC_U_COST}, ${CC_U_CO2}, COALESCE((SELECT started_at FROM sessions WHERE session_id='${SESSION_ID}'), '${FIRST_TS}'), '${LAST_TS}', COALESCE((SELECT source FROM sessions WHERE session_id='${SESSION_ID}'), 'backfill'), ${METHODOLOGY_VERSION}, ${EXCLUDED}, '${GIT_BRANCH}');
 COMMIT;" >/dev/null 2>&1 || { ERRORS=$((ERRORS + 1)); continue; }
-    REFRESHED=$((REFRESHED + 1))
+    # Counted under the workflow pass when it was the cause, not as a grown transcript
+    [ "$WF_TRIGGER" = "1" ] || REFRESHED=$((REFRESHED + 1))
     continue
   fi
 
@@ -260,6 +284,8 @@ COMMIT;" >/dev/null 2>&1 || { ERRORS=$((ERRORS + 1)); continue; }
 
 done < <(find "${CONFIG_DIR}/projects" -maxdepth 2 -name "*.jsonl" 2>/dev/null)
 
+# Every session with workflow agents has now been compared once
+[ "$WF_FULL" = "1" ] && { : > "$WF_STAMP"; } 2>/dev/null
 echo "  Backfill complete: ${ADDED} sessions added, ${SKIPPED} skipped, ${ERRORS} errors."
 if [ "$REFRESHED" -gt 0 ]; then
   echo "  Refreshed ${REFRESHED} session(s) whose transcript grew after they were last recorded."
