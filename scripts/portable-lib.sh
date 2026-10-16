@@ -317,7 +317,7 @@ cc_system_locale() {
 
 # ── Database schema ─────────────────────────────────────────────────────────
 # cc_ensure_schema <db>: bring an existing carbon.db up to the current schema:
-# the columns added to `sessions` over time, and the `session_models` table. The
+# the columns added to `sessions` over time, and the `session_models` and `agent_usage` tables. The
 # `sessions` table itself is created by setup.sh and backfill.sh, not here, so a hook
 # never creates a DB the user has not set up. Idempotent. One probe decides whether
 # anything needs doing, so the Stop hook pays a single sqlite3 call once migrated.
@@ -337,18 +337,26 @@ cc_system_locale() {
 # rewrites the row, and backfill.sh then knows to look at that row again.
 # shellcheck disable=SC2034 # read by the scripts that source this file
 CC_AGENTS_COLLECTED=2
+# agent_usage: the usage of an agent that worked on a branch of its own, per model,
+# recorded by the SubagentStop hook (agent-stop.sh) for /carbon-pr. Same token columns as
+# session_models; the agent's tokens are also in its session's row. repo is the
+# repository's common git folder (absolute; lower case on Windows), how says how the
+# branch was found: "cwd" (the agent ran in a worktree of its own) or "cited" (its
+# commands named one). last_ts is the agent's last message: the report moves the agent
+# only once its session's row was written after it (ended_at), so that the row holds it.
+CC_AGENT_USAGE_DDL="CREATE TABLE IF NOT EXISTS agent_usage (session_id TEXT NOT NULL, agent_id TEXT NOT NULL, repo TEXT NOT NULL, git_branch TEXT NOT NULL, how TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0, co2_grams REAL DEFAULT 0, last_ts TEXT DEFAULT '', seen_at TEXT, PRIMARY KEY (session_id, agent_id, model));"
 CC_SESSION_MODELS_DDL="CREATE TABLE IF NOT EXISTS session_models (session_id TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0, co2_grams REAL DEFAULT 0, PRIMARY KEY (session_id, model));"
 cc_ensure_schema() {
   local db="$1" probe col
-  probe="$(cc_sql -cmd ".timeout 5000" "$db" "SELECT (SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name IN ('cache_read_tokens','cache_creation_tokens','methodology_version','excluded','git_branch','cache_creation_1h_tokens','output_context_sum','agents_collected')) || '|' || (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_models');" 2>/dev/null)" || probe=""
-  [ "$probe" = "8|1" ] && return 0
+  probe="$(cc_sql -cmd ".timeout 5000" "$db" "SELECT (SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name IN ('cache_read_tokens','cache_creation_tokens','methodology_version','excluded','git_branch','cache_creation_1h_tokens','output_context_sum','agents_collected')) || '|' || (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('session_models', 'agent_usage'));" 2>/dev/null)" || probe=""
+  [ "$probe" = "8|2" ] && return 0
   for col in "cache_read_tokens INTEGER DEFAULT 0" "cache_creation_tokens INTEGER DEFAULT 0" \
              "methodology_version INTEGER DEFAULT 1" "excluded INTEGER DEFAULT 0" \
              "git_branch TEXT DEFAULT ''" "cache_creation_1h_tokens INTEGER DEFAULT 0" \
              "output_context_sum INTEGER DEFAULT 0" "agents_collected INTEGER DEFAULT 0"; do
     sqlite3 -cmd ".timeout 5000" "$db" "ALTER TABLE sessions ADD COLUMN ${col};" >/dev/null 2>&1 || true
   done
-  sqlite3 -cmd ".timeout 5000" "$db" "$CC_SESSION_MODELS_DDL" >/dev/null 2>&1 || true
+  sqlite3 -cmd ".timeout 5000" "$db" "$CC_SESSION_MODELS_DDL $CC_AGENT_USAGE_DDL" >/dev/null 2>&1 || true
 }
 
 # cc_collect_subagents <session-dir>: the session's subagent transcripts into the
@@ -997,3 +1005,83 @@ $1
 EOF
   [ -n "$CC_U_MODEL" ] || CC_U_MODEL="claude-sonnet"
 }
+
+# ── An agent's branch (agent-stop.sh) ──────────────────────────────────────
+# CC_AWK_AGENT_CANDIDATES: `git worktree list --porcelain` on stdin; -v top (the agent's
+# worktree root), stop (the session's), home and homen (the home folder as bash spells it,
+# and as git does on Windows: C:/...). Prints one JSON array of {p, b}: each worktree an
+# agent working from top could name, with its branch and each spelling of its path: as git
+# gives it; with its drive letter in both cases and as /c/... on Windows; ~/... under the
+# home folder; ../... beside top; ./... inside top, and also bare when that path has a
+# slash (a bare word such as "docs" would be read in any command). Left out: the main
+# folder (the first entry), top, stop, a detached HEAD, a branch Claude Code named
+# (worktree-agent-*, worktree-wf_*), and a path or branch that would need escaping in JSON
+# (a quote, a backslash, a tab).
+# shellcheck disable=SC2034 # read by agent-stop.sh
+CC_AWK_AGENT_CANDIDATES='
+function add(p) {
+  if (p == "" || (p in seen)) return
+  seen[p] = 1
+  out = out (out == "" ? "" : ",") "{\"p\":\"" p "\",\"b\":\"" branch "\"}"
+}
+function flush(   pb, d, base, r) {
+  if (path != "" && n > 1 && path != top && path != stop && branch != "" &&
+      branch !~ /^worktree-(agent-|wf_)/ && path !~ /["\\\t]/ && branch !~ /["\\\t]/) {
+    add(path)
+    pb = path
+    if (path ~ /^[A-Za-z]:\//) {
+      d = substr(path, 1, 1)
+      add(tolower(d) substr(path, 2)); add(toupper(d) substr(path, 2))
+      pb = "/" tolower(d) substr(path, 3)
+      add(pb)
+    }
+    if (homen != "" && homen != "/" && index(path, homen "/") == 1) add("~" substr(path, length(homen) + 1))
+    else if (home != "" && home != "/" && index(pb, home "/") == 1) add("~" substr(pb, length(home) + 1))
+    base = top; sub(/\/[^\/]*$/, "", base)
+    if (base != "" && index(path, base "/") == 1) add(".." substr(path, length(base) + 1))
+    if (index(path, top "/") == 1) {
+      r = substr(path, length(top) + 2)
+      add("./" r)
+      if (index(r, "/")) add(r)
+    }
+  }
+  path = ""; branch = ""
+}
+/^worktree / { flush(); path = substr($0, 10); n++; next }
+/^branch / { branch = substr($0, 8); sub(/^refs\/heads\//, "", branch); next }
+END { flush(); print "[" out "]" }'
+
+# CC_JQ_AGENT_BRANCH (jq -R -n): on stdin, the candidates array above on its first line,
+# then an agent's transcript lines (those with a tool call are enough). Prints the branch
+# of the worktree that the agent's tool calls name in at least half of them, and no other
+# worktree as often; nothing otherwise. Only calls that give a place count, and only that
+# place is read: the input's command, file_path, path or notebook_path (not a description,
+# a prompt or the text an edit writes). A call names a worktree when one of its spellings
+# appears there (shell-escaped spaces read as spaces, backslashes as slashes), not
+# preceded by a path character or a slash, and followed by nothing, a slash, a quote, a
+# space or a shell separator: x-1013 is not named by x-1013-facultatif, nor by
+# /other/x-1013. jq 1.6.
+# shellcheck disable=SC2034 # read by agent-stop.sh
+CC_JQ_AGENT_BRANCH='
+def pc: (explode[0] // 0) as $c
+  | ($c >= 48 and $c <= 57) or ($c >= 65 and $c <= 90) or ($c >= 97 and $c <= 122)
+    or $c == 45 or $c == 46 or $c == 95;
+def names($p):
+  contains($p)
+  and (split($p) as $parts
+       | any(range(1; $parts | length);
+             ($parts[. - 1][-1:]) as $x | ($parts[.][0:1]) as $y
+             | ((($x | pc) or $x == "/") | not) and ($y | . == "" or ("/\"'"'"' \t\n;&|)>,:`}" | contains($y)))));
+(input | fromjson) as $c
+| [ inputs | fromjson? | objects | select(.type == "assistant")
+    | .message.content | if type == "array" then .[] else empty end
+    | objects | select(.type == "tool_use" and (.id | type) == "string")
+    | [ .input | objects | (.command, .file_path, .path, .notebook_path) | strings | select(length > 0) ] as $places
+    | select($places | length > 0)
+    | ($places | join("\n") | split("\\ ") | join(" ") | split("\\") | join("/")) as $h
+    | { id: .id, w: ([ $c[] | select(.p as $p | $h | names($p)) | .b ] | unique) } ]
+| unique_by(.id) | length as $calls
+| ([ .[].w[] ] | group_by(.) | map({ b: .[0], n: length }) | sort_by(-.n)) as $cnt
+| if ($cnt | length) > 0 and $cnt[0].n * 2 >= $calls
+     and (($cnt | length) == 1 or $cnt[1].n < $cnt[0].n)
+  then $cnt[0].b else empty end'

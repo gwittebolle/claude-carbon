@@ -35,6 +35,7 @@ STATUSLINE_CMD="${CMD_DIR}/scripts/statusline.sh"
 STOP_CMD="${CMD_DIR}/scripts/persist-session.sh"
 SESSIONSTART_CMD="${CMD_DIR}/scripts/safety-rescan.sh"
 SESSIONEND_CMD="${CMD_DIR}/scripts/persist-on-exit.sh"
+AGENTSTOP_CMD="${CMD_DIR}/scripts/agent-stop.sh"
 
 # Resolve a hook command to a comparable form. The same script reaches settings.json spelled
 # several ways: the README's manual block uses `~/code/claude-carbon/...`, this script writes
@@ -68,9 +69,10 @@ normalize_cmd() {
 }
 
 # Append a hook to an event array, unless that command is already registered under any
-# spelling. Mutates $EXISTING (the settings JSON held in memory).
+# spelling. Mutates $EXISTING (the settings JSON held in memory). The matcher defaults to
+# "" (every event).
 add_hook() {
-  local event="$1" cmd="$2" has="false" target existing
+  local event="$1" cmd="$2" matcher="${3:-}" has="false" target existing
   target="$(normalize_cmd "$cmd")"
 
   # Here-doc rather than a pipe: `while read` must run in this shell to keep `has`.
@@ -84,10 +86,10 @@ EOF
   if [ "$has" = "true" ]; then
     echo "  ${event} hook: already configured (skipped)"
   else
-    EXISTING="$(echo "$EXISTING" | jq --arg e "$event" --arg c "$cmd" '
+    EXISTING="$(echo "$EXISTING" | jq --arg e "$event" --arg c "$cmd" --arg m "$matcher" '
       .hooks = (.hooks // {}) |
       .hooks[$e] = ((.hooks[$e] // []) + [{
-        matcher: "",
+        matcher: $m,
         hooks: [{type: "command", command: $c}]
       }])
     ')"
@@ -119,6 +121,10 @@ if [ -f "$SETTINGS_FILE" ]; then
   add_hook Stop "$STOP_CMD"
   add_hook SessionEnd "$SESSIONEND_CMD"
   add_hook SessionStart "$SESSIONSTART_CMD"
+  # SubagentStop: the branch an agent worked on, for /carbon-pr. ".+" leaves out the events
+  # of Claude Code's own agents, whose type is empty (from Claude Code 2.1.275; before, the
+  # script leaves them out itself).
+  add_hook SubagentStop "$AGENTSTOP_CMD" ".+"
 
   # Write via tmp + mv: a truncating redirect would destroy the user's settings if jq failed.
   TMP="${SETTINGS_FILE}.tmp.$$"
@@ -132,7 +138,7 @@ else
   # `$end` would be a syntax error in jq 1.6 (`end` is a keyword there): the variable is
   # $session_end. Same tmp + mv as above, so a failing jq never leaves an empty file.
   TMP="${SETTINGS_FILE}.tmp.$$"
-  if jq -n --arg sl "$STATUSLINE_CMD" --arg stop "$STOP_CMD" --arg session_end "$SESSIONEND_CMD" --arg start "$SESSIONSTART_CMD" '{
+  if jq -n --arg sl "$STATUSLINE_CMD" --arg stop "$STOP_CMD" --arg session_end "$SESSIONEND_CMD" --arg start "$SESSIONSTART_CMD" --arg agent "$AGENTSTOP_CMD" '{
     statusLine: {type: "command", command: $sl},
     hooks: {
       Stop: [{
@@ -146,6 +152,10 @@ else
       SessionStart: [{
         matcher: "",
         hooks: [{type: "command", command: $start}]
+      }],
+      SubagentStop: [{
+        matcher: ".+",
+        hooks: [{type: "command", command: $agent}]
       }]
     }
   }' > "$TMP" 2>/dev/null; then
