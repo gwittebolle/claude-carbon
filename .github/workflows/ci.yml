@@ -105,6 +105,10 @@ jobs:
       - name: Assert the interrupted-turn tail is recorded
         run: bash tests/run-session-end-tests.sh
 
+      # Workflow agents' transcripts (subagents/workflows/wf_*/agent-*.jsonl) count
+      - name: Workflow agents
+        run: bash tests/run-workflow-agent-tests.sh
+
       # The history the mod's /carbon pane draws: v2 sessions only, the DB untouched,
       # an atomic write. Throwaway DB under a temp root.
       - name: Assert the session history export
@@ -206,6 +210,11 @@ jobs:
         if: always()
         run: /bin/bash tests/run-session-end-tests.sh
 
+      # Workflow agents' transcripts (subagents/workflows/wf_*/agent-*.jsonl) count
+      - name: Workflow agents
+        if: always()
+        run: /bin/bash tests/run-workflow-agent-tests.sh
+
       # The real download of jq 1.8.1 for this Mac's architecture, checked and run
       - name: jq fetch and PATH
         if: always()
@@ -304,6 +313,11 @@ jobs:
       - name: Session end capture
         if: always()
         run: bash tests/run-session-end-tests.sh
+
+      # Workflow agents' transcripts (subagents/workflows/wf_*/agent-*.jsonl) count
+      - name: Workflow agents
+        if: always()
+        run: bash tests/run-workflow-agent-tests.sh
 
       # The assertions no other runner can make: a real cygpath, a native path
       # pointing at a real file, and the hook manifests spawned the way Claude Code

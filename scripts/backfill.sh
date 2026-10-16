@@ -44,6 +44,7 @@ SKIPPED=0
 REPAIRED=0
 FILLED=0
 REFRESHED=0
+WORKFLOWS=0
 SPLIT=0
 ERRORS=0
 
@@ -58,15 +59,9 @@ UUID_PATTERN='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 # session_usage <main.jsonl> <session_id>: cc_session_usage over the main transcript and
 # its subagents (each message priced at its own model; see portable-lib.sh).
 session_usage() {
-  local main="$1" sid="$2" sub dir
-  local subs=()
-  dir="$(dirname "$main")/${sid}/subagents"
-  if [ -d "$dir" ]; then
-    for sub in "$dir"/*.jsonl; do
-      [ -f "$sub" ] && subs+=("$sub")
-    done
-  fi
-  cc_session_usage "$FACTORS_FILE" "$PRICES_FILE" "$main" ${subs[@]+"${subs[@]}"}
+  local main="$1" sid="$2"
+  cc_collect_subagents "$(dirname "$main")/${sid}/subagents"
+  cc_session_usage "$FACTORS_FILE" "$PRICES_FILE" "$main" ${CC_SUB_FILES[@]+"${CC_SUB_FILES[@]}"}
 }
 
 # parse_once: parse the current session (JSONL_FILE, SESSION_ID) the first time a repair
@@ -109,6 +104,24 @@ while IFS= read -r JSONL_FILE; do
     MTIME="$(cc_mtime "$JSONL_FILE")"
     STALE="$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}' AND COALESCE(methodology_version, 1) >= 2 AND ${MTIME} > COALESCE(CAST(strftime('%s', ended_at) AS INTEGER), 0) + ${REFRESH_SLACK};" 2>/dev/null || echo 0)"
   fi
+  # Workflow pass: a v2 row recorded before workflow agents were read (their transcripts
+  # sit in <session>/subagents/workflows/) gets re-aggregated with them, while they are
+  # still on disk, when they hold tokens the row lacks. Legacy (v1) rows, a frozen
+  # series, are never touched.
+  USAGE=""
+  PARSED=0
+  if [ "$EXISTS" -gt 0 ] && [ "$STALE" != "1" ]; then
+    WF_DIR="$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents/workflows"
+    if [ -d "$WF_DIR" ] && [ -n "$(find "$WF_DIR" -name 'agent-*.jsonl' 2>/dev/null | head -1)" ]; then
+      WF_ROW="$(sqlite3 "$DB_PATH" "SELECT COALESCE(input_tokens, 0) + COALESCE(cache_read_tokens, 0) + COALESCE(output_tokens, 0) FROM sessions WHERE session_id='${SESSION_ID}' AND COALESCE(methodology_version, 1) >= 2;" 2>/dev/null || echo "")"
+      if [ -n "$WF_ROW" ] && parse_once; then
+        if [ "$((CC_U_IN + CC_U_CR + CC_U_OUT))" -gt "$WF_ROW" ] 2>/dev/null; then
+          STALE=1
+          WORKFLOWS=$((WORKFLOWS + 1))
+        fi
+      fi
+    fi
+  fi
   if [ "$EXISTS" -gt 0 ] && [ "$STALE" != "1" ]; then
     # Repair pass: rows captured before the git_branch column existed get their
     # branch backfilled while the transcript is still on disk (30-day window).
@@ -121,9 +134,8 @@ while IFS= read -r JSONL_FILE; do
       fi
     fi
 
-    # The transcript is parsed at most once per session below, and only when a pass needs it.
-    USAGE=""
-    PARSED=0
+    # The transcript is parsed at most once per session below, and only when a pass needs
+    # it (the workflow pass above may already have parsed it).
 
     # Split pass: a v2 row recorded before session_models existed gets its per-model
     # rows, if its transcript still yields the row's stored token totals. Token columns
@@ -251,6 +263,9 @@ done < <(find "${CONFIG_DIR}/projects" -maxdepth 2 -name "*.jsonl" 2>/dev/null)
 echo "  Backfill complete: ${ADDED} sessions added, ${SKIPPED} skipped, ${ERRORS} errors."
 if [ "$REFRESHED" -gt 0 ]; then
   echo "  Refreshed ${REFRESHED} session(s) whose transcript grew after they were last recorded."
+fi
+if [ "$WORKFLOWS" -gt 0 ]; then
+  echo "  Counted the workflow agents of ${WORKFLOWS} session(s) recorded without them."
 fi
 if [ "$SPLIT" -gt 0 ]; then
   echo "  Split ${SPLIT} existing session(s) by model from their transcripts; their CO2 and cost are now the sum over their models."
