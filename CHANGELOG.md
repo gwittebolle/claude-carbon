@@ -2,6 +2,14 @@
 
 ## 2026-10-16
 
+### fix: a fresh install with jq 1.6 writes its settings
+
+On a machine with no `settings.json` yet, the installer built one with jq, naming a
+variable `$end`. jq 1.6 (Ubuntu 20.04 and 22.04, Debian 11) reads `end` as a keyword and
+stopped there: the file was left empty, with no status line and no hooks. The variable is
+renamed, and the file is written through a temporary copy, so a jq that fails never leaves
+an empty one. A test now rejects any jq variable named after a jq 1.6 keyword.
+
 ### perf: agents' transcripts are read again only when they change
 
 The Stop hook, the daily rescan and the status line read every transcript of a session
@@ -223,7 +231,7 @@ methodology, the author and TokenClimate.
 
 The `/carbon-report` budget line's source in the README now names ADEME's Nos Gestes
 Climat, which gives 2 t as a world average from the IPCC 1.5 °C scenarios, before
-Carbone 4's *Faire sa part ?*. METHODOLOGY.md already cited both.
+Carbone 4's _Faire sa part ?_. METHODOLOGY.md already cited both.
 
 ### feat: the molecule has a colour from the first answer
 

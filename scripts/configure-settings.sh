@@ -129,7 +129,10 @@ if [ -f "$SETTINGS_FILE" ]; then
     echo "  WARNING: could not write ${SETTINGS_FILE}; it was left unchanged." >&2
   fi
 else
-  jq -n --arg sl "$STATUSLINE_CMD" --arg stop "$STOP_CMD" --arg end "$SESSIONEND_CMD" --arg start "$SESSIONSTART_CMD" '{
+  # `$end` would be a syntax error in jq 1.6 (`end` is a keyword there): the variable is
+  # $session_end. Same tmp + mv as above, so a failing jq never leaves an empty file.
+  TMP="${SETTINGS_FILE}.tmp.$$"
+  if jq -n --arg sl "$STATUSLINE_CMD" --arg stop "$STOP_CMD" --arg session_end "$SESSIONEND_CMD" --arg start "$SESSIONSTART_CMD" '{
     statusLine: {type: "command", command: $sl},
     hooks: {
       Stop: [{
@@ -138,15 +141,20 @@ else
       }],
       SessionEnd: [{
         matcher: "",
-        hooks: [{type: "command", command: $end}]
+        hooks: [{type: "command", command: $session_end}]
       }],
       SessionStart: [{
         matcher: "",
         hooks: [{type: "command", command: $start}]
       }]
     }
-  }' > "$SETTINGS_FILE"
-  echo "  Created $SETTINGS_FILE"
+  }' > "$TMP" 2>/dev/null; then
+    mv -f "$TMP" "$SETTINGS_FILE"
+    echo "  Created $SETTINGS_FILE"
+  else
+    rm -f "$TMP"
+    echo "  WARNING: could not create ${SETTINGS_FILE}." >&2
+  fi
 fi
 
 # /carbon-* slash commands. Symlinked so they follow the clone on update — except
