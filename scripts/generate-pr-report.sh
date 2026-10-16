@@ -60,10 +60,15 @@ if ! TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"; then
   echo "Error: not inside a git repository." >&2
   exit 1
 fi
+# The branch checked out here: symbolic-ref rather than rev-parse resolves it even before
+# the first commit, and returns nothing (not "HEAD") when detached. Its full name, without
+# refs/heads/: the short form reads heads/<name> when a tag has the same name.
+CURRENT="$(git symbolic-ref -q HEAD 2>/dev/null || echo "")"
+CURRENT="${CURRENT%$'\r'}"
+CURRENT="${CURRENT#refs/heads/}"
 # With --pr, the PR's own head branch: run from main, the command once summed main's
 # sessions and posted them on the PR as if they were its footprint. Otherwise the
-# current branch: symbolic-ref rather than rev-parse resolves it even before the first
-# commit, and returns nothing (not "HEAD") when detached.
+# current branch.
 if [ -n "$PR_NUMBER" ]; then
   if ! command -v gh &>/dev/null; then
     echo "Error: gh is required to read the branch of PR #${PR_NUMBER}." >&2
@@ -92,7 +97,7 @@ if [ -n "$PR_NUMBER" ]; then
     exit 1
   fi
 else
-  BRANCH="$(git symbolic-ref --short -q HEAD 2>/dev/null || echo "")"
+  BRANCH="$CURRENT"
   if [ -z "$BRANCH" ]; then
     echo "Error: no current branch (detached HEAD?)." >&2
     exit 1
@@ -143,19 +148,65 @@ format_tokens() {
 # agents (agents_collected), is of the current methodology and was written after the
 # agent's last message (an agent that ended after its session's last Stop is not in that
 # row yet: taking it out would leave less than nothing). The branches then add up to the
-# sessions. Without agent rows, or without the table (a database that could not be
-# migrated), this is the sum of BASE, as before agent_usage existed.
-SQL_PROJECT="${PROJECT//$CC_SQ/$CC_SQ$CC_SQ}"
+# sessions. An agent recorded in another repository (or in this one before it moved, its
+# common folder spelled otherwise) stays with its session. Without agent rows for this
+# repository, or without the table (a database that could not be migrated), this is the
+# sum of BASE, as before agent_usage existed.
 SQL_BRANCH="${BRANCH//$CC_SQ/$CC_SQ$CC_SQ}"
-Q_REPO="$(cc_sql_quote "$REPO_GIT")"
-BASE="s.project = '${SQL_PROJECT}' AND s.git_branch = '${SQL_BRANCH}' AND COALESCE(s.excluded, 0) = 0"
+Q_REPO="'${REPO_GIT//$CC_SQ/$CC_SQ$CC_SQ}'"
+HAS_AGENTS=0
+if [ -n "$REPO_GIT" ] && [ "$(cc_sql "$DB_PATH" "SELECT EXISTS (SELECT 1 FROM agent_usage WHERE repo = ${Q_REPO});" 2>/dev/null || true)" = "1" ]; then
+  HAS_AGENTS=1
+fi
+
+# ── The folders the branch's sessions are recorded under ────
+# A session is recorded under the name of the folder it ran in. Run from the branch's
+# own folder, that is this one, as before agent_usage existed. With agents of this
+# repository on record, the report also takes the folder the branch is checked out in
+# (with --pr from another folder: the main one, often) and the worktrees its agents
+# worked in (one removed since, as after a merge). A branch checked out nowhere, whose
+# name sessions in other folders also carry, is refused: those sessions may be its own,
+# and a figure without them would be posted as the PR's.
+PROJECT_LIST="'${PROJECT//$CC_SQ/$CC_SQ$CC_SQ}'"
+PROJECT_NAMES="'${PROJECT}'"
+add_project() {
+  local q="'${1//$CC_SQ/$CC_SQ$CC_SQ}'"
+  [ -n "$1" ] || return 0
+  case ",${PROJECT_LIST}," in *",${q},"*) return 0 ;; esac
+  PROJECT_LIST="${PROJECT_LIST},${q}"
+  PROJECT_NAMES="${PROJECT_NAMES}, '${1}'"
+}
+if [ "$HAS_AGENTS" = "1" ]; then
+  LOCATED=1
+  if [ "$BRANCH" != "$CURRENT" ]; then
+    WT_PATH="$(git -C "$TOPLEVEL" worktree list --porcelain 2>/dev/null \
+      | awk -v want="branch refs/heads/${BRANCH}" '{ sub(/\r$/, "") } /^worktree / { p = substr($0, 10) } $0 == want { print p; exit }' || true)"
+    if [ -n "$WT_PATH" ]; then add_project "${WT_PATH##*/}"; else LOCATED=0; fi
+  fi
+  while IFS= read -r W; do
+    W="${W%$'\r'}"
+    add_project "${W##*/}"
+  done <<EOF
+$(cc_sql "$DB_PATH" "SELECT DISTINCT worktree FROM agent_usage WHERE repo = ${Q_REPO} AND git_branch = '${SQL_BRANCH}' AND worktree <> '';" 2>/dev/null || true)
+EOF
+  if [ "$LOCATED" = "0" ]; then
+    OTHERS="$(cc_sql "$DB_PATH" "SELECT group_concat(name, ', ') FROM (SELECT quote(project) AS name FROM sessions WHERE git_branch = '${SQL_BRANCH}' AND COALESCE(excluded, 0) = 0 AND project NOT IN (${PROJECT_LIST}) GROUP BY project ORDER BY COUNT(*) DESC LIMIT 3);" 2>/dev/null || true)"
+    if [ -n "$OTHERS" ]; then
+      echo "Error: branch '${BRANCH}' is checked out in no worktree of this repository, and sessions on a branch of that name were recorded in other folders (${OTHERS}). They may be this branch's: nothing posted, rather than a figure without them." >&2
+      echo "Run /carbon-pr from the branch's worktree, or check the branch out again in a folder of the name its sessions ran in (git worktree add <folder> ${BRANCH})." >&2
+      exit 1
+    fi
+  fi
+fi
+
+BASE="s.project IN (${PROJECT_LIST}) AND s.git_branch = '${SQL_BRANCH}' AND COALESCE(s.excluded, 0) = 0"
 AGENT_OK="COALESCE(s.excluded, 0) = 0 AND COALESCE(s.methodology_version, 1) >= 2 AND COALESCE(s.agents_collected, 0) >= 2 AND substr(COALESCE(a.last_ts, ''), 1, 19) <= substr(COALESCE(s.ended_at, ''), 1, 19)"
 HERE="a.git_branch = '${SQL_BRANCH}' AND a.repo = ${Q_REPO}"
-OUT_AGENTS="FROM agent_usage a JOIN sessions s ON s.session_id = a.session_id WHERE ${BASE} AND ${AGENT_OK} AND NOT (${HERE})"
+OUT_AGENTS="FROM agent_usage a JOIN sessions s ON s.session_id = a.session_id WHERE ${BASE} AND ${AGENT_OK} AND a.repo = ${Q_REPO} AND a.git_branch <> '${SQL_BRANCH}'"
 IN_AGENTS="FROM agent_usage a JOIN sessions s ON s.session_id = a.session_id WHERE ${HERE} AND ${AGENT_OK} AND NOT (${BASE})"
 TOTAL_AGENTS=""
 MODEL_AGENTS=""
-if [ "$(cc_sql "$DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'agent_usage';" 2>/dev/null)" = "1" ]; then
+if [ "$HAS_AGENTS" = "1" ]; then
   TOTAL_AGENTS="
   UNION ALL SELECT a.session_id, a.co2_grams, a.cost_usd, a.input_tokens, a.output_tokens, a.cache_read_tokens, -1, 0 ${OUT_AGENTS}
   UNION ALL SELECT a.session_id, a.co2_grams, a.cost_usd, a.input_tokens, a.output_tokens, a.cache_read_tokens, 1, 1 ${IN_AGENTS}"
@@ -170,7 +221,7 @@ $(sqlite3 "$DB_PATH" "SELECT COUNT(DISTINCT CASE WHEN sign > 0 THEN sid END), CO
 EOF
 
 if [ "$N_SESSIONS" = "0" ]; then
-  echo "No sessions recorded for branch '${BRANCH}' of project '${PROJECT}': nothing posted."
+  echo "No sessions recorded for branch '${BRANCH}' of project ${PROJECT_NAMES}: nothing posted."
   echo "A session counts for the branch it ended on, and so do its agents, except an agent"
   echo "that worked in a worktree of another branch, recorded as it ended: it counts there."
   echo "Sessions captured before the git_branch column (v1.4.0) carry no branch;"

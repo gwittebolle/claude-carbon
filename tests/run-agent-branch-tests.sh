@@ -19,19 +19,27 @@
 #   4. left alone: a cwd outside any repository, Claude Code's own agents (no type, or a
 #      transcript its session does not read), forks (meta.json or agent type); a resumed
 #      agent's rows are replaced, or kept when no branch is found any more; twenty agents
-#      ending at once are all recorded;
+#      ending at once are all recorded; a tag of a branch's name changes nothing; the
+#      worktree's folder is recorded with the branch;
+#  4b. a transcript that lags: the final message (last_assistant_message) is waited for,
+#      0.2 s at a time, five times at most;
 #   5. the C:/, c:/, /c/ and ~/ spellings of a Windows worktree are recognised;
 #   6. the report: a branch sums its sessions, minus their agents gone elsewhere, plus the
 #      agents of other sessions come to it, and says so, per model too (a model left with
 #      nothing is not shown); the branches add up to the sessions (tokens exactly, CO2 and
 #      cost at %.4f); a row an older writer left (agents_collected 0), a frozen (v1) row
 #      and a row written before its agent ended take no agent part, and nothing goes below
-#      zero; a PR from a fork is refused;
+#      zero; a PR from a fork is refused; --pr from another folder counts the sessions of
+#      the worktree the branch is checked out in, or of the one its agents recorded once
+#      it is removed, and refuses a branch checked out nowhere whose name sessions of
+#      other folders carry; an agent recorded in a repository that moved since stays with
+#      its session; the row's end is the time the session's pass started;
 #   7. recompute.sh re-derives agent_usage, also for a session not recorded yet, never a
 #      v1 session's;
 #   8. no jq is started with more than 30,000 bytes of arguments (150 worktrees);
 #   9. without any agent row the comment is byte for byte the 1.15.6 one, also on a
-#      read-only database that has no agent_usage table.
+#      read-only database that has no agent_usage table, and --pr from another folder
+#      says what 1.15.7 said.
 #
 # Throwaway dirs only (HOME, CLAUDE_CONFIG_DIR, CLAUDE_CARBON_DB, a scratch repository);
 # the real ~/.claude is never read or written. bash 3.2 compatible.
@@ -104,11 +112,15 @@ git_q -C "${MAIN}/.claude/worktrees/wf_run-2" checkout -q -b feat/wf-real
 git_q -C "$MAIN" worktree add -q -b worktree-foo "${MAIN}/.claude/worktrees/foo"
 # A worktree at the repository's root under a one-word name
 git_q -C "$MAIN" worktree add -q -b feat/docs "${MAIN}/docs"
+# Tags of two branches' names: the short form of those branches reads heads/<name>
+git_q -C "$MAIN" tag feat/iso
+git_q -C "$MAIN" tag feat/t-1013
 # The paths as git spells them: what the agents' commands name, and their cwd
 wt() { git -C "$MAIN" worktree list --porcelain | tr -d '\r' | sed -n 's/^worktree //p' | grep "/$1\$"; }
 P_MAIN="$(wt proj)"; P_1013="$(wt proj-1013)"; P_FAC="$(wt proj-1013-facultatif)"; P_SP="$(wt 'proj sp')"
 P_OTHER="$(wt proj-other)"; P_DET="$(wt proj-det)"; P_SIDE="$(wt proj-wt-side)"
 P_ISO1="$(wt agent-iso1)"; P_ISO2="$(wt agent-iso2)"; P_WF1="$(wt wf_run-1)"; P_WF2="$(wt wf_run-2)"; P_FOO="$(wt foo)"; P_DOCS="$(wt docs)"
+check "setup: tags of two branches' names" "2" "$(git -C "$MAIN" tag -l 'feat/*' | wc -l | tr -d ' ')"
 check "setup: the worktrees" "yes" \
   "$([ -n "$P_DOCS" ] && [ -n "$P_MAIN" ] && [ -n "$P_1013" ] && [ -n "$P_FAC" ] && [ -n "$P_SP" ] && [ -n "$P_SIDE" ] && [ -n "$P_ISO1" ] && [ -n "$P_WF2" ] && [ -n "$P_FOO" ] && echo yes || echo no)"
 
@@ -244,6 +256,8 @@ check "the agent's own usage, priced at its model" \
 REPO_KEY="$(cd "${P_MAIN}/.git" && pwd -P)"
 cc_is_windows && REPO_KEY="$(printf '%s' "$REPO_KEY" | tr 'A-Z' 'a-z')"
 check "the repository: its common git folder" "$REPO_KEY" "$(q "SELECT DISTINCT repo FROM agent_usage WHERE agent_id='ddd';")"
+check "the worktree's folder: the one named, the one it ran in" "${P_1013}|${P_ISO1}" \
+  "$(q "SELECT DISTINCT worktree FROM agent_usage WHERE agent_id='aaa';")|$(q "SELECT DISTINCT worktree FROM agent_usage WHERE agent_id='ddd';")"
 
 # Claude Code's own agents: no type, or a transcript its session's row does not read
 msg "x" 10 1 "$P_MAIN" > "${TMPROOT}/elsewhere/agent-int.jsonl"
@@ -293,6 +307,58 @@ done
 wait
 check "twenty agents ending at once: all recorded" "20" "$(q "SELECT COUNT(DISTINCT agent_id) FROM agent_usage WHERE session_id='${S3}';")"
 
+# ---------------------------------------------------------------- 4b. a transcript that lags
+# sleep through a shim that counts its calls and, on its first one, writes the line kept
+# in lag-line: Claude Code finishing the transcript while the hook waits
+SLEEPS="${TMPROOT}/sleep-shim"
+mkdir -p "$SLEEPS"
+REAL_SLEEP="$(command -v sleep)"
+cat > "${SLEEPS}/sleep" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "${TMPROOT}/sleeps"
+if [ -n "\${LAG_FILE:-}" ] && [ -f "${TMPROOT}/lag-line" ]; then cat "${TMPROOT}/lag-line" >> "\$LAG_FILE"; rm -f "${TMPROOT}/lag-line"; fi
+exec "${REAL_SLEEP}" "\$@"
+EOF
+chmod +x "${SLEEPS}/sleep"
+# final <id> <text>: an agent's final message, text only, 1000 tokens in and 100 out
+final() {
+  jq -n -c --arg id "$1" --arg t "$2" --arg cwd "$P_ISO1" \
+    '{type: "assistant", requestId: ("r" + $id), timestamp: "2026-01-01T10:00:01.000Z", cwd: $cwd,
+      message: {id: ("m" + $id), model: "claude-opus-5-5", content: [{type: "text", text: $t}],
+                usage: {input_tokens: 1000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 100}}}'
+}
+# lagstop <agent id> [last_assistant_message]: SubagentStop for an agent of S3 in feat/iso's worktree
+lagstop() {
+  : > "${TMPROOT}/sleeps"
+  if [ $# -ge 2 ]; then stop_input "$S3" "$1" "$P_ISO1" | jq -c --arg m "$2" '.last_assistant_message = $m'
+  else stop_input "$S3" "$1" "$P_ISO1" | jq -c 'del(.last_assistant_message)'; fi \
+    | PATH="${SLEEPS}:$PATH" LAG_FILE="${PROJ}/${S3}/subagents/agent-$1.jsonl" CLAUDE_CONFIG_DIR="$CFG" bash "$HOOK"
+}
+waits() { wc -l < "${TMPROOT}/sleeps" | tr -d ' '; }
+usage_of() { q "SELECT COALESCE(SUM(input_tokens), 0) || '|' || COALESCE(SUM(output_tokens), 0) FROM agent_usage WHERE agent_id='$1';"; }
+# Long, on two lines, with quotes: its end, as a transcript escapes it, is what is looked for
+LAST="All done. $(printf 'word %.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
+The branch \"feat/iso\" is ready: 3 files changed."
+agent "$S3" lg1 100 10 "$P_ISO1"
+final lg1f "$LAST" >> "${PROJ}/${S3}/subagents/agent-lg1.jsonl"
+lagstop lg1 "$LAST
+"
+check "the final message already in the transcript: no wait, counted" "0|1100|110" "$(waits)|$(usage_of lg1)"
+agent "$S3" lg2 100 10 "$P_ISO1"
+final lg2f "$LAST" > "${TMPROOT}/lag-line"
+lagstop lg2 "$LAST"
+check "a transcript that lags: read again until its final message is there" "1|1100|110" "$(waits)|$(usage_of lg2)"
+agent "$S3" lg3 100 10 "$P_ISO1"
+lagstop lg3 "A final message the transcript never gets"
+check "a final message that never comes: five waits of 0.2 s, then what is there" "5|0.2|100|10" \
+  "$(waits)|$(sort -u "${TMPROOT}/sleeps")|$(usage_of lg3)"
+agent "$S3" lg4 100 10 "$P_ISO1"
+lagstop lg4 ""
+check "no closing text (an agent that reported through a tool): no wait" "0|100|10" "$(waits)|$(usage_of lg4)"
+agent "$S3" lg5 100 10 "$P_ISO1"
+lagstop lg5
+check "an event without last_assistant_message (an older Claude Code): no wait" "0|100|10" "$(waits)|$(usage_of lg5)"
+
 # A session run in the worktree of feat/t-1013 itself, without agents
 S4="33333333-aaaa-bbbb-cccc-000000000004"
 session "$S4" "$P_1013" feat/t-1013 150 15
@@ -314,11 +380,15 @@ WIN_C="$(printf '%s' "$WIN_WTS" | awk -v top="C:/Users/me/code/proj" -v stop="C:
 check "Windows: each spelling of a worktree" \
   "../.worktrees/proj-x /c/Users/me/code/.worktrees/proj-x C:/Users/me/code/.worktrees/proj-x c:/Users/me/code/.worktrees/proj-x ~/code/.worktrees/proj-x" \
   "$(printf '%s' "$WIN_C" | jq -r '[.[] | select(.b == "feat/x") | .p] | sort | join(" ")' | tr -d '\r')"
-win_names() { { printf '%s\n' "$WIN_C"; msg w 1 1 C:/ "[$(cmd "$1")]"; } | jq -R -n -r "$CC_JQ_AGENT_BRANCH" | tr -d '\r'; }
+win_names() { { printf '%s\n' "$WIN_C"; msg w 1 1 C:/ "[$(cmd "$1")]"; } | jq -R -n -r "$CC_JQ_AGENT_BRANCH" | tr -d '\r' | head -n 1; }
 check "Windows: C:\\ with backslashes" "feat/x" "$(win_names 'cd C:\Users\me\code\.worktrees\proj-x && dir')"
 check "Windows: /c/" "feat/x" "$(win_names 'cd /c/Users/me/code/.worktrees/proj-x')"
 check "Windows: c:/" "feat/x" "$(win_names 'git -C c:/Users/me/code/.worktrees/proj-x status')"
 check "Windows: a longer name is another worktree" "feat/x-extra" "$(win_names 'cd C:\Users\me\code\.worktrees\proj-x-extra')"
+check "Windows: the worktree's folder as git spells it" "C:/Users/me/code/.worktrees/proj-x" \
+  "$({ printf '%s\n' "$WIN_C"; msg w 1 1 C:/ "[$(cmd 'cd /c/Users/me/code/.worktrees/proj-x')]"; } | jq -R -n -r "$CC_JQ_AGENT_BRANCH" | tr -d '\r' | sed -n 2p)"
+WIN_CR="$(printf '%s' "$WIN_WTS" | awk '{ printf "%s\r\n", $0 }' | awk -v top="C:/Users/me/code/proj" -v stop="C:/Users/me/code/proj" -v home="/c/Users/me" "$CC_AWK_AGENT_CANDIDATES")"
+check "Windows: git's lines ending in CR read alike" "$WIN_C" "$WIN_CR"
 
 # ---------------------------------------------------------------- 6. the report
 payload() { jq -n --arg s "$1" --arg t "${PROJ}/$1.jsonl" --arg c "$2" '{session_id: $s, transcript_path: $t, cwd: $c}'; }
@@ -341,6 +411,8 @@ case "$*" in
   "pr view 6 --json headRefName,isCrossRepository --jq "*) echo "feat/space false" ;;
   "pr view 7 --json headRefName,isCrossRepository --jq "*) echo "feat/docs false" ;;
   "pr view 9 --json headRefName,isCrossRepository --jq "*) echo "feat/t-1013 true" ;;
+  "pr view 10 --json headRefName,isCrossRepository --jq "*) echo "feat/t-1013 false" ;;
+  "pr view 11 --json headRefName,isCrossRepository --jq "*) echo "feat/gone false" ;;
   *) exit 1 ;;
 esac
 STUB
@@ -375,6 +447,8 @@ check "main: its sessions without the agents that left" \
 check "main: no agents line" "no" "$(has 'Includes the agents' "$(report "$P_MAIN" --pr 2)")"
 check "feat/iso: the agents of three sessions, no session of its own" \
   "3|$(atok "git_branch = 'feat/iso'")|3" "$(raw "$P_MAIN" --pr 1 | awk -F '|' '{ print $1 "|" $4 "|" $6 }')"
+check "--pr from the main folder: the sessions of the worktree the branch is checked out in" \
+  "$(raw "$P_1013")" "$(raw "$P_MAIN" --pr 10)"
 ERR="$(report "$P_MAIN" --pr 9 2>&1)"
 check "a PR from a fork: refused, nothing summed" "yes|no" \
   "$(has 'comes from a fork' "$ERR")|$(has 'developing this PR' "$ERR")"
@@ -421,6 +495,64 @@ check "a row older than its agents: they are not counted elsewhere yet" "$(atok 
   "$(raw "$P_MAIN" --pr 1 | awk -F '|' '{ print $4 }')"
 check "a row older than its agents: no figure below zero" "no" "$(has '| -' "$(report "$P_MAIN" --pr 2)$(report "$P_MAIN" --pr 1)")"
 q "UPDATE sessions SET ended_at = '2026-10-16T12:00:00Z' WHERE session_id='${S}';"
+
+# An agent recorded under another spelling of the repository (it moved since): it stays
+# with its session, and its branch does not count it
+MAIN_T="$(raw "$P_MAIN" --pr 2 | cut -d '|' -f 4)"
+T1013_T="$(raw "$P_1013" | cut -d '|' -f 4)"
+AAA_T="$(atok "agent_id = 'aaa'")"
+q "UPDATE agent_usage SET repo = '/moved/proj/.git' WHERE agent_id = 'aaa';"
+check "an agent recorded in a repository that moved: with its session, not on its branch" \
+  "$((MAIN_T + AAA_T))|$((T1013_T - AAA_T))" "$(raw "$P_MAIN" --pr 2 | cut -d '|' -f 4)|$(raw "$P_1013" | cut -d '|' -f 4)"
+q "UPDATE agent_usage SET repo = '${REPO_KEY}' WHERE agent_id = 'aaa';"
+
+# A session on a branch of that name in an unknown folder: the branch is checked out in a
+# worktree, so that is where its sessions are; nothing refused
+q "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, methodology_version, git_branch, agents_collected) VALUES ('stray', 'proj-old', 'claude-opus-5-5', 50, 5, 0, 0.1, 2, 'feat/t-1013', 2);"
+check "--pr, a branch checked out in a worktree: its sessions there, a folder of the same branch name left out" \
+  "$(raw "$P_1013")" "$(raw "$P_MAIN" --pr 10)"
+q "DELETE FROM sessions WHERE session_id = 'stray';"
+
+# A branch whose worktree was removed after a merge: its session there, and the agent a
+# session on main sent there, found under the folder that agent recorded
+git_q -C "$MAIN" worktree add -q -b feat/gone "${WTS}/proj-gone"
+P_GONE="$(wt proj-gone)"
+S5="33333333-aaaa-bbbb-cccc-000000000005"
+S6="33333333-aaaa-bbbb-cccc-000000000006"
+session "$S5" "$P_GONE" feat/gone 170 17
+session "$S6" "$P_MAIN" main 100 10
+agent "$S6" gn1 260 26 "$P_MAIN" "$(cmd "cd '$P_GONE' && make")"
+stop "$S6" gn1 "$P_MAIN"
+payload "$S5" "$P_GONE" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+payload "$S6" "$P_MAIN" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+GONE="$(raw "$P_GONE")"
+check "setup: feat/gone, its session and an agent of main" "2|$(( $(tok "$S5") + $(atok "agent_id = 'gn1'") ))|1" "$(printf '%s' "$GONE" | awk -F '|' '{ print $1 "|" $4 "|" $6 }')"
+git_q -C "$MAIN" worktree remove --force "$P_GONE"
+check "--pr, a worktree removed since: the sessions of the folder its agents recorded" "$GONE" "$(raw "$P_MAIN" --pr 11)"
+# Then a session on a branch of that name in a folder nothing ties to it: refused
+q "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, methodology_version, git_branch, agents_collected) VALUES ('stray', 'proj-gone-old', 'claude-opus-5-5', 50, 5, 0, 0.1, 2, 'feat/gone', 2);"
+ERR="$(report "$P_MAIN" --pr 11 2>&1)"
+RC=$?
+check "--pr, a branch checked out nowhere, its name on sessions of another folder: refused" "1|yes|yes|no" \
+  "$RC|$(has "checked out in no worktree" "$ERR")|$(has "'proj-gone-old'" "$ERR")|$(has 'developing this PR' "$ERR")"
+q "DELETE FROM sessions WHERE session_id = 'stray';"
+
+# The row's end is the time its pass started: a jq of the pass (the one given the
+# factors) notes when it starts, then takes 2 s
+SLOWJQ="${TMPROOT}/slow-jq"
+mkdir -p "$SLOWJQ"
+cat > "${SLOWJQ}/jq" <<EOF
+#!/usr/bin/env bash
+case "\$*" in *--slurpfile*) [ -s "${TMPROOT}/pass-start" ] || date -u +%s > "${TMPROOT}/pass-start"; "${REAL_SLEEP}" 2 ;; esac
+exec "$(command -v jq)" "\$@"
+EOF
+chmod +x "${SLOWJQ}/jq"
+NOW_DB="${TMPROOT}/now.db"
+sqlite3 "$NOW_DB" "$SCHEMA"
+payload "$S4" "$P_1013" | PATH="${SLOWJQ}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$NOW_DB" bash "$PERSIST"
+ROW_END="$(sqlite3 "$NOW_DB" "SELECT CAST(strftime('%s', ended_at) AS INTEGER) FROM sessions;" | tr -d '\r')"
+check "the row's end: before its pass, not after" "yes" \
+  "$([ -n "$ROW_END" ] && [ "$ROW_END" -le "$(cat "${TMPROOT}/pass-start")" ] && echo yes || echo "no: ${ROW_END} vs $(cat "${TMPROOT}/pass-start")")"
 
 # ---------------------------------------------------------------- 7. recompute
 # An agent of a session not recorded yet, and one of a frozen session
@@ -514,6 +646,21 @@ check "no agent row: the 1.15.6 comment" "$GOLDEN" "$(g_report)"
 sqlite3 "$G_DB" "INSERT INTO agent_usage (session_id, agent_id, repo, git_branch, how, model, input_tokens, output_tokens, co2_grams, cost_usd) VALUES
   ('g3', 'x', '/elsewhere/.git', 'feat/g', 'cwd', 'claude-opus-5-5', 50, 5, 1, 1);"
 check "agent rows elsewhere: still the 1.15.6 comment" "$GOLDEN" "$(g_report)"
+# --pr from this folder for a branch checked out in another worktree, with sessions there:
+# without agent rows for this repository, what 1.15.7 said
+git_q -C "$G_DIR" commit -q --allow-empty -m init
+git_q -C "$G_DIR" worktree add -q -b feat/h "${TMPROOT}/golden/g-wt"
+sqlite3 "$G_DB" "INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, methodology_version, git_branch) VALUES ('g4', 'g-wt', 'claude-opus-5-5', 10, 1, 0.1, 1, 2, 'feat/h');"
+cat > "${STUBS}/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  "pr view 12 --json headRefName,isCrossRepository --jq "*) echo "feat/h false" ;;
+  *) exit 1 ;;
+esac
+STUB
+check "no agent row for the repository, --pr from another folder: what 1.15.7 said" \
+  "No sessions recorded for branch 'feat/h' of project 'proj': nothing posted." \
+  "$(cd "$G_DIR" && PATH="${STUBS}:$PATH" CLAUDE_CARBON_DB="$G_DB" bash "$PR_SCRIPT" --dry-run --pr 12 2>/dev/null | head -n 1)"
 
 # ---------------------------------------------------------------- 10. the plugin wires it
 check "hooks.json: SubagentStop runs agent-stop.sh, for agents with a type" \

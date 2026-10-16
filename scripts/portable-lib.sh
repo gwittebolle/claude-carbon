@@ -83,6 +83,36 @@ cc_path() {
   esac
 }
 
+# cc_path_vars <name>…: cc_path applied to each named variable, in place, with one cygpath
+# for all of them on Windows (each process costs tens of milliseconds there), and nothing
+# started elsewhere. Falls back to cc_path one by one when cygpath does not answer one
+# line per path.
+cc_path_vars() {
+  local v line i=0
+  local names=() args=() conv=()
+  [ "$CC_OS" = "windows" ] || return 0
+  for v in "$@"; do
+    case "${!v}" in
+      [A-Za-z]:[\\/]*|*\\*) names+=("$v"); args+=("${!v}") ;;
+    esac
+  done
+  [ "${#names[@]}" -gt 0 ] || return 0
+  if [ -n "$CC_CYGPATH" ] && line="$($CC_CYGPATH -u "${args[@]}" 2>/dev/null)"; then
+    line="${line//$'\r'/}"
+    while IFS= read -r v; do conv+=("$v"); done <<EOF
+$line
+EOF
+  fi
+  while [ "$i" -lt "${#names[@]}" ]; do
+    if [ "${#conv[@]}" -eq "${#names[@]}" ] && [ -n "${conv[$i]}" ]; then
+      printf -v "${names[$i]}" '%s' "${conv[$i]}"
+    else
+      printf -v "${names[$i]}" '%s' "$(cc_path "${args[$i]}")"
+    fi
+    i=$((i + 1))
+  done
+}
+
 # ── A private jq ────────────────────────────────────────────────────────────
 # macOS ships jq from 15 (Sequoia) on. On an older Mac with none, install.sh fetches
 # the official binary into the data folder; every script finds it there, while a jq of
@@ -340,11 +370,13 @@ CC_AGENTS_COLLECTED=2
 # agent_usage: the usage of an agent that worked on a branch of its own, per model,
 # recorded by the SubagentStop hook (agent-stop.sh) for /carbon-pr. Same token columns as
 # session_models; the agent's tokens are also in its session's row. repo is the
-# repository's common git folder (absolute; lower case on Windows), how says how the
-# branch was found: "cwd" (the agent ran in a worktree of its own) or "cited" (its
-# commands named one). last_ts is the agent's last message: the report moves the agent
-# only once its session's row was written after it (ended_at), so that the row holds it.
-CC_AGENT_USAGE_DDL="CREATE TABLE IF NOT EXISTS agent_usage (session_id TEXT NOT NULL, agent_id TEXT NOT NULL, repo TEXT NOT NULL, git_branch TEXT NOT NULL, how TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0, co2_grams REAL DEFAULT 0, last_ts TEXT DEFAULT '', seen_at TEXT, PRIMARY KEY (session_id, agent_id, model));"
+# repository's common git folder (absolute; lower case on Windows), worktree the folder
+# of the worktree the branch was checked out in (as git spells it: the report also looks
+# for the branch's sessions under its name), how says how the branch was found: "cwd"
+# (the agent ran in a worktree of its own) or "cited" (its commands named one). last_ts
+# is the agent's last message: the report moves the agent only once its session's row
+# was written after it (ended_at), so that the row holds it.
+CC_AGENT_USAGE_DDL="CREATE TABLE IF NOT EXISTS agent_usage (session_id TEXT NOT NULL, agent_id TEXT NOT NULL, repo TEXT NOT NULL, git_branch TEXT NOT NULL, worktree TEXT NOT NULL DEFAULT '', how TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0, co2_grams REAL DEFAULT 0, last_ts TEXT DEFAULT '', seen_at TEXT, PRIMARY KEY (session_id, agent_id, model));"
 CC_SESSION_MODELS_DDL="CREATE TABLE IF NOT EXISTS session_models (session_id TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0, co2_grams REAL DEFAULT 0, PRIMARY KEY (session_id, model));"
 cc_ensure_schema() {
   local db="$1" probe col
@@ -1009,11 +1041,12 @@ EOF
 # ── An agent's branch (agent-stop.sh) ──────────────────────────────────────
 # CC_AWK_AGENT_CANDIDATES: `git worktree list --porcelain` on stdin; -v top (the agent's
 # worktree root), stop (the session's), home and homen (the home folder as bash spells it,
-# and as git does on Windows: C:/...). Prints one JSON array of {p, b}: each worktree an
-# agent working from top could name, with its branch and each spelling of its path: as git
-# gives it; with its drive letter in both cases and as /c/... on Windows; ~/... under the
-# home folder; ../... beside top; ./... inside top, and also bare when that path has a
-# slash (a bare word such as "docs" would be read in any command). Left out: the main
+# and as git does on Windows: C:/...). Prints one JSON array of {p, b, t}: each worktree
+# an agent working from top could name, with its branch (b), its folder as git spells it
+# (t) and each spelling of its path (p): as git gives it; with its drive letter in both
+# cases and as /c/... on Windows; ~/... under the home folder; ../... beside top; ./...
+# inside top, and also bare when that path has a slash (a bare word such as "docs" would
+# be read in any command). Lines may end in CR (git on Windows). Left out: the main
 # folder (the first entry), top, stop, a detached HEAD, a branch Claude Code named
 # (worktree-agent-*, worktree-wf_*), and a path or branch that would need escaping in JSON
 # (a quote, a backslash, a tab).
@@ -1022,7 +1055,7 @@ CC_AWK_AGENT_CANDIDATES='
 function add(p) {
   if (p == "" || (p in seen)) return
   seen[p] = 1
-  out = out (out == "" ? "" : ",") "{\"p\":\"" p "\",\"b\":\"" branch "\"}"
+  out = out (out == "" ? "" : ",") "{\"p\":\"" p "\",\"b\":\"" branch "\",\"t\":\"" path "\"}"
 }
 function flush(   pb, d, base, r) {
   if (path != "" && n > 1 && path != top && path != stop && branch != "" &&
@@ -1047,14 +1080,15 @@ function flush(   pb, d, base, r) {
   }
   path = ""; branch = ""
 }
+{ sub(/\r$/, "") }
 /^worktree / { flush(); path = substr($0, 10); n++; next }
 /^branch / { branch = substr($0, 8); sub(/^refs\/heads\//, "", branch); next }
 END { flush(); print "[" out "]" }'
 
 # CC_JQ_AGENT_BRANCH (jq -R -n): on stdin, the candidates array above on its first line,
-# then an agent's transcript lines (those with a tool call are enough). Prints the branch
-# of the worktree that the agent's tool calls name in at least half of them, and no other
-# worktree as often; nothing otherwise. Only calls that give a place count, and only that
+# then an agent's transcript lines (those with a tool call are enough). Prints, on two
+# lines, the branch and the folder of the worktree that the agent's tool calls name in at
+# least half of them, and no other worktree as often; nothing otherwise. Only calls that give a place count, and only that
 # place is read: the input's command, file_path, path or notebook_path (not a description,
 # a prompt or the text an edit writes). A call names a worktree when one of its spellings
 # appears there (shell-escaped spaces read as spaces, backslashes as slashes), not
@@ -1084,4 +1118,4 @@ def names($p):
 | ([ .[].w[] ] | group_by(.) | map({ b: .[0], n: length }) | sort_by(-.n)) as $cnt
 | if ($cnt | length) > 0 and $cnt[0].n * 2 >= $calls
      and (($cnt | length) == 1 or $cnt[1].n < $cnt[0].n)
-  then $cnt[0].b else empty end'
+  then "\($cnt[0].b)\n\([ $c[] | select(.b == $cnt[0].b) | .t ][0])" else empty end'
