@@ -244,10 +244,54 @@ jobs:
         if: always()
         run: /bin/bash tests/run-update-check-tests.sh
 
+  ubuntu-2204:
+    name: ubuntu 22.04 (jq 1.6, git 2.34)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The other Linux jobs get the runner's jq 1.7 or later: jq 1.6, which Ubuntu 22.04 and
+    # Debian 11 still ship, caused two bugs none of them saw. git 2.34 and mawk come with it.
+    container: ubuntu:22.04
+    steps:
+      # git before the checkout, so that it is a clone (the install suite clones it). The
+      # workspace belongs to the runner's user, not to the container's root, and the suites
+      # set HOME to a scratch folder: the folder is trusted in the system config.
+      - name: Install git, jq 1.6 and sqlite3
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends git jq sqlite3 ca-certificates
+          git config --system --add safe.directory '*'
+          git config --system --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/checkout@v4
+
+      - name: Report the toolchain actually available
+        run: |
+          echo "bash    : ${BASH_VERSION}"
+          echo "jq      : $(jq --version)"
+          echo "git     : $(git --version)"
+          echo "sqlite3 : $(sqlite3 --version | cut -d' ' -f1)"
+          echo "awk     : $(awk -W version 2>&1 | head -1)"
+
+      - name: carbon-pr agents
+        if: always()
+        run: bash tests/run-agent-branch-tests.sh
+
+      - name: carbon-pr pipeline
+        if: always()
+        run: bash tests/run-pr-tests.sh
+
+      - name: Install and update wiring
+        if: always()
+        run: bash tests/run-install-tests.sh
+
+      - name: Workflow agents
+        if: always()
+        run: bash tests/run-workflow-agent-tests.sh
+
   windows:
     name: windows (git bash)
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     # Every suite reports even when an earlier one fails: a Windows-only failure costs
     # a full push to observe, so one round-trip should surface all of them at once.
     defaults:
