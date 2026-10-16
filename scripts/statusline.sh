@@ -16,6 +16,10 @@ FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
 PRICES_FILE="${SCRIPT_DIR}/../data/prices.json"
 CONFIG_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")"
 DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}")"
+# The per-agent usage cache (see cc_session_usage), beside Claude Code's own data, never
+# beside a database CLAUDE_CARBON_DB may have put in a synced folder
+# shellcheck disable=SC2034 # read by cc_session_usage
+CC_USAGE_CACHE_DIR="${CONFIG_DIR}/claude-carbon/usage-cache"
 
 # Read stdin
 INPUT="$(cat)"

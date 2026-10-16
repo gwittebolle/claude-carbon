@@ -32,6 +32,9 @@ FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
 PRICES_FILE="${SCRIPT_DIR}/../data/prices.json"
 CONFIG_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")"
 DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}")"
+# The per-agent usage cache (see cc_session_usage), beside Claude Code's own data, never
+# beside a database CLAUDE_CARBON_DB may have put in a synced folder
+CC_USAGE_CACHE_DIR="${CONFIG_DIR}/claude-carbon/usage-cache"
 
 # Rows written by this version of the methodology (raw-token columns populated).
 METHODOLOGY_VERSION=2
@@ -367,6 +370,12 @@ COMMIT;" >/dev/null 2>&1 || { ERRORS=$((ERRORS + 1)); continue; }
 
 done < <(find "${CONFIG_DIR}/projects" -maxdepth 2 -name "*.jsonl" 2>/dev/null)
 
+# The usage cache: a session's file unused for 45 days (its transcripts are gone by then),
+# and the temporary files an interrupted write left
+if [ -d "$CC_USAGE_CACHE_DIR" ]; then
+  find "$CC_USAGE_CACHE_DIR" -maxdepth 1 -type f \( -name '*.jsonl' -mtime +45 -o -name '*.tmp.*' -mmin +60 \) \
+    -exec rm -f {} + 2>/dev/null || true
+fi
 echo "  Backfill complete: ${ADDED} sessions added, ${SKIPPED} skipped, ${ERRORS} errors."
 if [ "$REFRESHED" -gt 0 ]; then
   echo "  Refreshed ${REFRESHED} session(s) whose transcript grew after they were last recorded."
