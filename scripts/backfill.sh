@@ -121,13 +121,15 @@ while IFS= read -r JSONL_FILE; do
   # any parse: a pass writes only if the row still has both when it writes (every Stop
   # hook sets the end to its own time), so a turn an older Stop hook records meanwhile is
   # never overwritten by a parse that did not see it.
-  ROW_SNAP="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COUNT(*) || '|' || COALESCE(MAX(ended_at), '') || '|' || COALESCE(MAX(${TOKENS_SQL}), 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
+  ROW_SNAP="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COUNT(*) || '|' || COALESCE(MAX(RTRIM(ended_at, char(13))), '') || '|' || COALESCE(MAX(${TOKENS_SQL}), 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
   EXISTS="${ROW_SNAP%%|*}"
   ROW_END="${ROW_SNAP#*|}"; ROW_END="${ROW_END%|*}"
   ROW_TOKENS="${ROW_SNAP##*|}"
   case "$EXISTS$ROW_TOKENS" in ''|*[!0-9]*) ERRORS=$((ERRORS + 1)); continue ;; esac
   ROW_END="${ROW_END//$CC_SQ/$CC_SQ$CC_SQ}"
-  UNCHANGED="COALESCE(ended_at, '') = '${ROW_END}' AND (${TOKENS_SQL}) = ${ROW_TOKENS}"
+  # The end is read and compared without a trailing CR: earlier versions on Windows stored
+  # the end of a session they added with one (jq's CRLF), which sqlite3 may print as ^M
+  UNCHANGED="RTRIM(COALESCE(ended_at, ''), char(13)) = '${ROW_END}' AND (${TOKENS_SQL}) = ${ROW_TOKENS}"
   END_EPOCH=""
   # Refresh check: a row whose transcript was written well after its ended_at is missing
   # the session's tail (a turn interrupted before the Stop hook, then a crash, a kill, or a
@@ -213,7 +215,7 @@ while IFS= read -r JSONL_FILE; do
     if [ "$SPLIT_MISSING" = "1" ] && parse_once; then
       STORED="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COALESCE(input_tokens, 0) || '|' || COALESCE(cache_creation_tokens, 0) || '|' || COALESCE(cache_read_tokens, 0) || '|' || COALESCE(output_tokens, 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null || echo "")"
       if [ "$STORED" = "${CC_U_IN}|${CC_U_CW}|${CC_U_CR}|${CC_U_OUT}" ]; then
-        SAME="COALESCE(input_tokens, 0) = ${CC_U_IN} AND COALESCE(cache_creation_tokens, 0) = ${CC_U_CW} AND COALESCE(cache_read_tokens, 0) = ${CC_U_CR} AND COALESCE(output_tokens, 0) = ${CC_U_OUT} AND COALESCE(ended_at, '') = '${ROW_END}'"
+        SAME="COALESCE(input_tokens, 0) = ${CC_U_IN} AND COALESCE(cache_creation_tokens, 0) = ${CC_U_CW} AND COALESCE(cache_read_tokens, 0) = ${CC_U_CR} AND COALESCE(output_tokens, 0) = ${CC_U_OUT} AND RTRIM(COALESCE(ended_at, ''), char(13)) = '${ROW_END}'"
         case "$USAGE" in
           *"
 R	"*)

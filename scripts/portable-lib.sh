@@ -610,6 +610,10 @@ cc_session_usage() {
     || raw_out="$(jq -n -R -r --slurpfile f "$factors" --slurpfile p "$prices" --arg main "$main" \
                --argjson raw true "${CC_JQ_MODEL_DEFS}${CC_JQ_USAGE}" "$main" ${files[@]+"${files[@]}"} 2>/dev/null)" \
     || return 1
+  # jq.exe ends its lines in CRLF, and MSYS bash only drops the CR of the last one: the
+  # others reached the exclusion patterns (X) and the session's last timestamp (S), which
+  # backfill stored with a CR as the end of a session it added
+  raw_out="${raw_out//$'\r'/}"
   [ -n "$raw_out" ] || return 1
   # Exclusion is decided in bash, with grep -E as it always was: user patterns are ERE.
   while IFS= read -r line; do

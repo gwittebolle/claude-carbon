@@ -19,7 +19,10 @@
 #      overwritten by that parse, nor its child rows by the split pass; both land on the
 #      next rescan;
 #  12. a stamped row whose agent wrote a line without usage after it ended, and a row
-#      with no tokens and no child rows, are parsed once, not at every rescan.
+#      with no tokens and no child rows, are parsed once, not at every rescan;
+#  13. jq lines ending in CRLF (jq.exe, as MSYS bash passes them on): a session the
+#      rescan adds is stored without a CR, and a row an earlier version stored with one
+#      is refreshed, then left alone.
 #
 # Throwaway dirs only (CLAUDE_CONFIG_DIR, CLAUDE_CARBON_DB); the real ~/.claude is never
 # read or written. bash 3.2 compatible.
@@ -208,27 +211,13 @@ SHIM="${TMPROOT}/shim"
 mkdir -p "$SHIM"
 REAL_JQ="$(command -v jq)"
 printf '#!/usr/bin/env bash
-case "$*" in *--slurpfile*)
-  m=""; p2=""; p1=""
-  for a in "$@"; do [ "$p2" = "--arg" ] && [ "$p1" = "main" ] && m="$a"; p2="$p1"; p1="$a"; done
-  echo "parse ${m##*/} raw=$(case "$*" in *"raw true"*|*-R*) echo y ;; *) echo n ;; esac)" >> "%s" ;;
-esac
+case "$*" in *--slurpfile*) echo x >> "%s" ;; esac
 exec "%s" "$@"
 ' "${TMPROOT}/jq-calls" "$REAL_JQ" > "${SHIM}/jq"
 chmod +x "${SHIM}/jq"
-# TEMPORARY DIAG (Windows CI): which sessions a rescan parsed, and their rows and mtimes
-diag() {
-  echo "DIAG $1"; cat "${TMPROOT}/jq-calls"
-  q "SELECT session_id || ' end=' || ended_at || ' ac=' || COALESCE(agents_collected, '') || ' v=' || methodology_version || ' tok=' || (input_tokens + cache_read_tokens + output_tokens) FROM sessions ORDER BY session_id;"
-  for m in "${PROJ}"/*.jsonl; do
-    sid="$(basename "$m" .jsonl)"
-    echo "  $sid main=$(cc_mtime "$m") all=$(cc_max_mtime "$m" "${PROJ}/${sid}"/subagents/*.jsonl "${PROJ}/${sid}"/subagents/workflows/*/agent-*.jsonl) wf=$(cc_max_mtime "${PROJ}/${sid}"/subagents/workflows/*/agent-*.jsonl) now=$(date +%s)"
-  done
-}
 : > "${TMPROOT}/jq-calls"
 PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "end: no parse on the next rescan" "0" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')"
-[ "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')" = "0" ] || diag end
 
 # ---------------------------------------------------------------- 8. an agent transcript that cannot be read
 # One listed then gone (removed between the listing and the parse), one unreadable: the
@@ -243,11 +232,14 @@ cp "${PROJ}/${S8}/subagents/workflows/wf_abc123-def/agent-a1b2c3.jsonl" "${PROJ}
 chmod 000 "${PROJ}/${S8}/subagents/agent-locked.jsonl"
 if [ -r "${PROJ}/${S8}/subagents/agent-locked.jsonl" ]; then
   echo "SKIP unreadable agent: this system still reads a mode-000 file"
+  chmod 644 "${PROJ}/${S8}/subagents/agent-locked.jsonl"
+  # Recorded all the same, so the sections below see the same sessions on every system
+  payload "$S8" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
 else
   payload "$S8" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
   check "unreadable agent: the session recorded from the others" "$WITH" "$(tokens "$S8")"
+  chmod 644 "${PROJ}/${S8}/subagents/agent-locked.jsonl"
 fi
-chmod 644 "${PROJ}/${S8}/subagents/agent-locked.jsonl"
 
 # ---------------------------------------------------------------- 9. CRLF from sqlite3
 # A new session to add and a row an older Stop hook wrote, through a sqlite3 whose every
@@ -271,7 +263,6 @@ EOF
 chmod +x "${CRLF}/sqlite3"
 OUT="$(PATH="${CRLF}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
 check "CRLF: the new session added, the old row repaired" "$WITH|$WITH|2" "$(tokens "$S9")|$(tokens "$S10")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S10}';")"
-echo "DIAG crlf output: $OUT"
 check "CRLF: counted, no error" "yes|yes|yes" \
   "$(has "1 sessions added" "$OUT")|$(has "Counted the workflow agents of 1 session(s)" "$OUT")|$(has " 0 errors" "$OUT")"
 
@@ -290,7 +281,6 @@ check "guard: the end moved forward" "yes" "$(q "SELECT CASE WHEN ended_at > '20
 : > "${TMPROOT}/jq-calls"
 PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "guard: no parse on the next rescan" "0" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')"
-[ "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')" = "0" ] || diag guard
 
 # ---------------------------------------------------------------- 11. an older Stop hook mid-rescan
 # race_shim <dir> <tool> <match>: <tool> on PATH that, the first time its arguments match,
@@ -376,6 +366,33 @@ check "parsed once: this rescan reads both" "2" "$(wc -l < "${TMPROOT}/jq-calls"
 : > "${TMPROOT}/jq-calls"
 PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "parsed once: not the next" "0|$WITH|2" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')|$(tokens "$S14")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S15}';")"
+
+# ---------------------------------------------------------------- 13. CRLF from jq
+# jq.exe ends every line in CRLF, and MSYS bash drops only the last line's CR in a command
+# substitution: the shim gives that view on any system
+CRJQ="${TMPROOT}/crlf-jq"
+mkdir -p "$CRJQ"
+cat > "${CRJQ}/jq" <<EOF
+#!/usr/bin/env bash
+# jq as jq.exe answers through MSYS bash: every line but the last ends in CRLF
+set -o pipefail
+"${REAL_JQ}" "\$@" | awk 'NR > 1 { printf "%s\\r\\n", prev } { prev = \$0 } END { if (NR) print prev }'
+EOF
+chmod +x "${CRJQ}/jq"
+S16="11111111-aaaa-bbbb-cccc-000000000016"
+make_session "$S16" yes
+PATH="${CRJQ}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "CRLF jq: a session added without a CR in its end" "$WITH|0" "$(tokens "$S16")|$(q "SELECT instr(ended_at, char(13)) FROM sessions WHERE session_id='${S16}';")"
+# A row an earlier version stored with a CR in its end, its transcripts newer than that end
+S17="11111111-aaaa-bbbb-cccc-000000000017"
+make_session "$S17" yes
+payload "$S17" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+q "UPDATE sessions SET ended_at = '2026-10-15T10:00:03Z' || char(13) WHERE session_id='${S17}';"
+CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "CRLF jq: a stored CR is refreshed away" "$WITH|0" "$(tokens "$S17")|$(q "SELECT instr(ended_at, char(13)) FROM sessions WHERE session_id='${S17}';")"
+: > "${TMPROOT}/jq-calls"
+PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "CRLF jq: neither parsed on the next rescan" "0" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')"
 
 echo
 echo "$PASSED passed, $FAILED failed"

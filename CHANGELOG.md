@@ -24,7 +24,10 @@ Also in the rescan:
   context repairs, nor a row without tokens, nor one whose agent last wrote a line
   without usage;
 - an agent transcript that cannot be read, or that disappears during the rescan, is left
-  out instead of failing the whole session.
+  out instead of failing the whole session;
+- on Windows, the lines jq returns no longer keep a CR: the end of a session the rescan
+  added was stored with one, which kept the rescan from rewriting that row, and the last
+  of the `exclude_models` patterns never matched. Rows stored that way are refreshed.
 
 `/carbon-pr --pr` takes a PR number only, and refuses a PR opened from a fork: its branch
 is not one of this repository's, and a local branch of the same name (often `main`) would
