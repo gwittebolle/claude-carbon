@@ -436,7 +436,8 @@ EOF
   # ended_at is set to now, as the Stop hook would have left it: the fixture messages carry
   # fixed timestamps while the file was written just now, which backfill would otherwise
   # read as a transcript that grew after its row, and refresh instead of fill.
-  sqlite3 "$OCTX_DB" "UPDATE sessions SET output_context_sum = 0, ended_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE session_id='${OCTX_SESSION}';"
+  # agents_collected = 0: such a row comes from a version that did not stamp it.
+  sqlite3 "$OCTX_DB" "UPDATE sessions SET output_context_sum = 0, agents_collected = 0, ended_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE session_id='${OCTX_SESSION}';"
   BF_OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "${REPO_DIR}/scripts/backfill.sh" 2>/dev/null)"
   check "decode context: backfill fills a pre-existing row" "305150000" "$(octx_col)"
   case "$BF_OUT" in

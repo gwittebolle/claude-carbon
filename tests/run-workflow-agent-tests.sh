@@ -5,7 +5,13 @@
 #   1. the Stop hook folds them into the session (the journal is not read);
 #   2. backfill.sh does the same for a session it records;
 #   3. backfill.sh re-aggregates a v2 row recorded without them, once, and says so;
-#   4. a legacy (v1) row, a frozen series, is never touched.
+#   4. a legacy (v1) row, a frozen series, is never touched;
+#   5. a row an older Stop hook rewrites without them after that (a session opened before
+#      the update) is repaired by the next rescan;
+#   6. a write that fails leaves the row unstamped, and the next rescan retries it;
+#   7. a rewritten row ends when its last transcript was written, agents included, so
+#      the next rescan does not parse it again;
+#   8. an agent transcript that cannot be read does not cost the session.
 #
 # Throwaway dirs only (CLAUDE_CONFIG_DIR, CLAUDE_CARBON_DB); the real ~/.claude is never
 # read or written. bash 3.2 compatible.
@@ -35,6 +41,9 @@ trap cleanup EXIT
 
 PASSED=0
 FAILED=0
+# has <text> <output>: yes when the output contains the text (a function: bash 3.2 reads
+# the ) of a case pattern inside $( ) as the end of the substitution)
+has() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 check() {
   if [ "$2" = "$3" ]; then
     PASSED=$((PASSED + 1)); echo "PASS $1"
@@ -99,23 +108,27 @@ CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "backfill: a new session counts its workflow agent" "$WITH" "$(tokens "$S2")"
 
 # ---------------------------------------------------------------- 3. backfill, repair
-# A v2 row recorded before workflow agents were read: the Stop hook ran while the
-# workflow directory did not exist yet.
+# old_writer <sid> <in> <out>: the row as a Stop hook up to 1.15.3 writes it, without the
+# workflow agents: the same column list, so agents_collected goes back to its default.
+old_writer() {
+  q "INSERT OR REPLACE INTO sessions (session_id, project, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_1h_tokens, output_context_sum, cost_usd, co2_grams, started_at, ended_at, source, methodology_version, excluded, git_branch) VALUES ('$1', 'wfproj', 'claude-sonnet-5-5', $2, $3, 0, 0, 0, 0, 0.003, 0.1216, COALESCE((SELECT started_at FROM sessions WHERE session_id='$1'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'live', 2, 0, '');"
+}
+# A v2 row recorded by a version that did not read workflow agents
 S3="11111111-aaaa-bbbb-cccc-000000000003"
 make_session "$S3" no
 payload "$S3" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
-check "repair: the row before" "$WITHOUT" "$(tokens "$S3")"
-BEFORE_START="$(q "SELECT started_at||'|'||source FROM sessions WHERE session_id='${S3}';")"
+check "stop hook: the row is stamped" "2" "$(q "SELECT agents_collected FROM sessions WHERE session_id='${S3}';")"
 add_workflow "$S3"
-# As on an install updated to this version: no workflow pass has run yet
-rm -f "${CFG}/claude-carbon/.workflow-agents-counted"
+old_writer "$S3" 1000 100
+check "repair: the row before" "$WITHOUT|0" "$(tokens "$S3")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S3}';")"
+BEFORE_START="$(q "SELECT started_at||'|'||source FROM sessions WHERE session_id='${S3}';")"
 OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
 check "repair: the row now counts the workflow agent" "$WITH" "$(tokens "$S3")"
 check "repair: CO2 re-derived" "$CO2_WITH" "$(q "SELECT printf('%.4f', co2_grams) FROM sessions WHERE session_id='${S3}';")"
 check "repair: child rows match the row" "11000" "$(q "SELECT SUM(input_tokens) FROM session_models WHERE session_id='${S3}';")"
 case "$OUT" in *"Counted the workflow agents of 1 session(s)"*) check "repair: said once" "yes" "yes" ;; *) check "repair: said once" "yes" "$OUT" ;; esac
 check "repair: start and source kept" "$BEFORE_START" "$(q "SELECT started_at||'|'||source FROM sessions WHERE session_id='${S3}';")"
-check "repair: the pass is marked done" "yes" "$([ -f "${CFG}/claude-carbon/.workflow-agents-counted" ] && echo yes || echo no)"
+check "repair: the row is stamped" "2" "$(q "SELECT agents_collected FROM sessions WHERE session_id='${S3}';")"
 OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
 case "$OUT" in *"Counted the workflow agents"*) check "repair: nothing on the next rescan" "no" "yes" ;; *) check "repair: nothing on the next rescan" "no" "no" ;; esac
 check "repair: unchanged on the next rescan" "$WITH" "$(tokens "$S3")"
@@ -135,12 +148,84 @@ check "late agent: counted by the next rescan" "$WITH" "$(tokens "$S5")"
 S4="11111111-aaaa-bbbb-cccc-000000000004"
 make_session "$S4" no
 payload "$S4" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
-q "UPDATE sessions SET methodology_version = 1, co2_grams = 42 WHERE session_id='${S4}';"
+q "UPDATE sessions SET methodology_version = 1, co2_grams = 42, agents_collected = 0 WHERE session_id='${S4}';"
 add_workflow "$S4"
-rm -f "${CFG}/claude-carbon/.workflow-agents-counted"
 CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "frozen (v1) row: tokens untouched" "$WITHOUT" "$(tokens "$S4")"
 check "frozen (v1) row: CO2 untouched" "42.0" "$(q "SELECT co2_grams FROM sessions WHERE session_id='${S4}';")"
+
+# ---------------------------------------------------------------- 5. an older Stop hook after the pass
+# The session stays open under the older version: its Stop hook rewrites the repaired row
+# without the workflow agent, after the rescan that repaired it. The next rescan repairs
+# it again.
+old_writer "$S3" 1000 100
+check "older Stop hook: the row undone" "$WITHOUT" "$(tokens "$S3")"
+OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
+check "older Stop hook: repaired by the next rescan" "$WITH|2" "$(tokens "$S3")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S3}';")"
+check "older Stop hook: said" "yes" "$(has "Counted the workflow agents of 1 session(s)" "$OUT")"
+
+# ---------------------------------------------------------------- 6. a write that fails
+# The rewrite fails (here a trigger aborts it, as a lock held past the timeout would):
+# not counted, not stamped, the row as it was; the next rescan retries.
+S6="11111111-aaaa-bbbb-cccc-000000000006"
+make_session "$S6" no
+payload "$S6" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+add_workflow "$S6"
+old_writer "$S6" 1000 100
+q "CREATE TRIGGER cc_test_fail BEFORE INSERT ON sessions WHEN NEW.session_id = '${S6}' BEGIN SELECT RAISE(ABORT, 'injected'); END;"
+OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
+check "failed write: row, stamp and child rows as they were" "$WITHOUT|0|1000" \
+  "$(tokens "$S6")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S6}';")|$(q "SELECT SUM(input_tokens) FROM session_models WHERE session_id='${S6}';")"
+check "failed write: counted as an error, not as repaired" "no|no" \
+  "$(has "Counted the workflow agents" "$OUT")|$(has " 0 errors" "$OUT")"
+q "DROP TRIGGER cc_test_fail;"
+CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "failed write: retried by the next rescan" "$WITH|2" "$(tokens "$S6")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S6}';")"
+
+# ---------------------------------------------------------------- 7. the end of a rewritten row
+# The workflow agent wrote after the main transcript: the rewritten row ends at the agent's
+# last write, and the next rescan does not parse the session again (a jq on PATH counts
+# the usage passes, the only jq calls given --slurpfile).
+S7="11111111-aaaa-bbbb-cccc-000000000007"
+make_session "$S7" no
+payload "$S7" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+add_workflow "$S7"
+old_writer "$S7" 1000 100
+touch -t 202610150900 "${PROJ}/${S7}.jsonl"
+touch -t 202610150905 "${PROJ}/${S7}/subagents/workflows/wf_abc123-def/agent-a1b2c3.jsonl"
+AGENT_END="$(q "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', $(cc_mtime "${PROJ}/${S7}/subagents/workflows/wf_abc123-def/agent-a1b2c3.jsonl"), 'unixepoch');")"
+CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "end: the agent's last write" "$WITH|$AGENT_END" "$(tokens "$S7")|$(q "SELECT ended_at FROM sessions WHERE session_id='${S7}';")"
+SHIM="${TMPROOT}/shim"
+mkdir -p "$SHIM"
+REAL_JQ="$(command -v jq)"
+printf '#!/usr/bin/env bash
+case "$*" in *--slurpfile*) echo x >> "%s" ;; esac
+exec "%s" "$@"
+' "${TMPROOT}/jq-calls" "$REAL_JQ" > "${SHIM}/jq"
+chmod +x "${SHIM}/jq"
+: > "${TMPROOT}/jq-calls"
+PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
+check "end: no parse on the next rescan" "0" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')"
+
+# ---------------------------------------------------------------- 8. an agent transcript that cannot be read
+# One listed then gone (removed between the listing and the parse), one unreadable: the
+# session is recorded from the others
+S8="11111111-aaaa-bbbb-cccc-000000000008"
+make_session "$S8" yes
+check "unreadable agent: a vanished file is left out" "$WITH" \
+  "$(cc_session_usage "${REPO_DIR}/data/factors.json" "${REPO_DIR}/data/prices.json" "${PROJ}/${S8}.jsonl" \
+       "${PROJ}/${S8}/subagents/workflows/wf_abc123-def/agent-a1b2c3.jsonl" "${PROJ}/${S8}/subagents/gone.jsonl" \
+     | awk -F '\t' '$1 == "T" { print $2 "|" $5 "|" $6 }')"
+cp "${PROJ}/${S8}/subagents/workflows/wf_abc123-def/agent-a1b2c3.jsonl" "${PROJ}/${S8}/subagents/agent-locked.jsonl"
+chmod 000 "${PROJ}/${S8}/subagents/agent-locked.jsonl"
+if [ -r "${PROJ}/${S8}/subagents/agent-locked.jsonl" ]; then
+  echo "SKIP unreadable agent: this system still reads a mode-000 file"
+else
+  payload "$S8" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+  check "unreadable agent: the session recorded from the others" "$WITH" "$(tokens "$S8")"
+fi
+chmod 644 "${PROJ}/${S8}/subagents/agent-locked.jsonl"
 
 echo
 echo "$PASSED passed, $FAILED failed"

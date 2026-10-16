@@ -326,15 +326,24 @@ cc_system_locale() {
 # (input_tokens = regular input + cache write), and for every session that has child
 # rows, each token column, co2_grams and cost_usd of `sessions` equal the sum over
 # them. Sessions recorded before the table existed have no child rows.
+#
+# sessions.agents_collected says which transcripts the version that last wrote the row
+# read: CC_AGENTS_COLLECTED (2) for the main transcript, its subagents and the agents its
+# workflows started; 0 (the default) for a version that did not say, up to 1.15.3, which
+# may have missed the workflow agents. Every writer lists its columns, so an older Stop
+# hook still running in a session opened before an update resets it to 0 when it
+# rewrites the row, and backfill.sh then knows to look at that row again.
+# shellcheck disable=SC2034 # read by the scripts that source this file
+CC_AGENTS_COLLECTED=2
 CC_SESSION_MODELS_DDL="CREATE TABLE IF NOT EXISTS session_models (session_id TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0, co2_grams REAL DEFAULT 0, PRIMARY KEY (session_id, model));"
 cc_ensure_schema() {
   local db="$1" probe col
-  probe="$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT (SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name IN ('cache_read_tokens','cache_creation_tokens','methodology_version','excluded','git_branch','cache_creation_1h_tokens','output_context_sum')) || '|' || (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_models');" 2>/dev/null)" || probe=""
-  [ "$probe" = "7|1" ] && return 0
+  probe="$(sqlite3 -cmd ".timeout 5000" "$db" "SELECT (SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name IN ('cache_read_tokens','cache_creation_tokens','methodology_version','excluded','git_branch','cache_creation_1h_tokens','output_context_sum','agents_collected')) || '|' || (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_models');" 2>/dev/null)" || probe=""
+  [ "$probe" = "8|1" ] && return 0
   for col in "cache_read_tokens INTEGER DEFAULT 0" "cache_creation_tokens INTEGER DEFAULT 0" \
              "methodology_version INTEGER DEFAULT 1" "excluded INTEGER DEFAULT 0" \
              "git_branch TEXT DEFAULT ''" "cache_creation_1h_tokens INTEGER DEFAULT 0" \
-             "output_context_sum INTEGER DEFAULT 0"; do
+             "output_context_sum INTEGER DEFAULT 0" "agents_collected INTEGER DEFAULT 0"; do
     sqlite3 -cmd ".timeout 5000" "$db" "ALTER TABLE sessions ADD COLUMN ${col};" >/dev/null 2>&1 || true
   done
   sqlite3 -cmd ".timeout 5000" "$db" "$CC_SESSION_MODELS_DDL" >/dev/null 2>&1 || true
@@ -344,15 +353,30 @@ cc_ensure_schema() {
 # array CC_SUB_FILES. Claude Code writes a subagent at <session>/subagents/agent-*.jsonl
 # and an agent a workflow started at <session>/subagents/workflows/wf_*/agent-*.jsonl
 # (the workflow's journal.jsonl beside it carries no usage). Reading the first only
-# missed every workflow agent, up to five times a session's own CO2.
+# missed every workflow agent, up to five times a session's own CO2. A file that cannot
+# be read is left out: one unreadable agent must not cost the whole session.
 cc_collect_subagents() {
   CC_SUB_FILES=()
   local dir="$1" f
   [ -d "$dir" ] || return 0
   for f in "$dir"/*.jsonl "$dir"/workflows/*/agent-*.jsonl; do
-    [ -f "$f" ] && CC_SUB_FILES+=("$f")
+    [ -f "$f" ] && [ -r "$f" ] && CC_SUB_FILES+=("$f")
   done
   return 0
+}
+
+# cc_max_mtime <file>…: the latest modification time of the files, in epoch seconds, in
+# one stat call (0 when none can be read).
+cc_max_mtime() {
+  local out=""
+  [ $# -gt 0 ] || { printf '0\n'; return 0; }
+  if [ "$CC_OS" = "darwin" ]; then
+    out="$(stat -f %m "$@" 2>/dev/null || true)"
+  else
+    out="$(stat -c %Y "$@" 2>/dev/null || true)"
+    [ -n "$out" ] || out="$(stat -f %m "$@" 2>/dev/null || true)"
+  fi
+  printf '%s\n' "$out" | tr -d '\r' | awk 'BEGIN { m = 0 } /^[0-9]+$/ { if ($1 + 0 > m) m = $1 + 0 } END { printf "%.0f\n", m }'
 }
 
 # cc_export_sessions <db>: write sessions-history.tsv next to the DB, one line per
@@ -552,14 +576,21 @@ END {
 
 # cc_session_usage <factors.json> <prices.json> <main.jsonl> [subagent.jsonl…]
 # Prints the S line, one R line per model and the T line (see above). Fails when the
-# transcripts cannot be read at all.
+# transcripts cannot be read at all. A subagent transcript gone or unreadable by the time
+# jq runs (deleted between its listing and this pass) is left out rather than failing
+# the session: jq gives up on all its inputs for one it cannot open.
 cc_session_usage() {
-  local factors="$1" prices="$2" main="$3" raw_out line tag model rest exre="" rows="" s_line=""
-  shift 2
+  local factors="$1" prices="$2" main="$3" raw_out line tag model rest exre="" rows="" s_line="" f
+  local files=()
+  shift 3
+  [ -r "$main" ] || return 1
+  for f in "$@"; do
+    [ -r "$f" ] && files+=("$f")
+  done
   raw_out="$(jq -n -r --slurpfile f "$factors" --slurpfile p "$prices" --arg main "$main" \
-               --argjson raw false "${CC_JQ_MODEL_DEFS}${CC_JQ_USAGE}" "$@" 2>/dev/null)" \
+               --argjson raw false "${CC_JQ_MODEL_DEFS}${CC_JQ_USAGE}" "$main" ${files[@]+"${files[@]}"} 2>/dev/null)" \
     || raw_out="$(jq -n -R -r --slurpfile f "$factors" --slurpfile p "$prices" --arg main "$main" \
-               --argjson raw true "${CC_JQ_MODEL_DEFS}${CC_JQ_USAGE}" "$@" 2>/dev/null)" \
+               --argjson raw true "${CC_JQ_MODEL_DEFS}${CC_JQ_USAGE}" "$main" ${files[@]+"${files[@]}"} 2>/dev/null)" \
     || return 1
   [ -n "$raw_out" ] || return 1
   # Exclusion is decided in bash, with grep -E as it always was: user patterns are ERE.
@@ -598,19 +629,21 @@ cc_sql_quote() {
   printf "'%s'" "$s"
 }
 
-# cc_session_models_sql <session_id> <usage output>: the statements that replace a
-# session's child rows: DELETE, then one INSERT per R line. The caller wraps them, and
-# its own `sessions` write, in one transaction.
+# cc_session_models_sql <session_id> <usage output> [condition]: the statements that
+# replace a session's child rows: DELETE, then one INSERT per R line. The caller wraps
+# them, and its own `sessions` write, in one transaction. With a condition (an SQL
+# expression), each statement only applies when it holds, so the caller can make the
+# whole write depend on the row it finds once it holds the lock.
 cc_session_models_sql() {
-  local sid line tag model it cw cw1h cr out co2 cost
+  local sid line tag model it cw cw1h cr out co2 cost cond="${3:-1}"
   sid="$(cc_sql_quote "$1")"
-  printf 'DELETE FROM session_models WHERE session_id=%s;\n' "$sid"
+  printf 'DELETE FROM session_models WHERE session_id=%s AND (%s);\n' "$sid" "$cond"
   while IFS="	" read -r tag model it cw cw1h cr out co2 cost; do
     [ "$tag" = "R" ] || continue
     case "${it}${cw}${cw1h}${cr}${out}" in ''|*[!0-9]*) continue ;; esac
     case "$co2$cost" in ''|*[!0-9.]*) continue ;; esac
-    printf 'INSERT INTO session_models (session_id, model, input_tokens, cache_creation_tokens, cache_creation_1h_tokens, cache_read_tokens, output_tokens, co2_grams, cost_usd) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);\n' \
-      "$sid" "$(cc_sql_quote "$model")" "$it" "$cw" "$cw1h" "$cr" "$out" "$co2" "$cost"
+    printf 'INSERT INTO session_models (session_id, model, input_tokens, cache_creation_tokens, cache_creation_1h_tokens, cache_read_tokens, output_tokens, co2_grams, cost_usd) SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s WHERE (%s);\n' \
+      "$sid" "$(cc_sql_quote "$model")" "$it" "$cw" "$cw1h" "$cr" "$out" "$co2" "$cost" "$cond"
   done <<EOF
 $2
 EOF
