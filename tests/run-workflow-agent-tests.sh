@@ -443,6 +443,21 @@ printf '%s\n' '{"type":"assistant","requestId":"b1","timestamp":"2026-10-15T10:0
   > "${PROJ}/${S19}/subagents/agent-b.jsonl"
 payload "$S19" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
 check "cut last line: only that line lost" "4200|0|420" "$(tokens "$S19")"
+# The same with an empty transcript between the two
+S20="11111111-aaaa-bbbb-cccc-000000000020"
+make_session "$S20" no
+mkdir -p "${PROJ}/${S20}/subagents"
+cp "${PROJ}/${S19}/subagents/agent-a.jsonl" "${PROJ}/${S20}/subagents/agent-a.jsonl"
+: > "${PROJ}/${S20}/subagents/agent-b.jsonl"
+cp "${PROJ}/${S19}/subagents/agent-b.jsonl" "${PROJ}/${S20}/subagents/agent-c.jsonl"
+payload "$S20" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+check "cut last line, an empty file after it: only that line lost" "4200|0|420" "$(tokens "$S20")"
+# jq credits a line run across two files to the second (1.7) or, it seems, to the first:
+# either way the files read again are the ones around it that are not empty
+check "neighbours of a cut file skip an empty one" "subagents/agent-a.jsonl subagents/agent-c.jsonl" \
+  "$(cc_redo_neighbours "${PROJ}/${S20}" "subagents/agent-a.jsonl" subagents/agent-a.jsonl subagents/agent-b.jsonl subagents/agent-c.jsonl | tr '\n' ' ' | sed 's/ $//')"
+check "neighbours of the next one skip it too" "subagents/agent-a.jsonl subagents/agent-c.jsonl" \
+  "$(cc_redo_neighbours "${PROJ}/${S20}" "subagents/agent-c.jsonl" subagents/agent-a.jsonl subagents/agent-b.jsonl subagents/agent-c.jsonl | tr '\n' ' ' | sed 's/ $//')"
 
 echo
 echo "$PASSED passed, $FAILED failed"

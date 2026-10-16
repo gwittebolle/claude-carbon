@@ -531,7 +531,8 @@ CC_JQ_FILE_USAGE='
 def n: if type == "number" then . else 0 end;
 def dom: map(.model) | map(select(length > 0))
          | if length == 0 then "claude-sonnet" else group_by(.) | sort_by(-length) | first | first end;
-def lines: if $raw then (inputs | (fromjson? // {cc_bad: true})) else inputs end;
+def lines: if $raw then (inputs | if test("^[ \t\r]*$") then empty else (try fromjson catch {cc_bad: true}) end)
+            else inputs end;
 [ lines | input_filename as $fn
   | if type != "object" then empty
     elif .cc_bad == true then { fn: $fn, bad: true }
@@ -616,10 +617,9 @@ END {
 
 # cc_session_usage <factors.json> <prices.json> <main.jsonl> [subagent.jsonl…]
 # Prints the S line, one R line per model and the T line (see above). Fails when the
-# transcripts cannot be read at all. A subagent transcript gone or unreadable by the time
-# jq runs (deleted between its listing and this pass) is left out rather than failing
-# the session; one that disappears while jq reads it fails the session, which keeps its
-# previous row.
+# transcripts cannot be read at all. A subagent transcript already gone or unreadable when
+# this function starts is left out; one that disappears after that, before or while jq
+# reads it, fails the pass (exit 1), and the session keeps its previous row.
 #
 # jq runs in the session's folder and is given relative paths, in batches of at most
 # CC_JQ_ARGV_MAX bytes of arguments, program included: a session with hundreds of agents
@@ -637,8 +637,10 @@ cc_session_usage() {
   local rels=() batch=()
   shift 3
   [ -r "$main" ] || return 1
-  dir="$(dirname "$main")"
-  sid="$(basename "$main" .jsonl)"
+  case "$main" in */*) dir="${main%/*}" ;; *) dir="." ;; esac
+  [ -n "$dir" ] || dir="/"
+  sid="${main##*/}"
+  sid="${sid%.jsonl}"
   if [ -d "$dir/$sid" ]; then base="$dir/$sid"; mainrel="../$sid.jsonl"; else base="$dir"; mainrel="$sid.jsonl"; fi
   rels=("$mainrel")
   for f in "$@"; do
@@ -675,7 +677,7 @@ cc_session_usage() {
         bad="$(printf '%s\n' "$part" | jq -r 'select(.bad > 0) | .f' 2>/dev/null)" || return 1
         bad="${bad//$'\r'/}"
         if [ -n "$bad" ]; then
-          redo="$(cc_redo_neighbours "$bad" "${batch[@]}")"
+          redo="$(cc_redo_neighbours "$base" "$bad" "${batch[@]}")"
           while IFS= read -r f; do
             [ -n "$f" ] || continue
             part="$(printf '%s\n' "$part" | grep -vF "{\"f\":\"${f}\"," || true)"
@@ -725,24 +727,31 @@ EOF
   printf '%s' "$rows" | LC_ALL=C awk "$CC_AWK_PRICE"
 }
 
-# cc_redo_neighbours <files, one per line> <batch…>: those files and the ones just before
-# and after each in the batch, once each, one per line (see cc_session_usage).
+# cc_redo_neighbours <base> <files, one per line> <batch…>: those files and the ones just
+# before and after each in the batch, once each, one per line (see cc_session_usage). An
+# empty file adds no line, so the neighbours are the nearest files that are not empty.
 cc_redo_neighbours() {
-  local wanted="$1" prev="" cur next k n
-  shift
-  n=$#
+  local base="$1" wanted="$2" f k n
+  local files=()
+  shift 2
+  for f in "$@"; do
+    case "$f" in /*) [ -s "$f" ] ;; *) [ -s "$base/$f" ] ;; esac && files+=("$f")
+  done
+  n=${#files[@]}
   k=0
-  for cur in "$@"; do
-    k=$((k + 1))
-    if [ "$k" -lt "$n" ]; then eval "next=\${$((k + 1))}"; else next=""; fi
+  while [ "$k" -lt "$n" ]; do
     case "
 $wanted
 " in
       *"
-$cur
-"*) printf '%s\n' "$prev" "$cur" "$next" ;;
+${files[$k]}
+"*)
+        [ "$k" -gt 0 ] && printf '%s\n' "${files[$((k - 1))]}"
+        printf '%s\n' "${files[$k]}"
+        [ $((k + 1)) -lt "$n" ] && printf '%s\n' "${files[$((k + 1))]}"
+        ;;
     esac
-    prev="$cur"
+    k=$((k + 1))
   done | awk 'length($0) > 0 && !seen[$0]++'
 }
 

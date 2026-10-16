@@ -59,8 +59,8 @@ fi
 # counted cache reads at the full input factor: 6 g for an answer of 4.3 g. Only without a
 # row: a session whose row says 0 (excluded, or no usage yet) shows 0 rather than reading
 # its transcripts at every refresh. A first turn that starts a workflow can grow large
-# before its row exists, so the computation is kept for 10 seconds in a temporary file
-# (never in the database) and reused while the transcript is the same.
+# before its row exists, so the computation is kept for 10 seconds in a small file beside
+# the database (never in it) and reused while the main transcript keeps its size.
 #
 # Last fallback, the context-window estimate (no database, no transcript): a SNAPSHOT of
 # the current context, not a session total, and it drops back every time the context is
@@ -77,14 +77,20 @@ if [ -n "$SESSION_ID" ] && [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>
     TRANSCRIPT_PATH="$(cc_path "$(echo "$INPUT" | jq -r '.transcript_path // ""')")"
   fi
   if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-    SL_CACHE="$(cc_tmpdir)/claude-carbon-statusline-${SESSION_ID//[!A-Za-z0-9-]/}"
+    # One line beside the database: the session, when, the main transcript's size, the CO2.
+    # Reused only for the same session and size, within 10 seconds: an answer that grows
+    # the transcript is computed again (a second-precision mtime would miss it).
+    SL_CACHE="$(dirname "$DB_PATH")/statusline-cache"
     SL_NOW="$(date +%s 2>/dev/null || echo 0)"
-    SL_AT=""; SL_CO2=""; SL_PATH=""
+    SL_SIZE="$(wc -c < "$TRANSCRIPT_PATH" 2>/dev/null | tr -d ' \r' || true)"
+    SL_SID=""; SL_AT=""; SL_LEN=""; SL_CO2=""
     if [ -f "$SL_CACHE" ]; then
-      IFS="$(printf '\t')" read -r SL_AT SL_CO2 SL_PATH < "$SL_CACHE" 2>/dev/null || true
+      IFS="$(printf '\t')" read -r SL_SID SL_AT SL_LEN SL_CO2 < "$SL_CACHE" 2>/dev/null || true
     fi
-    case "${SL_AT}${SL_CO2}" in ''|*[!0-9]*) SL_AT="" ;; esac
-    if [ -n "$SL_AT" ] && [ "$SL_PATH" = "$TRANSCRIPT_PATH" ] && [ $((SL_NOW - SL_AT)) -ge 0 ] && [ $((SL_NOW - SL_AT)) -lt 10 ]; then
+    SL_CO2="${SL_CO2%"$(printf '\r')"}"
+    case "${SL_AT}${SL_LEN}${SL_CO2}${SL_SIZE}" in ''|*[!0-9]*) SL_AT="" ;; esac
+    if [ -n "$SL_AT" ] && [ "$SL_SID" = "$SESSION_ID" ] && [ "$SL_LEN" = "$SL_SIZE" ] \
+      && [ $((SL_NOW - SL_AT)) -ge 0 ] && [ $((SL_NOW - SL_AT)) -lt 10 ]; then
       CO2_G="$SL_CO2"
     else
       cc_collect_subagents "$(dirname "$TRANSCRIPT_PATH")/${SESSION_ID}/subagents"
@@ -94,7 +100,7 @@ if [ -n "$SESSION_ID" ] && [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>
         CO2_G="$(printf '%s\n' "$CC_U_CO2" | LC_ALL=C awk '{printf "%.0f", $1}')"
         case "$CO2_G" in ''|*[!0-9]*) CO2_G="" ;; esac
         if [ -n "$CO2_G" ]; then
-          { printf '%s\t%s\t%s\n' "$SL_NOW" "$CO2_G" "$TRANSCRIPT_PATH" > "${SL_CACHE}.tmp.$$" \
+          { printf '%s\t%s\t%s\t%s\n' "$SESSION_ID" "$SL_NOW" "$SL_SIZE" "$CO2_G" > "${SL_CACHE}.tmp.$$" \
               && mv -f "${SL_CACHE}.tmp.$$" "$SL_CACHE"; } 2>/dev/null || rm -f "${SL_CACHE}.tmp.$$" 2>/dev/null || true
         fi
       fi
