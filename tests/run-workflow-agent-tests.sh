@@ -208,13 +208,27 @@ SHIM="${TMPROOT}/shim"
 mkdir -p "$SHIM"
 REAL_JQ="$(command -v jq)"
 printf '#!/usr/bin/env bash
-case "$*" in *--slurpfile*) echo x >> "%s" ;; esac
+case "$*" in *--slurpfile*)
+  m=""; p2=""; p1=""
+  for a in "$@"; do [ "$p2" = "--arg" ] && [ "$p1" = "main" ] && m="$a"; p2="$p1"; p1="$a"; done
+  echo "parse ${m##*/} raw=$(case "$*" in *"raw true"*|*-R*) echo y ;; *) echo n ;; esac)" >> "%s" ;;
+esac
 exec "%s" "$@"
 ' "${TMPROOT}/jq-calls" "$REAL_JQ" > "${SHIM}/jq"
 chmod +x "${SHIM}/jq"
+# TEMPORARY DIAG (Windows CI): which sessions a rescan parsed, and their rows and mtimes
+diag() {
+  echo "DIAG $1"; cat "${TMPROOT}/jq-calls"
+  q "SELECT session_id || ' end=' || ended_at || ' ac=' || COALESCE(agents_collected, '') || ' v=' || methodology_version || ' tok=' || (input_tokens + cache_read_tokens + output_tokens) FROM sessions ORDER BY session_id;"
+  for m in "${PROJ}"/*.jsonl; do
+    sid="$(basename "$m" .jsonl)"
+    echo "  $sid main=$(cc_mtime "$m") all=$(cc_max_mtime "$m" "${PROJ}/${sid}"/subagents/*.jsonl "${PROJ}/${sid}"/subagents/workflows/*/agent-*.jsonl) wf=$(cc_max_mtime "${PROJ}/${sid}"/subagents/workflows/*/agent-*.jsonl) now=$(date +%s)"
+  done
+}
 : > "${TMPROOT}/jq-calls"
 PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "end: no parse on the next rescan" "0" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')"
+[ "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')" = "0" ] || diag end
 
 # ---------------------------------------------------------------- 8. an agent transcript that cannot be read
 # One listed then gone (removed between the listing and the parse), one unreadable: the
@@ -257,6 +271,7 @@ EOF
 chmod +x "${CRLF}/sqlite3"
 OUT="$(PATH="${CRLF}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
 check "CRLF: the new session added, the old row repaired" "$WITH|$WITH|2" "$(tokens "$S9")|$(tokens "$S10")|$(q "SELECT agents_collected FROM sessions WHERE session_id='${S10}';")"
+echo "DIAG crlf output: $OUT"
 check "CRLF: counted, no error" "yes|yes|yes" \
   "$(has "1 sessions added" "$OUT")|$(has "Counted the workflow agents of 1 session(s)" "$OUT")|$(has " 0 errors" "$OUT")"
 
@@ -275,6 +290,7 @@ check "guard: the end moved forward" "yes" "$(q "SELECT CASE WHEN ended_at > '20
 : > "${TMPROOT}/jq-calls"
 PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "guard: no parse on the next rescan" "0" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')"
+[ "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')" = "0" ] || diag guard
 
 # ---------------------------------------------------------------- 11. an older Stop hook mid-rescan
 # race_shim <dir> <tool> <match>: <tool> on PATH that, the first time its arguments match,
