@@ -22,6 +22,17 @@
         ]
       }
     ],
+    "SubagentStop": [
+      {
+        "matcher": ".+",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/agent-stop.sh\""
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "",

@@ -79,6 +79,9 @@ fi
 cc_collect_subagents "$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents"
 SUB_FILES=(${CC_SUB_FILES[@]+"${CC_SUB_FILES[@]}"})
 
+# Current timestamp
+NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)" || NOW=""
+
 # The main transcript and the subagents, read file by file then summed (cc_session_usage):
 # tokens per model, the main transcript's dominant model and its last git branch (feeds
 # /carbon-pr); then one awk for CO2 and cost.
@@ -89,9 +92,6 @@ GIT_BRANCH="$CC_U_BRANCH"
 
 # Project name = last path segment of cwd
 PROJECT="$(basename "$CURRENT_DIR" 2>/dev/null)" || PROJECT="unknown"
-
-# Current timestamp
-NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)" || NOW=""
 
 # Excluded flag (based on the session's dominant model)
 EXCLUDED=0

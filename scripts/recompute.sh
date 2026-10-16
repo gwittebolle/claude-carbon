@@ -62,6 +62,10 @@ EXCLUDE_MODELS="$(cc_exclude_regex "$FACTORS_FILE")"
 # Rows recompute may touch: raw-token rows (methodology_version >= 2) not excluded.
 ELIGIBLE="methodology_version >= 2 AND COALESCE(excluded, 0) = 0"
 HAS_CHILDREN="EXISTS (SELECT 1 FROM session_models m WHERE m.session_id = sessions.session_id)"
+# An agent's share for /carbon-pr (agent_usage) holds tokens its session's row also holds:
+# re-derived alike, it keeps matching it. Its session may not be recorded yet (still
+# running): the row is re-derived all the same, unless the session is legacy or excluded.
+AGENT_ELIGIBLE="NOT EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = agent_usage.session_id AND NOT (COALESCE(s.methodology_version, 1) >= 2 AND COALESCE(s.excluded, 0) = 0))"
 
 # co2  = (input_tokens * fin + cache_read_tokens * (fin*crf) + output_tokens * fout) / 1e6
 #        (input_tokens already = regular_input + cache_write, both at the input factor)
@@ -89,6 +93,8 @@ set_clause() {
 MODELS="$(sqlite3 "$DB_PATH" "
   SELECT DISTINCT model FROM session_models
     WHERE session_id IN (SELECT session_id FROM sessions WHERE ${ELIGIBLE})
+  UNION
+  SELECT DISTINCT model FROM agent_usage WHERE ${AGENT_ELIGIBLE}
   UNION
   SELECT DISTINCT model FROM sessions WHERE ${INCLUDE_UNSPLIT} = 1 AND ${ELIGIBLE} AND model IS NOT NULL AND NOT ${HAS_CHILDREN};")"
 PARAMS=""
@@ -121,6 +127,8 @@ while IFS="	" read -r MODEL FAMILY FIN FOUT CRF PIN POUT CWM CWM1H CRM; do
     CHILD_SET="$(set_clause "$FIN" "$FOUT" "$CRF" "$PIN" "$POUT" "$CWM" "$CWM1H" "$CRM")"
   fi
   SQL="${SQL}UPDATE session_models SET ${CHILD_SET} WHERE model = ${QMODEL} AND session_id IN (SELECT session_id FROM sessions WHERE ${ELIGIBLE});
+"
+  SQL="${SQL}UPDATE agent_usage SET ${CHILD_SET} WHERE model = ${QMODEL} AND ${AGENT_ELIGIBLE};
 "
   # Rows without children, only with --include-unsplit: the whole row at its dominant model.
   if [ "$INCLUDE_UNSPLIT" = "1" ]; then

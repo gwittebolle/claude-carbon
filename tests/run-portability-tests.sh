@@ -62,6 +62,43 @@ echo "cc_path (platform forced to linux)"
 is "identity on POSIX path"    "/home/me/.claude"    "$(posixpath '/home/me/.claude')"
 is "identity on odd filename"  'C:\weird'            "$(posixpath 'C:\weird')"
 
+# cc_path_vars: the variables named, converted in place by one cygpath for all of them
+# (a fake one here, that answers each argument on its own line and logs its calls), or
+# one by one by the string rewrite when it does not answer a line per path. Nothing is
+# started for a path already POSIX, nor off Windows.
+FAKE_CYG="$(mktemp -d "$(. "${REPO_DIR}/scripts/portable-lib.sh"; cc_tmpdir)/claude-carbon-cygpath.XXXXXX")"
+cat > "${FAKE_CYG}/cygpath" <<STUB
+#!/usr/bin/env bash
+echo "\$*" >> "${FAKE_CYG}/calls"
+shift
+for a in "\$@"; do
+  case "\$a" in *short*) continue ;; esac
+  a="\${a//\\\\//}"; d="\${a%%:*}"
+  printf '/%s%s\n' "\$(printf '%s' "\$d" | tr 'A-Z' 'a-z')" "\${a#*:}"
+done
+STUB
+chmod +x "${FAKE_CYG}/cygpath"
+pathvars() (
+  # shellcheck source=scripts/portable-lib.sh
+  . "${REPO_DIR}/scripts/portable-lib.sh"
+  CC_OS="$1"
+  CC_CYGPATH="${FAKE_CYG}/cygpath"
+  A='C:\Users\me\x.jsonl'; B='/c/already/posix'; C='D:/tmp/a b'; E=''
+  [ "${2:-}" = "short" ] && C='D:\short'
+  cc_path_vars A B C E
+  printf '%s|%s|%s|%s' "$A" "$B" "$C" "$E"
+)
+echo ""
+echo "cc_path_vars (cygpath faked)"
+: > "${FAKE_CYG}/calls"
+is "converted in place"        "/c/Users/me/x.jsonl|/c/already/posix|/d/tmp/a b|" "$(pathvars windows)"
+is "one cygpath for all"       "1" "$(wc -l < "${FAKE_CYG}/calls" | tr -d ' ')"
+is "a line short: one by one"  "/c/Users/me/x.jsonl|/c/already/posix|/d/short|" "$(pathvars windows short)"
+: > "${FAKE_CYG}/calls"
+is "identity off Windows"      'C:\Users\me\x.jsonl|/c/already/posix|D:/tmp/a b|' "$(pathvars linux)"
+is "no cygpath off Windows"    "0" "$(wc -l < "${FAKE_CYG}/calls" | tr -d ' ')"
+case "$FAKE_CYG" in */claude-carbon-cygpath.*) rm -rf "$FAKE_CYG" ;; esac
+
 # ── 2. cc_num_ge: the bc replacement ─────────────────────────────────────────
 # bc is absent from Git for Windows, so every float comparison moved to awk. These
 # are the exact thresholds format_co2 and the projection tier depend on.
@@ -227,8 +264,10 @@ if [ -z "$BAD_TMP" ]; then ok "no hardcoded /tmp path"; else bad "no hardcoded /
 # and the failure is silent: a read that finds nothing, or a write that lands somewhere
 # the reader never looks. Two were missed on the first pass (install.sh skipped the
 # re-pricing on update, and the card stamped its month where the status line could not
-# see it), which is what this guard exists to prevent from recurring.
-RAW_ENV="$(grep -nE '^[[:space:]]*[A-Z_]+="\$\{?CLAUDE_(CONFIG_DIR|CARBON_DB|CARBON_DIR|CARBON_EXPORT_DIR|PLUGIN_ROOT)' "${RUNTIME_FILES[@]}" 2>/dev/null || true)"
+# see it), which is what this guard exists to prevent from recurring. An assignment
+# converted in place on the same line (`X="${CLAUDE_...}"; cc_path_vars X`) goes through it.
+RAW_ENV="$(grep -nE '^[[:space:]]*[A-Z_]+="\$\{?CLAUDE_(CONFIG_DIR|CARBON_DB|CARBON_DIR|CARBON_EXPORT_DIR|PLUGIN_ROOT)' "${RUNTIME_FILES[@]}" 2>/dev/null \
+  | awk '{ c = $0; sub(/^[^:]*:[0-9]+:[ \t]*/, "", c); n = c; sub(/=.*/, "", n); if (c ~ ("; cc_path_vars " n "$")) next; print }' || true)"
 if [ -z "$RAW_ENV" ]; then
   ok "every CLAUDE_* path assignment is converted"
 else

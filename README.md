@@ -234,12 +234,23 @@ The second script merges the block below into `~/.claude/settings.json` (additiv
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": ".+",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/code/claude-carbon/scripts/agent-stop.sh"
+          }
+        ]
+      }
     ]
   }
 }
 ```
 
-The `Stop` hook records the session after each turn, and `SessionEnd` records it once more as it closes, so a last turn interrupted before `Stop` fired is still counted. The `SessionStart` one re-scans for sessions both missed (crash, kill) and drives the daily update check the status line reads; without it you are never told a new version exists.
+The `Stop` hook records the session after each turn, and `SessionEnd` records it once more as it closes, so a last turn interrupted before `Stop` fired is still counted. The `SessionStart` one re-scans for sessions both missed (crash, kill) and drives the daily update check the status line reads; without it you are never told a new version exists. `SubagentStop` records the branch an agent worked on, for `/carbon-pr`.
 
 Restart Claude Code.
 
@@ -266,7 +277,18 @@ The number reviewers rarely see is what the PR cost to develop: your local Claud
 
 How the sessions are attributed: the Stop hook stores each session's git branch (read from the transcript), and the report selects `project + branch`. Sessions recorded before this column existed carry no branch; `scripts/backfill.sh` repairs them while their transcripts are still on disk (about 30 days). A session whose last folder is a subdirectory of the repo is stored under the subdirectory's name and stays out of the sum. A session that ends on another branch than it started is attributed to where it finished.
 
-Turning it off is the default: nothing is posted unless you run it. `--dry-run` previews the comment, `--pr <number>` targets a specific PR of the repository (one opened from a fork is refused: run the command from the fork's clone instead), and deleting the comment on GitHub is the full cleanup.
+How its agents are attributed: an agent counts with its session, unless it worked on a branch of its own. A session on `main` that sends agents to build a PR in a worktree puts their share on the PR's branch, and the comment then says how many sessions recorded elsewhere it includes. A `SubagentStop` hook (`agent-stop.sh`) reads the branch as each agent ends, while its worktree still exists:
+
+- an agent that ran in a worktree of its own (Claude Code's isolated and workflow agents) counts on the branch that worktree has then, unless Claude Code named it (`worktree-agent-*`, `worktree-wf_*`) or it is detached;
+- an agent that ran in the session's folder counts on the worktree its tool calls name in at least half of those that give a place (a command, a file path), and no other as often: absolute paths, `~/`, `../` from the repository's folder when the worktree sits beside it, `./` when it sits inside. Never the repository's main folder, nor the session's own. This one is a deduction from the agent's commands.
+
+The hook stores that agent's tokens, CO2 and cost, per model, in an `agent_usage` table, with the repository and the worktree's folder; the session's own row does not change. The report takes those agents out of their session's branch and adds them to theirs, as long as the session's row holds all its agents (`agents_collected = 2`: the Stop hook or the rescan read every agent transcript), was written after the agent ended (in a later second) and is not a frozen v1 row. An agent that worked in another repository than its session's is not recorded, and one recorded before its repository was moved stays with its session. Forks are left out (they replay their parent's messages), and so is the work a session does itself in a worktree. Only agents that end with this version installed are attributed: nothing is rebuilt for past sessions.
+
+The hook needs Claude Code 2.1.69 or later, the first to give `SubagentStop` the agent's type (its id and transcript came in 2.0.42); with an older one it records nothing. Claude Code's own agents (prompt suggestions, `/btw`) are left out. In a session run without `--agent` their type is empty: the hook's matcher skips them from 2.1.275, the script itself before that. With `--agent` they carry that agent's name and pass the matcher; the script skips them because their transcript is not one the session's row reads.
+
+The hook runs synchronously, before the agent's result reaches the session: on a Mac, about 0.1 to 0.3 s for most agents, up to about 1 to 2 s for one whose transcript passes 100 MB, since it reads that transcript whole. Claude Code writes transcripts asynchronously: when the agent's final message is not in it yet, the hook reads it again every 0.2 s, for 1 s at most, then counts what is there. A database kept busy for more than about 10 s (a long read elsewhere) loses the record, and the agent counts with its session.
+
+Turning it off is the default: nothing is posted unless you run it. `--dry-run` previews the comment, `--pr <number>` targets a specific PR of the repository (one opened from a fork is refused: run the command from the fork's clone instead), and deleting the comment on GitHub is the full cleanup. Once agents of the repository are on record, the report counts, from whichever folder it runs, the sessions of the repository's main folder, of the worktree the branch is checked out in and of the worktrees its agents worked in, even removed since. A branch checked out nowhere whose name sessions of other folders also carry is refused: nothing is posted rather than a figure that may lack them.
 
 ## How it works
 
@@ -318,6 +340,7 @@ Sessions recorded since September 2026 are re-derived model by model, exactly. O
 | `persist-session.sh` | Stop hook (saves session data after each turn)                                            |
 | `persist-on-exit.sh` | SessionEnd hook (saves the session once more as it closes, in the background)             |
 | `safety-rescan.sh`   | SessionStart hook (throttled background re-scan, catches missed sessions)                 |
+| `agent-stop.sh`      | SubagentStop hook (the branch an agent worked on, for `/carbon-pr`)                       |
 | `backfill.sh`        | Re-parse all historical JSONL transcripts (incl. subagents)                               |
 | `recompute.sh`       | Re-derive cost/CO2 from stored tokens after a price/factor change (no transcripts needed) |
 | `generate-report.sh` | Export PNG report cards (CLI, with `--since` / `--until` / `--all`)                                   |

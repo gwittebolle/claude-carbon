@@ -77,6 +77,7 @@ STATUSLINE="${CMD_BASE}/scripts/statusline.sh"
 STOP="${CMD_BASE}/scripts/persist-session.sh"
 RESCAN="${CMD_BASE}/scripts/safety-rescan.sh"
 SESSIONEND="${CMD_BASE}/scripts/persist-on-exit.sh"
+AGENTSTOP="${CMD_BASE}/scripts/agent-stop.sh"
 
 # ---------------------------------------------------------------- 1. cold start
 
@@ -90,6 +91,8 @@ check "cold start: statusLine"             "$STATUSLINE" "$(jq -r '.statusLine.c
 check "cold start: Stop hook"              "$STOP"       "$(hook_commands "$S" Stop)"
 check "cold start: SessionStart hook"      "$RESCAN"     "$(hook_commands "$S" SessionStart)"
 check "cold start: SessionEnd hook"        "$SESSIONEND" "$(hook_commands "$S" SessionEnd)"
+check "cold start: SubagentStop hook"      "$AGENTSTOP" "$(hook_commands "$S" SubagentStop)"
+check "cold start: SubagentStop matcher leaves out an empty agent type" ".+" "$(jq -r '.hooks.SubagentStop[0].matcher // ""' "$S" 2>/dev/null | tr -d '\r')"
 
 # Symlinked everywhere a symlink works. Git Bash cannot create one without Windows
 # Developer Mode, so there the commands are copied on purpose and configure-settings.sh
@@ -124,6 +127,7 @@ S="${CFG}/settings.json"
 
 check "legacy install: SessionStart added"   "$RESCAN" "$(hook_commands "$S" SessionStart)"
 check "legacy install: SessionEnd added"     "$SESSIONEND" "$(hook_commands "$S" SessionEnd)"
+check "legacy install: SubagentStop added"   "$AGENTSTOP" "$(hook_commands "$S" SubagentStop)"
 check "legacy install: Stop not duplicated"  "1"       "$(hook_count "$S" Stop)"
 check "legacy install: unrelated keys kept"  "opus"    "$(jq -r '.model // ""' "$S" 2>/dev/null)"
 
@@ -156,6 +160,7 @@ CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
 
 check "idempotent: one SessionStart of ours" "1" "$(jq -r --arg c "$RESCAN" '[.hooks.SessionStart[]?.hooks[]?.command | select(. == $c)] | length' "$S" 2>/dev/null)"
 check "idempotent: one Stop"                 "1" "$(hook_count "$S" Stop)"
+check "idempotent: one SubagentStop"         "1" "$(hook_count "$S" SubagentStop)"
 check "idempotent: foreign hook still there" "1" "$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(. == "/opt/other/start.sh")] | length' "$S" 2>/dev/null)"
 
 # ---------------------------------------------------------------- 5. equivalent path spellings

@@ -142,6 +142,17 @@ if [ "${CLAUDE_CARBON_INSTALLER:-}" != "1" ]; then
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": ".+",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${PLUGIN_DIR}/scripts/agent-stop.sh"
+          }
+        ]
+      }
     ]
   }
 }

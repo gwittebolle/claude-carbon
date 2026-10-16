@@ -2,6 +2,48 @@
 
 ## 2026-10-16
 
+### feat: /carbon-pr counts an agent for the branch it worked on
+
+A session counted whole for the branch it ended on: agents that a session on `main` sent
+to build a PR in a worktree were counted on `main`, and the PR showed nothing. A new
+`SubagentStop` hook (`agent-stop.sh`) reads, as each agent ends, the branch it worked on:
+that of the worktree it ran in, when that is a worktree of its own (isolated and workflow
+agents), or that of the worktree its tool calls named in at least half of those that give
+a place (a command, a file path), when it ran in the session's folder. Paths are matched
+whole (`x-1013` is not `x-1013-facultatif`), absolute, under `~/`, `../` or `./`, with
+Windows spellings; descriptions, prompts and the text an edit writes are not read. Left
+out: branches Claude Code names itself (`worktree-agent-*`, `worktree-wf_*`), detached
+worktrees, the repository's main folder and the session's own, forks, Claude Code's own
+agents.
+
+The agent's usage, per model and computed as its session's pass computes that file, goes
+to a new `agent_usage` table, with the repository and the worktree's folder. Claude Code
+writes transcripts asynchronously: when the agent's final message is not in its
+transcript yet, the hook reads it again every 0.2 s, for 1 s at most. `/carbon-pr` takes
+the agent out of its session's branch and adds it to its own when the session's row holds
+all its agents (`agents_collected = 2`), was written after the agent ended (in a later
+second) and is not a frozen v1 row, and says how many sessions recorded elsewhere it
+includes. An agent that worked in another repository than its session's is not recorded,
+and one recorded before its repository was moved stays with its session. A session's own row does not change, the branches still add up to the sessions,
+and `recompute.sh` re-derives the agents' share with them. Without any agent row for the
+repository, or on a database that cannot be migrated, the comment is unchanged.
+
+Once agents of the repository are on record, `--pr` run from another folder than the
+branch's (the main one, often) also counts the sessions of the repository's main folder,
+of the worktree the branch is checked out in and of the worktrees its agents worked in,
+even removed since: it summed the agents without the PR's own sessions. A branch checked out nowhere whose name sessions
+of other folders also carry is refused, rather than posted without them. The branch is
+read in full (`refs/heads/...`): a tag of the same name made it `heads/<name>`, and the
+report found no session.
+
+Only agents that end with this version installed are attributed. The hook needs Claude
+Code 2.1.69 or later and records nothing with an older one. Claude Code's own agents are
+left out: in a session run without `--agent` their type is empty (the hook's matcher skips
+them from 2.1.275, the script before that); with `--agent` their transcript is not one the
+session's row reads. The hook runs synchronously: on a Mac, about 0.1 to 0.3 s for most
+agents, up to about 1 to 2 s for one whose transcript passes 100 MB. A database kept busy
+for more than about 10 s loses the record, and the agent counts with its session.
+
 ### fix: a fresh install with jq 1.6 writes its settings
 
 On a machine with no `settings.json` yet, the installer built one with jq, naming a
