@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # run-usage-cache-tests.sh: the per-agent usage cache (cc_session_usage) changes no figure
 # and keeps no stale one. Assert that:
-#   1. the per-file program and CC_USAGE_CACHE_VERSION move together;
+#   1. what a cache entry holds and CC_USAGE_CACHE_VERSION move together;
 #   2. without the cache, with it cold and with it warm, the lines are the same, on
 #      sessions with subagents, workflow agents, a model switch, an empty agent and an
 #      agent cut mid-line;
 #   3. a warm pass reads the main transcript and the changed agents only, and leaves the
 #      cache file alone when no agent changed;
-#   4. an agent changed in the same second (another size), or replaced by a file of the
-#      same size and mtime (another inode), is read again;
+#   4. an agent changed in the same second (another size), replaced by a file of the same
+#      size and mtime (another inode), rewritten in place to the same size, mtime and
+#      inode (another ctime), or reached through a symlink whose target grew, is read
+#      again; one with a cut line, or outside the session's folder, is never kept;
 #   5. a cache that does not parse, has entries of the wrong shape, or gives file lines
 #      that do not merge, is ignored and rewritten from a full read;
 #   6. a stat that does not answer as expected, CLAUDE_CARBON_NO_USAGE_CACHE=1, and a
@@ -58,14 +60,19 @@ check() {
   fi
 }
 
-# ---------------------------------------------------------------- 1. program and version
-# Changing what CC_JQ_FILE_USAGE puts in a file line without bumping the version would
-# merge old lines with new ones. Update both values here together with the program.
-EXPECTED_VERSION="1"
-EXPECTED_CKSUM="$(printf '%s' "$CC_JQ_FILE_USAGE" | cksum | awk '{ print $1 }')"
-PINNED_CKSUM="1026558766"
-check "the per-file program matches its pinned checksum (bump CC_USAGE_CACHE_VERSION if not)" "$PINNED_CKSUM" "$EXPECTED_CKSUM"
-check "the cache version pinned with it" "$EXPECTED_VERSION" "$CC_USAGE_CACHE_VERSION"
+# ---------------------------------------------------------------- 1. what an entry holds
+# A cache entry is what CC_JQ_FILE_USAGE makes of a file, as cc_usage_read (and the
+# re-reads of cc_redo_neighbours) feed it, in the shape CC_AWK_USAGE_ENTRIES writes and
+# CC_AWK_USAGE_CACHE reads. Change any of them and old entries would merge with new ones:
+# add a line below with a new version, set CC_USAGE_CACHE_VERSION to it, never edit a line.
+HISTORY="1:2091254546"
+FINGERPRINT="$( { printf '%s' "$CC_JQ_FILE_USAGE" "$CC_AWK_USAGE_ENTRIES" "$CC_AWK_USAGE_CACHE"
+                  awk '/^cc_usage_read\(\) \{/,/^}/ { print } /^cc_redo_neighbours\(\) \{/,/^}/ { print }' "${REPO_DIR}/scripts/portable-lib.sh"
+                } | tr -d '\r' | cksum | awk '{ print $1 }')"
+LAST="$(printf '%s\n' $HISTORY | tail -n 1)"
+check "the cache's code matches the last version of the history (a new line if not)" "${CC_USAGE_CACHE_VERSION}:${FINGERPRINT}" "$LAST"
+check "versions increase, fingerprints never repeat" "ok" \
+  "$(printf '%s\n' $HISTORY | awk -F: '{ if ($1 + 0 <= last || seen[$2]++) bad = 1; last = $1 + 0 } END { print bad ? "no" : "ok" }')"
 
 # ---------------------------------------------------------------- fixtures
 CFG="${TMPROOT}/cfg"
@@ -122,7 +129,7 @@ esac
 exec "${REAL_JQ}" "\$@"
 EOF
 chmod +x "${SHIM}/jq"
-reads() { sort "${TMPROOT}/read" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
+reads() { sort -u "${TMPROOT}/read" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
 
 # ---------------------------------------------------------------- 2. same lines
 S1="22222222-cccc-0000-0000-000000000001"
@@ -134,8 +141,9 @@ check "without, cold and warm: the same lines" "yes|yes" \
   "$([ "$NOCACHE" = "$COLD" ] && echo yes || echo no)|$([ "$NOCACHE" = "$WARM" ] && echo yes || echo no)"
 check "the lines are not empty" "yes" "$(has "$(printf 'T\t')" "$NOCACHE")"
 CF="$(cachefile "$S1")"
-check "one cache file, version in its name, every line JSON" "yes|6" \
-  "$(has "__${S1}.v${CC_USAGE_CACHE_VERSION}.jsonl" "$CF")|$(jq -c '.p' "$CF" 2>/dev/null | wc -l | tr -d ' ')"
+check "one cache file, named after the session and the version, every line JSON" "${S1}.v${CC_USAGE_CACHE_VERSION}.jsonl|5" \
+  "${CF##*/}|$(jq -c '.p' "$CF" 2>/dev/null | wc -l | tr -d ' ')"
+check "the agent with a cut line is not kept" "0" "$(grep -c 'agent-cut' "$CF")"
 check "the main transcript is not in it" "0" "$(grep -c "\"p\":\"\\.\\./${S1}.jsonl\"" "$CF")"
 
 # ---------------------------------------------------------------- 3. a warm pass
@@ -143,7 +151,7 @@ check "the main transcript is not in it" "0" "$(grep -c "\"p\":\"\\.\\./${S1}.js
 touch -t 202001010000 "$CF"
 BEFORE="$(cc_mtime "$CF")"
 WARM="$(PATH="${SHIM}:$PATH" usage "$S1" "$CACHE")"
-check "warm: the main transcript only" "${S1}.jsonl" "$(reads)"
+check "warm: the main transcript and the agent with a cut line only" "${S1}.jsonl agent-cut.jsonl" "$(reads)"
 check "warm: same lines, cache file not rewritten" "yes|$BEFORE" "$([ "$NOCACHE" = "$WARM" ] && echo yes || echo no)|$(cc_mtime "$CF")"
 
 # ---------------------------------------------------------------- 4. changed agents
@@ -153,7 +161,7 @@ msg "7$S1" claude-haiku-4-5 1 0 0 1 >> "$A"
 touch -r "${TMPROOT}/a.orig" "$A"
 : > "${TMPROOT}/read"
 GROWN="$(PATH="${SHIM}:$PATH" usage "$S1" "$CACHE")"
-check "same mtime, another size: read again" "${S1}.jsonl agent-a.jsonl" "$(reads)"
+check "same mtime, another size: read again" "${S1}.jsonl agent-a.jsonl agent-cut.jsonl" "$(reads)"
 check "and the lines follow" "yes" "$([ "$GROWN" = "$(usage "$S1")" ] && [ "$GROWN" != "$NOCACHE" ] && echo yes || echo no)"
 # Same size and mtime, other content, another file: another inode
 B="${PROJ}/${S1}/subagents/agent-b.jsonl"
@@ -162,14 +170,45 @@ touch -r "$B" "${TMPROOT}/b.new"
 mv -f "${TMPROOT}/b.new" "$B"
 : > "${TMPROOT}/read"
 SWAPPED="$(PATH="${SHIM}:$PATH" usage "$S1" "$CACHE")"
-check "same size and mtime, another inode: read again" "${S1}.jsonl agent-b.jsonl" "$(reads)"
+check "same size and mtime, another inode: read again" "${S1}.jsonl agent-b.jsonl agent-cut.jsonl" "$(reads)"
 check "and the lines follow" "yes" "$([ "$SWAPPED" = "$(usage "$S1")" ] && echo yes || echo no)"
+# Rewritten in place: same size, mtime and inode, another content and ctime
+C="${PROJ}/${S1}/subagents/workflows/wf_one/agent-c.jsonl"
+cp -p "$C" "${TMPROOT}/c.orig"
+sleep 1
+sed 's/"output_tokens":1000/"output_tokens":1001/' "${TMPROOT}/c.orig" > "${TMPROOT}/c.new"
+cat "${TMPROOT}/c.new" > "$C"
+touch -r "${TMPROOT}/c.orig" "$C"
+: > "${TMPROOT}/read"
+INPLACE="$(PATH="${SHIM}:$PATH" usage "$S1" "$CACHE")"
+check "same size, mtime and inode, another ctime: read again" "${S1}.jsonl agent-c.jsonl agent-cut.jsonl" "$(reads)"
+check "and the lines follow" "yes" "$([ "$INPLACE" = "$(usage "$S1")" ] && echo yes || echo no)"
+# An agent reached through a symlink: its target grows, the link does not change
+TARGET="${TMPROOT}/elsewhere/agent-l.jsonl"
+mkdir -p "${TMPROOT}/elsewhere"
+msg "8$S1" claude-sonnet-5-5 100 0 0 10 > "$TARGET"
+ln -s "$TARGET" "${PROJ}/${S1}/subagents/agent-l.jsonl" 2>/dev/null
+if [ -L "${PROJ}/${S1}/subagents/agent-l.jsonl" ]; then
+  usage "$S1" "$CACHE" >/dev/null
+  msg "9$S1" claude-sonnet-5-5 100 0 0 10 >> "$TARGET"
+  check "a symlinked agent whose target grew: the lines follow" "yes" \
+    "$([ "$(usage "$S1" "$CACHE")" = "$(usage "$S1")" ] && echo yes || echo no)"
+  rm -f "${PROJ}/${S1}/subagents/agent-l.jsonl"
+else
+  echo "SKIP symlinked agent: this system makes no symlink"
+fi
+# An agent outside the session's folder, given by its absolute path: read, never kept
+OUTSIDE="${TMPROOT}/elsewhere/agent-o.jsonl"
+msg "10$S1" claude-sonnet-5-5 100 0 0 10 > "$OUTSIDE"
+cc_collect_subagents "${PROJ}/${S1}/subagents"
+CC_USAGE_CACHE_DIR="$CACHE" cc_session_usage "$FACTORS" "$PRICES" "${PROJ}/${S1}.jsonl" "${CC_SUB_FILES[@]}" "$OUTSIDE" >/dev/null
+check "an agent outside the session's folder is not kept" "0" "$(grep -c 'agent-o' "$CF")"
 
 # ---------------------------------------------------------------- 5. a cache to ignore
 REF="$(usage "$S1")"
 printf 'not json at all\n{"p":"subagents/agent-a.jsonl","s":"x","m":1,"i":1,"a":{"f":"subagents/agent-a.jsonl","m":[]}}\n{"p":"subagents/agent-b.jso' > "$CF"
 check "garbage, wrong types, a cut line: same lines" "yes" "$([ "$(usage "$S1" "$CACHE")" = "$REF" ] && echo yes || echo no)"
-check "rewritten whole" "6" "$(jq -c '.p' "$CF" 2>/dev/null | wc -l | tr -d ' ')"
+check "rewritten whole" "5" "$(jq -c '.p' "$CF" 2>/dev/null | wc -l | tr -d ' ')"
 # Entries with the right keys and stat, but file lines that do not merge
 jq -c '.a = {"f": .p, "m": "oops"}' "$CF" > "${TMPROOT}/bad" && cp "${TMPROOT}/bad" "$CF"
 check "file lines that do not merge: same lines, from a full read" "yes" "$([ "$(usage "$S1" "$CACHE")" = "$REF" ] && echo yes || echo no)"
@@ -211,7 +250,7 @@ wait
 EXPECT4="$(usage "$S4" | awk -F '\t' '$1 == "T" { print $2 "|" $5 "|" $6 }')"
 check "two at once: the row" "$EXPECT4" "$(q "SELECT input_tokens || '|' || cache_read_tokens || '|' || output_tokens FROM sessions WHERE session_id='${S4}';")"
 CF4="$(cachefile "$S4")"
-check "two at once: the cache parses, one entry per agent" "6|0" \
+check "two at once: the cache parses, one entry per agent (the cut one aside)" "5|0" \
   "$(jq -c '.p' "$CF4" 2>/dev/null | wc -l | tr -d ' ')|$(find "$CACHE" -name '*.tmp.*' | wc -l | tr -d ' ')"
 
 # ---------------------------------------------------------------- 9. purge

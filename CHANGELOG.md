@@ -8,12 +8,13 @@ The Stop hook, the daily rescan and the status line read every transcript of a s
 each time: on a session with a hundred agents, several seconds after every answer, though
 an agent's transcript stops changing once it is done. Each agent's totals are now kept in
 `usage-cache/`, beside the database's default folder, one file per session, keyed by the
-transcript's path, size, modification time and inode, all read before the files are. A
-transcript is read again when any of them changes; the main transcript is always read. A
-cache that cannot be read is ignored and rewritten, a stat that does not answer as
-expected means no cache for that pass, and the daily rescan removes a session's file 45
-days after its last use. `CLAUDE_CARBON_NO_USAGE_CACHE=1` turns it off. The figures do not
-change.
+transcript's path, size, modification and change times and inode (of the file a symlink
+points to), all read before the files are. A transcript is read again when any of them
+changes; the main transcript is always read, and an agent with a line that did not parse
+is never kept. A cache that cannot be read is ignored and rewritten, a stat that does not
+answer as expected means no cache for that pass, and the daily rescan removes a session's
+file 45 days after it was last written. `CLAUDE_CARBON_NO_USAGE_CACHE=1` turns it off.
+The figures do not change.
 
 ### fix: sessions with hundreds of agents are recorded on Windows
 

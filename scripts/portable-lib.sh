@@ -627,24 +627,27 @@ END {
 # Cache (opt-in: CC_USAGE_CACHE_DIR, set by the Stop hook, the rescan and the status
 # line; CLAUDE_CARBON_NO_USAGE_CACHE=1 leaves it empty and unwritten). An agent's
 # transcript stops changing once the agent is done, so its file line (CC_JQ_FILE_USAGE)
-# is kept, keyed by its path relative to the session's folder, its size, its mtime and
-# its inode, all read by one stat before the files are read, and reused while they are
-# the same: the session's files are then read again only for the main transcript (never
-# kept: it grows) and the agents that changed. A stat that does not answer as expected
-# (a missing file, an unknown flavour) means no cache for that pass. A file jq could not
-# read is never kept. The cache file is rewritten only when an agent's entry changed, and
-# a cache that does not parse is ignored and rewritten from a full read. One file per
-# session, CC_USAGE_CACHE_VERSION in its name; the rescan removes those unused for 45
-# days. One JSON line per agent:
-#   {"p": path, "s": size, "m": mtime, "i": inode, "a": <its file line>}
-# Readers ignore the keys they do not know, so facts kept per agent for another use (the
-# worktree an agent worked in, say) can go under a key of their own, with a version of
-# their own, without touching "a".
+# is kept, keyed by its path relative to the session's folder, its size, its mtime, its
+# ctime and its inode (of the file a symlink points to), all read by one stat before the
+# files are read, and reused while they are the same: the session's files are then read
+# again only for the main transcript (never kept: it grows) and the agents that changed.
+# A stat that does not answer as expected (a missing file, an unknown flavour) means no
+# cache for that pass. A file jq could not read, a file with a line that did not parse,
+# and a path outside the session's folder are never kept. The cache file is rewritten
+# only when an agent's entry changed, and a cache that does not parse is ignored and
+# rewritten from a full read. One file per session, named after the session id (unique;
+# a path and an inode in the key keep two folders' sessions of one id from ever sharing
+# an entry) with CC_USAGE_CACHE_VERSION in the name; the rescan removes the files not
+# written for 45 days. One JSON line per agent, keys in this order:
+#   {"p": path, "s": size, "m": mtime, "c": ctime, "i": inode, "a": <its file line>}
+# The reader (CC_AWK_USAGE_CACHE) goes by position: any change to an entry's shape, to
+# what CC_JQ_FILE_USAGE puts in a file line, or to how cc_usage_read reads a file, needs
+# a new CC_USAGE_CACHE_VERSION (tests/run-usage-cache-tests.sh keeps the history).
 CC_JQ_ARGV_MAX=16000
 CC_USAGE_CACHE_VERSION=1
 cc_session_usage() {
   local factors="$1" prices="$2" main="$3" raw_out line tag model rest exre="" rows="" s_line="" f
-  local LC_ALL=C dir sid base mainrel cachefile="" stats="" joined="" kept="" hits="" misses=""
+  local LC_ALL=C dir sid base mainrel cachefile="" joined="" kept="" hits="" misses=""
   local fresh="" newlines="" changed=0 attempt
   local agents=() toread=()
   shift 3
@@ -662,17 +665,14 @@ cc_session_usage() {
     esac
   done
   if [ -n "${CC_USAGE_CACHE_DIR:-}" ] && [ "${CLAUDE_CARBON_NO_USAGE_CACHE:-0}" != "1" ] && [ "${#agents[@]}" -gt 0 ]; then
-    cachefile="${CC_USAGE_CACHE_DIR}/$(printf '%s__%s' "${dir##*/}" "$sid" | tr -c 'A-Za-z0-9._-' '_').v${CC_USAGE_CACHE_VERSION}.jsonl"
-    stats="$(cc_usage_stat "$base" "${agents[@]}")" || cachefile=""
+    cachefile="${CC_USAGE_CACHE_DIR}/${sid//[^A-Za-z0-9._-]/_}.v${CC_USAGE_CACHE_VERSION}.jsonl"
   fi
   # Two attempts: with the cache, then, if what it gave does not merge, from a full read
   for attempt in 1 2; do
     toread=("$mainrel")
     kept=""; hits=""; misses=""; changed=""
     if [ -n "$cachefile" ]; then
-      joined="$({ printf '%s\n' "$stats"; printf '\t--cache--\n'
-                  if [ "$attempt" = "1" ] && [ -f "$cachefile" ]; then cat "$cachefile" 2>/dev/null || true; fi; } \
-        | awk "$CC_AWK_USAGE_CACHE")" || joined=""
+      joined="$(cc_usage_join "$base" "$cachefile" "$attempt" "${agents[@]}")" || joined=""
       while IFS= read -r line; do
         case "$line" in
           "K	"*) kept="${kept}${line#K	}
@@ -708,11 +708,15 @@ EOF
   done
   [ -n "$raw_out" ] || return 1
   # The agents read this time, with their stat, join the entries kept
+  # (not when they only re-read files that are never kept: same entries, same file)
   if [ -n "$cachefile" ] && { [ "$changed" != "0" ] || [ "$attempt" = "2" ]; }; then
     newlines="$({ printf '%s' "$misses"; printf '\t--fresh--\n'; printf '%s\n' "$fresh"; } | awk "$CC_AWK_USAGE_ENTRIES")" || newlines=""
-    mkdir -p "$CC_USAGE_CACHE_DIR" 2>/dev/null || true
-    { printf '%s%s' "$kept" "$newlines" > "${cachefile}.tmp.$$" && mv -f "${cachefile}.tmp.$$" "$cachefile"; } 2>/dev/null \
-      || rm -f "${cachefile}.tmp.$$" 2>/dev/null || true
+    if [ "${kept}${newlines}" != "$(cat "$cachefile" 2>/dev/null || true)
+" ]; then
+      mkdir -p "$CC_USAGE_CACHE_DIR" 2>/dev/null || true
+      { printf '%s%s' "$kept" "$newlines" > "${cachefile}.tmp.$$" && mv -f "${cachefile}.tmp.$$" "$cachefile"; } 2>/dev/null \
+        || rm -f "${cachefile}.tmp.$$" 2>/dev/null || true
+    fi
   fi
   # Exclusion is decided in bash, with grep -E as it always was: user patterns are ERE.
   while IFS= read -r line; do
@@ -801,98 +805,107 @@ EOF
   printf '%s' "$all"
 }
 
-# cc_usage_stat <base> <file…>: one line per file, "size<TAB>mtime<TAB>inode<TAB>path",
-# from one stat run in <base>, GNU flavour first, then BSD. Fails, printing nothing,
-# unless every file gets plain numbers, an mtime above 0 and its own path back: no cache
-# then for that pass.
-cc_usage_stat() {
-  local base="$1" out
-  shift
-  out="$(cd "$base" && stat -c '%s %Y %i %n' "$@" 2>/dev/null)" || out=""
-  if ! cc_usage_stat_check "$out" "$@"; then
-    out="$(cd "$base" && stat -f '%z %m %i %N' "$@" 2>/dev/null)" || out=""
-    cc_usage_stat_check "$out" "$@" || return 1
-  fi
+# cc_usage_join <base> <cache file> <attempt> <file…>: one stat of the files (from
+# <base>, following symlinks: the file a link points to is what jq reads), joined with
+# the cache file (not read on attempt 2), through CC_AWK_USAGE_CACHE. The stat flavour
+# that matches the system first (BSD on macOS, GNU elsewhere), the other one when the
+# first does not answer as expected. Fails, printing nothing, when neither does: no cache
+# for that pass.
+cc_usage_join() {
+  local base="$1" cache="$2" attempt="$3" out flavour
+  shift 3
+  [ "$attempt" = "1" ] || cache=""
+  if [ "$CC_OS" = "darwin" ]; then set -- bsd gnu "$@"; else set -- gnu bsd "$@"; fi
+  for flavour in "$1" "$2"; do
+    if [ "$flavour" = "gnu" ]; then
+      out="$(cd "$base" && stat -L -c '%s %Y %Z %i %n' "${@:3}" 2>/dev/null)" || out=""
+    else
+      out="$(cd "$base" && stat -L -f '%z %m %c %i %N' "${@:3}" 2>/dev/null)" || out=""
+    fi
+    [ -n "$out" ] || continue
+    out="$({ printf '%s\n' "${@:3}"; printf '\t--stat--\n'; printf '%s\n' "$out"; } \
+      | awk -v cache="$cache" "$CC_AWK_USAGE_CACHE")" || continue
+    printf '%s\n' "$out"
+    return 0
+  done
+  return 1
 }
 
-# cc_usage_stat_check <stat output> <file…>: prints the checked lines (see cc_usage_stat)
-cc_usage_stat_check() {
-  local out="$1"
-  shift
-  [ -n "$out" ] || return 1
-  { printf '%s\n' "$@"; printf '\t--stat--\n'; printf '%s\n' "$out"; } | awk '
-    { sub(/\r$/, "") }
-    $0 == "\t--stat--" { s = 1; next }
-    !s { want[++w] = $0; next }
-    {
-      k++
-      name = $0; sub(/^[^ ]+ [^ ]+ [^ ]+ /, "", name)
-      if ($1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/ || $2 + 0 <= 0 || name != want[k]) bad = 1
-      line[k] = $1 "\t" $2 "\t" $3 "\t" name
-    }
-    END { if (bad || k != w || w == 0) exit 1; for (j = 1; j <= k; j++) print line[j] }'
-}
-
-# CC_AWK_USAGE_CACHE: the stat lines, a "\t--cache--" line, then the cache file. Prints
+# CC_AWK_USAGE_CACHE: on stdin, the files asked for, a "\t--stat--" line, then the stat
+# lines ("size mtime ctime inode path"); the cache file given as -v cache. Exits 1 unless
+# every file gets plain numbers, an mtime above 0 and its own path back. Prints
 #   K <entry>   an entry whose file did not change, kept
 #   A <file line>   its file line, for the merge
-#   M <path> <size> <mtime> <inode>   a file to read (new, changed, or its entry unusable)
+#   M <path> <size> <mtime> <ctime> <inode>   a file to read (new, changed, entry unusable)
 #   C <n>   entries changed: files to read, and entries of files gone
 # An entry that does not have the expected shape is ignored, its file read again.
 CC_AWK_USAGE_CACHE='
-BEGIN { FS = "\t" }
 { sub(/\r$/, "") }
-$0 == "\t--cache--" { c = 1; next }
-!c { n++; path[n] = $4; sz[n] = $1; mt[n] = $2; ino[n] = $3; at[$4] = n; next }
+$0 == "\t--stat--" { s = 1; next }
+!s { want[++w] = $0; next }
 {
-  line = $0; pre = "{\"p\":\""
-  if (index(line, pre) != 1) next
-  r = substr(line, length(pre) + 1)
-  i = index(r, "\",\"s\":"); if (!i) next
-  p = substr(r, 1, i - 1); r = substr(r, i + 6)
-  i = index(r, ",\"m\":"); if (!i) next
-  s = substr(r, 1, i - 1); r = substr(r, i + 5)
-  i = index(r, ",\"i\":"); if (!i) next
-  m = substr(r, 1, i - 1); r = substr(r, i + 5)
-  i = index(r, ",\"a\":{"); if (!i) next
-  o = substr(r, 1, i - 1); a = substr(r, i + 5)
-  if (s !~ /^[0-9]+$/ || m !~ /^[0-9]+$/ || o !~ /^[0-9]+$/ || substr(a, length(a) - 1) != "}}") next
-  a = substr(a, 1, length(a) - 1)
-  if (!(p in at)) { gone++; next }
-  k = at[p]
-  if (seen[k] || s != sz[k] || m != mt[k] || o != ino[k]) next
-  seen[k] = 1; keep[k] = line; agg[k] = a
+  n++
+  name = $0; sub(/^[^ ]+ [^ ]+ [^ ]+ [^ ]+ /, "", name)
+  if ($1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/ || $4 !~ /^[0-9]+$/ || $2 + 0 <= 0 || name != want[n]) bad = 1
+  path[n] = name; sz[n] = $1; mt[n] = $2; ct[n] = $3; ino[n] = $4; at[name] = n
 }
 END {
+  if (bad || n != w || w == 0) exit 1
+  pre = "{\"p\":\""
+  while (cache != "" && (getline line < cache) > 0) {
+    sub(/\r$/, "", line)
+    if (index(line, pre) != 1) continue
+    r = substr(line, length(pre) + 1)
+    i = index(r, "\",\"s\":"); if (!i) continue
+    p = substr(r, 1, i - 1); r = substr(r, i + 6)
+    i = index(r, ",\"m\":"); if (!i) continue
+    sv = substr(r, 1, i - 1); r = substr(r, i + 5)
+    i = index(r, ",\"c\":"); if (!i) continue
+    mv = substr(r, 1, i - 1); r = substr(r, i + 5)
+    i = index(r, ",\"i\":"); if (!i) continue
+    cv = substr(r, 1, i - 1); r = substr(r, i + 5)
+    i = index(r, ",\"a\":{"); if (!i) continue
+    iv = substr(r, 1, i - 1); a = substr(r, i + 5)
+    if (sv !~ /^[0-9]+$/ || mv !~ /^[0-9]+$/ || cv !~ /^[0-9]+$/ || iv !~ /^[0-9]+$/ || substr(a, length(a) - 1) != "}}") continue
+    a = substr(a, 1, length(a) - 1)
+    if (!(p in at)) { gone++; continue }
+    k = at[p]
+    if (seen[k] || sv != sz[k] || mv != mt[k] || cv != ct[k] || iv != ino[k]) continue
+    seen[k] = 1; keep[k] = line; agg[k] = a
+  }
+  if (cache != "") close(cache)
   for (k = 1; k <= n; k++) {
     if (seen[k]) { print "K\t" keep[k]; print "A\t" agg[k] }
-    else { print "M\t" path[k] "\t" sz[k] "\t" mt[k] "\t" ino[k]; changed++ }
+    else { print "M\t" path[k] "\t" sz[k] "\t" mt[k] "\t" ct[k] "\t" ino[k]; changed++ }
   }
   print "C\t" (changed + gone)
 }'
 
-# CC_AWK_USAGE_ENTRIES: the files read ("path<TAB>size<TAB>mtime<TAB>inode" lines), a
-# "\t--fresh--" line, then the file lines jq gave: one cache entry per file read. A file
-# with no line (no message in it) is kept with no model; a path that JSON would have to
-# escape is not kept.
+# CC_AWK_USAGE_ENTRIES: the files read ("path<TAB>size<TAB>mtime<TAB>ctime<TAB>inode"
+# lines), a "\t--fresh--" line, then the file lines jq gave: one cache entry per file
+# read. A file with no line (no message in it) is kept with no model. Never kept: a file
+# with a line that did not parse (read raw, "bad" above 0: it may be cut by a write in
+# progress), a path outside the session's folder, a path JSON would have to escape.
 CC_AWK_USAGE_ENTRIES='
 BEGIN { FS = "\t" }
 { sub(/\r$/, "") }
 $0 == "\t--fresh--" { f = 1; next }
-!f { if ($1 != "") { n++; path[n] = $1; sz[$1] = $2; mt[$1] = $3; ino[$1] = $4 } next }
+!f { if ($1 != "") { n++; path[n] = $1; sz[$1] = $2; mt[$1] = $3; ct[$1] = $4; ino[$1] = $5 } next }
 {
   pre = "{\"f\":\""
   if (index($0, pre) != 1) next
   r = substr($0, length(pre) + 1); i = index(r, "\""); if (!i) next
   p = substr(r, 1, i - 1)
-  if (p in sz) agg[p] = $0
+  if (!(p in sz)) next
+  agg[p] = $0
+  if (index(r, "\",\"bad\":0,") != i) badline[p] = 1
 }
 END {
   for (k = 1; k <= n; k++) {
     p = path[k]
-    if (p ~ /["\\]/) continue
+    if (p ~ /["\\]/ || p ~ /^\// || p ~ /^[A-Za-z]:/ || (p in badline)) continue
     a = (p in agg) ? agg[p] : "{\"f\":\"" p "\",\"m\":[]}"
-    print "{\"p\":\"" p "\",\"s\":" sz[p] ",\"m\":" mt[p] ",\"i\":" ino[p] ",\"a\":" a "}"
+    print "{\"p\":\"" p "\",\"s\":" sz[p] ",\"m\":" mt[p] ",\"c\":" ct[p] ",\"i\":" ino[p] ",\"a\":" a "}"
   }
 }'
 
