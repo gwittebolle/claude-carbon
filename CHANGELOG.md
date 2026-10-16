@@ -2,6 +2,18 @@
 
 ## 2026-10-16
 
+### fix: sessions with hundreds of agents are recorded on Windows
+
+A session's usage was read by one jq process given every transcript's path. Windows stops
+a command line at 32,767 characters: past about 150 to 190 agents, jq did not start, and
+the Stop hook and the rescan left the session as it was, without a word. Each transcript
+is now reduced on its own and the results summed, with jq run in the session's folder on
+relative paths, in batches of at most 16 KB of arguments. The figures do not change: the
+same lines, byte for byte, on every session tested.
+
+A transcript cut mid-line with no final newline also lost the first line of the transcript
+read after it; only the cut line is lost now.
+
 ### fix: sessions rewritten by an older Stop hook get their workflow agents back
 
 The rescan compared each session that ran workflows once, then set a marker. A session

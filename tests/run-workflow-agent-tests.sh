@@ -22,7 +22,12 @@
 #      with no tokens and no child rows, are parsed once, not at every rescan;
 #  13. jq lines ending in CRLF (jq.exe, as MSYS bash passes them on): a session the
 #      rescan adds is stored without a CR, and a row an earlier version stored with one
-#      is refreshed, then left alone.
+#      is refreshed, then left alone;
+#  14. a session with 300 agents in a workflow folder with a long name is recorded whole,
+#      and no jq is started with more than 30,000 bytes of arguments (Windows stops a
+#      command line at 32,767 characters);
+#  15. an agent transcript cut mid-line without a final newline loses only that line:
+#      raw reading no longer runs it into the next file's first message.
 #
 # Throwaway dirs only (CLAUDE_CONFIG_DIR, CLAUDE_CARBON_DB); the real ~/.claude is never
 # read or written. bash 3.2 compatible.
@@ -196,7 +201,7 @@ check "failed write: retried by the next rescan" "$WITH|2" "$(tokens "$S6")|$(q 
 # ---------------------------------------------------------------- 7. the end of a rewritten row
 # The workflow agent wrote after the main transcript: the rewritten row ends at the agent's
 # last write, and the next rescan does not parse the session again (a jq on PATH counts
-# the usage passes, the only jq calls given --slurpfile).
+# the usage passes: the merge step, once per parse, is the only jq call given --slurpfile).
 S7="11111111-aaaa-bbbb-cccc-000000000007"
 make_session "$S7" no
 payload "$S7" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
@@ -393,6 +398,51 @@ check "CRLF jq: a stored CR is refreshed away" "$WITH|0" "$(tokens "$S17")|$(q "
 : > "${TMPROOT}/jq-calls"
 PATH="${SHIM}:$PATH" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "CRLF jq: neither parsed on the next rescan" "0" "$(wc -l < "${TMPROOT}/jq-calls" | tr -d ' ')"
+
+# ---------------------------------------------------------------- 14. 300 agents
+# Each agent 1,000 in and 10 out on Opus; the workflow folder's name is long, so the
+# agents' paths add up to about 35 KB even relative to the session's folder. Absolute
+# paths stay under Windows' 260 characters.
+S18="11111111-aaaa-bbbb-cccc-000000000018"
+make_session "$S18" no
+WF18="${PROJ}/${S18}/subagents/workflows/wf_$(printf '%070d' 0 | tr 0 x)"
+mkdir -p "$WF18"
+k=0
+while [ "$k" -lt 300 ]; do
+  printf '{"type":"assistant","isSidechain":true,"requestId":"q%s","timestamp":"2026-10-15T10:01:00Z","message":{"id":"n%s","model":"claude-opus-5-5","usage":{"input_tokens":1000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":10}}}\n' "$k" "$k" > "${WF18}/agent-$(printf '%03d' "$k").jsonl"
+  k=$((k + 1))
+done
+ARGV="${TMPROOT}/argv"
+mkdir -p "$ARGV"
+cat > "${ARGV}/jq" <<EOF
+#!/usr/bin/env bash
+# the bytes of a jq command line: each argument and its terminating NUL
+LC_ALL=C
+n=0
+for a in "\$@"; do n=\$((n + \${#a} + 1)); done
+echo "\$n" >> "${TMPROOT}/argv-sizes"
+exec "${REAL_JQ}" "\$@"
+EOF
+chmod +x "${ARGV}/jq"
+: > "${TMPROOT}/argv-sizes"
+payload "$S18" | PATH="${ARGV}:$PATH" CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+check "300 agents: recorded whole" "301000|0|3100" "$(tokens "$S18")"
+check "300 agents: no jq argv over 30,000 bytes" "yes" \
+  "$(awk 'BEGIN { m = 0 } { if ($1 + 0 > m) m = $1 + 0 } END { print (m > 0 && m < 30000) ? "yes" : "max " m }' "${TMPROOT}/argv-sizes")"
+
+# ---------------------------------------------------------------- 15. a cut last line
+# agent-a's last line is cut, with no newline after it; agent-b's first line is a message
+S19="11111111-aaaa-bbbb-cccc-000000000019"
+make_session "$S19" no
+mkdir -p "${PROJ}/${S19}/subagents"
+{
+  printf '%s\n' '{"type":"assistant","requestId":"a1","timestamp":"2026-10-15T10:00:05Z","message":{"id":"ma1","model":"claude-sonnet-5-5","usage":{"input_tokens":200,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":20}}}'
+  printf '%s' '{"type":"assistant","requestId":"a2","message":{"id":"ma2","mod'
+} > "${PROJ}/${S19}/subagents/agent-a.jsonl"
+printf '%s\n' '{"type":"assistant","requestId":"b1","timestamp":"2026-10-15T10:00:06Z","message":{"id":"mb1","model":"claude-sonnet-5-5","usage":{"input_tokens":3000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":300}}}' \
+  > "${PROJ}/${S19}/subagents/agent-b.jsonl"
+payload "$S19" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+check "cut last line: only that line lost" "4200|0|420" "$(tokens "$S19")"
 
 echo
 echo "$PASSED passed, $FAILED failed"
