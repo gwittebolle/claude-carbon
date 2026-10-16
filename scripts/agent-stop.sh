@@ -177,11 +177,13 @@ $USAGE
 EOF
 
 # The agent's rows replaced in one transaction (a resumed agent ends again with larger
-# totals). Many agents of a workflow can end at once: a long busy timeout, one more try.
+# totals). Many agents of a workflow can end at once: one more try after the busy timeout.
+# The hook runs before the agent's result is handed back, so it never waits more than
+# about 10 s: the same 5 s timeout as the plugin's other writers, twice.
 SQL="${CC_AGENT_USAGE_DDL}
 BEGIN IMMEDIATE;
 DELETE FROM agent_usage WHERE session_id = ${Q_SID} AND agent_id = ${Q_AGENT};
 ${ROWS}COMMIT;"
-sqlite3 -bail -cmd ".timeout 30000" "$DB_PATH" "$SQL" >/dev/null 2>&1 \
-  || sqlite3 -bail -cmd ".timeout 30000" "$DB_PATH" "$SQL" >/dev/null 2>&1 || true
+sqlite3 -bail -cmd ".timeout 5000" "$DB_PATH" "$SQL" >/dev/null 2>&1 \
+  || sqlite3 -bail -cmd ".timeout 5000" "$DB_PATH" "$SQL" >/dev/null 2>&1 || true
 exit 0
