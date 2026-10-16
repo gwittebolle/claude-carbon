@@ -142,14 +142,15 @@ format_tokens() {
 # What the branch adds up to, with the agents' branches the SubagentStop hook recorded
 # (agent_usage, one row per agent and model):
 #   + the sessions that ended on it (BASE)
-#   - their agents that worked on another branch of this repository, or on another one
+#   - their agents that worked on another branch of this repository
 #   + the agents of the repository's other sessions that worked on it
 # An agent is moved only when its session's row is present, not excluded, holds all its
-# agents (agents_collected), is of the current methodology and was written in a later
-# second than the agent's last message (an agent that ended after its session's last Stop
-# is not in that row yet: taking it out would leave less than nothing; the row's end has
-# whole seconds, so one that ended in the same second waits for the next Stop). The branches then add up to the
-# sessions. An agent recorded in another repository (or in this one before it moved, its
+# agents (agents_collected), is of the current methodology and ends after the agent's last
+# message (an agent that ended after its session's last Stop is not in that row yet:
+# taking it out would leave less than nothing). A Stop hook writes the end in whole
+# seconds, so an agent that ended in that same second waits for the next Stop; an end the
+# rescan took from the transcripts has their precision and may equal the agent's last
+# message. The branches then add up to the sessions. An agent recorded in another repository (or in this one before it moved, its
 # common folder spelled otherwise) stays with its session. Without agent rows for this
 # repository, or without the table (a database that could not be migrated), this is the
 # sum of BASE, as before agent_usage existed.
@@ -163,9 +164,9 @@ fi
 # ── The folders the branch's sessions are recorded under ────
 # A session is recorded under the name of the folder it ran in. Run from the branch's
 # own folder, that is this one, as before agent_usage existed. With agents of this
-# repository on record, the report also takes the folder the branch is checked out in
-# (with --pr from another folder: the main one, often) and the worktrees its agents
-# worked in (one removed since, as after a merge). A branch checked out nowhere, whose
+# repository on record, the report also takes, wherever it runs, the repository's main
+# folder, the folder the branch is checked out in and the worktrees its agents worked in
+# (one removed since, as after a merge). A branch checked out nowhere, whose
 # name sessions in other folders also carry, is refused: those sessions may be its own,
 # and a figure without them would be posted as the PR's.
 PROJECT_LIST="'${PROJECT//$CC_SQ/$CC_SQ$CC_SQ}'"
@@ -178,18 +179,21 @@ add_project() {
   PROJECT_NAMES="${PROJECT_NAMES}, '${1}'"
 }
 if [ "$HAS_AGENTS" = "1" ]; then
+  # The same folders wherever the command runs, so that the comment does not depend on the
+  # folder it was last posted from. Two lines: the repository's main folder (its sessions on
+  # the branch are the branch's), then the worktree the branch is checked out in, if any
+  WT_PATHS="$(git -C "$TOPLEVEL" worktree list --porcelain 2>/dev/null \
+    | awk -v want="branch refs/heads/${BRANCH}" '{ sub(/\r$/, "") } /^worktree / { p = substr($0, 10); if (main == "") main = p }
+        $0 == want { found = p } END { print main; print found }' || true)"
+  WT_MAIN="${WT_PATHS%%$'\n'*}"
+  WT_PATH="${WT_PATHS#*$'\n'}"
+  [ "$WT_PATH" != "$WT_PATHS" ] || WT_PATH=""
+  add_project "${WT_MAIN##*/}"
   LOCATED=1
-  if [ "$BRANCH" != "$CURRENT" ]; then
-    # Two lines: the repository's main folder (its sessions on the branch are the
-    # branch's), then the worktree the branch is checked out in, if any
-    WT_PATHS="$(git -C "$TOPLEVEL" worktree list --porcelain 2>/dev/null \
-      | awk -v want="branch refs/heads/${BRANCH}" '{ sub(/\r$/, "") } /^worktree / { p = substr($0, 10); if (main == "") main = p }
-          $0 == want { found = p } END { print main; print found }' || true)"
-    WT_MAIN="${WT_PATHS%%$'\n'*}"
-    WT_PATH="${WT_PATHS#*$'\n'}"
-    [ "$WT_PATH" != "$WT_PATHS" ] || WT_PATH=""
-    add_project "${WT_MAIN##*/}"
-    if [ -n "$WT_PATH" ]; then add_project "${WT_PATH##*/}"; else LOCATED=0; fi
+  if [ -n "$WT_PATH" ]; then
+    add_project "${WT_PATH##*/}"
+  elif [ "$BRANCH" != "$CURRENT" ]; then
+    LOCATED=0
   fi
   while IFS= read -r W; do
     W="${W%$'\r'}"
@@ -201,14 +205,14 @@ EOF
     OTHERS="$(cc_sql "$DB_PATH" "SELECT group_concat(name, ', ') FROM (SELECT quote(project) AS name FROM sessions WHERE git_branch = '${SQL_BRANCH}' AND COALESCE(excluded, 0) = 0 AND project NOT IN (${PROJECT_LIST}) GROUP BY project ORDER BY COUNT(*) DESC LIMIT 3);" 2>/dev/null || true)"
     if [ -n "$OTHERS" ]; then
       echo "Error: branch '${BRANCH}' is checked out in no worktree of this repository, and sessions on a branch of that name were recorded in other folders (${OTHERS}). They may be this branch's: nothing posted, rather than a figure without them." >&2
-      echo "Run /carbon-pr from the branch's worktree, or check the branch out again in a folder of the name its sessions ran in (git worktree add <folder> ${BRANCH})." >&2
+      echo "Run /carbon-pr from the branch's worktree, or switch to the branch in the folder its sessions ran in and run /carbon-pr there without --pr." >&2
       exit 1
     fi
   fi
 fi
 
 BASE="s.project IN (${PROJECT_LIST}) AND s.git_branch = '${SQL_BRANCH}' AND COALESCE(s.excluded, 0) = 0"
-AGENT_OK="COALESCE(s.excluded, 0) = 0 AND COALESCE(s.methodology_version, 1) >= 2 AND COALESCE(s.agents_collected, 0) >= 2 AND substr(COALESCE(a.last_ts, ''), 1, 19) < substr(COALESCE(s.ended_at, ''), 1, 19)"
+AGENT_OK="COALESCE(s.excluded, 0) = 0 AND COALESCE(s.methodology_version, 1) >= 2 AND COALESCE(s.agents_collected, 0) >= 2 AND ((length(COALESCE(s.ended_at, '')) > 20 AND COALESCE(a.last_ts, '') <= s.ended_at) OR substr(COALESCE(a.last_ts, ''), 1, 19) < substr(COALESCE(s.ended_at, ''), 1, 19))"
 HERE="a.git_branch = '${SQL_BRANCH}' AND a.repo = ${Q_REPO}"
 OUT_AGENTS="FROM agent_usage a JOIN sessions s ON s.session_id = a.session_id WHERE ${BASE} AND ${AGENT_OK} AND a.repo = ${Q_REPO} AND a.git_branch <> '${SQL_BRANCH}'"
 IN_AGENTS="FROM agent_usage a JOIN sessions s ON s.session_id = a.session_id WHERE ${HERE} AND ${AGENT_OK} AND NOT (${BASE})"

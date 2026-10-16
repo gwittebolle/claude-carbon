@@ -195,12 +195,13 @@ fi
 
 # The agent's final message, when its transcript does not hold it yet: read again every
 # 0.2 s, for at most 1 s (the hook holds back the agent's result meanwhile). It is there
-# when the last line of assistant text in the transcript's tail holds the message's end
-# (the key goes through the environment: awk -v would read its backslashes as escapes).
+# when the last assistant line in the transcript's tail, text or tool call (an agent may
+# hand its report back through a tool), holds the message's end (the key goes through
+# the environment: awk -v would read its backslashes as escapes).
 if [ -n "$LAST_KEY" ]; then
   k=0
   while ! tail -n 40 "$AGENT_T" 2>/dev/null | LC_ALL=C CC_LAST_KEY="$LAST_KEY" awk '
-      index($0, "\"type\":\"assistant\"") && index($0, "\"type\":\"text\"") { last = index($0, ENVIRON["CC_LAST_KEY"]) > 0 }
+      index($0, "\"type\":\"assistant\"") && (index($0, "\"type\":\"text\"") || index($0, "\"type\":\"tool_use\"")) { last = index($0, ENVIRON["CC_LAST_KEY"]) > 0 }
       END { exit !last }' 2>/dev/null; do
     [ "$k" -lt 5 ] || break
     sleep 0.2 2>/dev/null || break

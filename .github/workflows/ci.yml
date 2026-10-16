@@ -30,7 +30,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
       # The mod's pure modules against the golden vectors and the display rules.
       - name: Replay golden vectors and display rules against hooks/mod
@@ -251,6 +251,10 @@ jobs:
     # The other Linux jobs get the runner's jq 1.7 or later: jq 1.6, which Ubuntu 22.04 and
     # Debian 11 still ship, caused two bugs none of them saw. git 2.34 and mawk come with it.
     container: ubuntu:22.04
+    # A container job runs its steps with sh unless told otherwise
+    defaults:
+      run:
+        shell: bash
     steps:
       # git before the checkout, so that it is a clone (the install suite clones it). The
       # workspace belongs to the runner's user, not to the container's root, and the suites
