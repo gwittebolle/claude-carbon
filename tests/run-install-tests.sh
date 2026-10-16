@@ -676,6 +676,14 @@ cp "${REPO_DIR}/.claude-plugin/plugin.json" "${FAKE}/.claude-plugin/"
 CLAUDE_CONFIG_DIR="$CFG" bash "${FAKE}/scripts/install-mod.sh" >/dev/null 2>&1
 check "mod: a checkout without hooks/mod installs nothing" "no" "$(has "${CFG}/skills")"
 
+# ---------------------------------------------------------------- jq 1.6 keywords
+# jq 1.6 (Ubuntu 20.04 and 22.04) rejects a variable named after a keyword: `--arg end`
+# then `$end` made a fresh install write no settings at all. CI runs a newer jq, so check
+# the source instead of the behaviour.
+KW_ARGS="$(grep -rn -E -- '--arg(json)? (end|if|then|else|elif|reduce|foreach|try|catch|label|import|include|def|and|or|not|as) ' \
+  "${REPO_DIR}/scripts" "${REPO_DIR}/skills" "${REPO_DIR}/install.sh" 2>/dev/null || true)"
+check "jq: no variable named after a jq 1.6 keyword" "" "$KW_ARGS"
+
 # ----------------------------------------------------------------
 
 echo ""
