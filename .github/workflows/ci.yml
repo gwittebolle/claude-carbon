@@ -93,6 +93,11 @@ jobs:
       - name: Assert branch capture and the dev PR report
         run: bash tests/run-pr-tests.sh
 
+      # The SubagentStop hook in a scratch repository with worktrees: an agent's branch,
+      # recorded as it ends, and the report that counts it there
+      - name: Agents counted for the branch they worked on
+        run: bash tests/run-agent-branch-tests.sh
+
   session-end:
     name: session end capture
     runs-on: ubuntu-latest
@@ -203,6 +208,10 @@ jobs:
         if: always()
         run: /bin/bash tests/run-pr-tests.sh
 
+      - name: carbon-pr agents
+        if: always()
+        run: /bin/bash tests/run-agent-branch-tests.sh
+
       - name: Per-model split
         if: always()
         run: /bin/bash tests/run-per-model-tests.sh
@@ -309,6 +318,10 @@ jobs:
       - name: carbon-pr pipeline
         if: always()
         run: bash tests/run-pr-tests.sh
+
+      - name: carbon-pr agents
+        if: always()
+        run: bash tests/run-agent-branch-tests.sh
 
       - name: Per-model split
         if: always()

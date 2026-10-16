@@ -2,6 +2,30 @@
 
 ## 2026-10-16
 
+### feat: /carbon-pr counts an agent for the branch it worked on
+
+A session counted whole for the branch it ended on: agents that a session on `main` sent
+to build a PR in a worktree were counted on `main`, and the PR showed nothing. A new
+`SubagentStop` hook (`agent-stop.sh`) reads, as each agent ends, the branch it worked on:
+that of the worktree it ran in, when that is a worktree of its own (isolated and workflow
+agents), or that of the worktree its tool calls named in at least half of those that give
+a place (a command, a file path), when it ran in the session's folder. Paths are matched
+whole (`x-1013` is not `x-1013-facultatif`), absolute, under `~/`, `../` or `./`, with
+Windows spellings; descriptions, prompts and the text an edit writes are not read. Left
+out: branches Claude Code names itself (`worktree-agent-*`, `worktree-wf_*`), detached
+worktrees, the repository's main folder and the session's own, forks, Claude Code's own
+agents.
+
+The agent's usage, per model and computed as its session's pass computes that file, goes
+to a new `agent_usage` table. `/carbon-pr` takes it out of its session's branch and adds it
+to the agent's, when the session's row holds all its agents, was written after the agent
+ended and is not a frozen v1 row, and says how many sessions recorded elsewhere it
+includes. A session's own row does not change, the branches still add up to the sessions,
+and `recompute.sh` re-derives the agents' share with them. Without any agent row, or on a
+database that cannot be migrated, the comment is unchanged. Only agents that end with this
+version installed are attributed. The hook needs Claude Code 2.1.69 or later and records
+nothing with an older one.
+
 ### fix: a fresh install with jq 1.6 writes its settings
 
 On a machine with no `settings.json` yet, the installer built one with jq, naming a

@@ -102,6 +102,16 @@ fi
 # it from the session's last cwd (sessions that end in a subdirectory store the
 # subdirectory's basename and will not be attributed; see README).
 PROJECT="$(basename "$TOPLEVEL")"
+# The repository, as the SubagentStop hook records an agent's branch: its common git folder,
+# absolute, links resolved (git before 2.31 prints the flag back and a relative folder)
+REPO_GIT="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null | tr -d '\r' || true)"
+case "$REPO_GIT" in
+  /*|[A-Za-z]:/*) ;;
+  *) REPO_GIT="$(cd "$TOPLEVEL" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null | tr -d '\r' || true)"
+     case "$REPO_GIT" in ''|/*|[A-Za-z]:/*) ;; *) REPO_GIT="${TOPLEVEL}/${REPO_GIT}" ;; esac ;;
+esac
+REPO_GIT="$( (cd "$REPO_GIT" 2>/dev/null && pwd -P) || true)"
+if cc_is_windows; then REPO_GIT="$(printf '%s' "$REPO_GIT" | tr 'A-Z' 'a-z')"; fi
 
 # Pick the equivalence set before LC_ALL=C masks the locale.
 # shellcheck source=scripts/equiv-lib.sh
@@ -123,19 +133,46 @@ format_tokens() {
 # The DB input_tokens column already folds cache write in (schema v2), so the
 # tokens metric is input + output, cache reads shown separately, matching
 # /carbon-report and the CI action (the shareable card counts cache reads in its total).
+#
+# What the branch adds up to, with the agents' branches the SubagentStop hook recorded
+# (agent_usage, one row per agent and model):
+#   + the sessions that ended on it (BASE)
+#   - their agents that worked on another branch of this repository, or on another one
+#   + the agents of the repository's other sessions that worked on it
+# An agent is moved only when its session's row is present, not excluded, holds all its
+# agents (agents_collected), is of the current methodology and was written after the
+# agent's last message (an agent that ended after its session's last Stop is not in that
+# row yet: taking it out would leave less than nothing). The branches then add up to the
+# sessions. Without agent rows, or without the table (a database that could not be
+# migrated), this is the sum of BASE, as before agent_usage existed.
 SQL_PROJECT="${PROJECT//$CC_SQ/$CC_SQ$CC_SQ}"
 SQL_BRANCH="${BRANCH//$CC_SQ/$CC_SQ$CC_SQ}"
-WHERE="WHERE project = '${SQL_PROJECT}' AND git_branch = '${SQL_BRANCH}' AND COALESCE(excluded, 0) = 0"
-S_WHERE="WHERE s.project = '${SQL_PROJECT}' AND s.git_branch = '${SQL_BRANCH}' AND COALESCE(s.excluded, 0) = 0"
+Q_REPO="$(cc_sql_quote "$REPO_GIT")"
+BASE="s.project = '${SQL_PROJECT}' AND s.git_branch = '${SQL_BRANCH}' AND COALESCE(s.excluded, 0) = 0"
+AGENT_OK="COALESCE(s.excluded, 0) = 0 AND COALESCE(s.methodology_version, 1) >= 2 AND COALESCE(s.agents_collected, 0) >= 2 AND substr(COALESCE(a.last_ts, ''), 1, 19) <= substr(COALESCE(s.ended_at, ''), 1, 19)"
+HERE="a.git_branch = '${SQL_BRANCH}' AND a.repo = ${Q_REPO}"
+OUT_AGENTS="FROM agent_usage a JOIN sessions s ON s.session_id = a.session_id WHERE ${BASE} AND ${AGENT_OK} AND NOT (${HERE})"
+IN_AGENTS="FROM agent_usage a JOIN sessions s ON s.session_id = a.session_id WHERE ${HERE} AND ${AGENT_OK} AND NOT (${BASE})"
+TOTAL_AGENTS=""
+MODEL_AGENTS=""
+if [ "$(cc_sql "$DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'agent_usage';" 2>/dev/null)" = "1" ]; then
+  TOTAL_AGENTS="
+  UNION ALL SELECT a.session_id, a.co2_grams, a.cost_usd, a.input_tokens, a.output_tokens, a.cache_read_tokens, -1, 0 ${OUT_AGENTS}
+  UNION ALL SELECT a.session_id, a.co2_grams, a.cost_usd, a.input_tokens, a.output_tokens, a.cache_read_tokens, 1, 1 ${IN_AGENTS}"
+  MODEL_AGENTS="
+  UNION ALL SELECT a.session_id, -1, a.model, a.input_tokens, a.cache_creation_tokens, a.cache_read_tokens, a.output_tokens, a.co2_grams, a.cost_usd ${OUT_AGENTS}
+  UNION ALL SELECT a.session_id, 1, a.model, a.input_tokens, a.cache_creation_tokens, a.cache_read_tokens, a.output_tokens, a.co2_grams, a.cost_usd ${IN_AGENTS}"
+fi
 
-read -r N_SESSIONS TOTAL_CO2 TOTAL_COST TOTAL_TOKENS TOTAL_CACHE_READ <<EOF
-$(sqlite3 "$DB_PATH" "SELECT COUNT(*), COALESCE(SUM(co2_grams), 0), COALESCE(SUM(cost_usd), 0), COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0), COALESCE(SUM(cache_read_tokens), 0) FROM sessions ${WHERE};" | tr '|' ' ')
+read -r N_SESSIONS TOTAL_CO2 TOTAL_COST TOTAL_TOKENS TOTAL_CACHE_READ N_ELSEWHERE <<EOF
+$(sqlite3 "$DB_PATH" "SELECT COUNT(DISTINCT CASE WHEN sign > 0 THEN sid END), COALESCE(SUM(sign * co2), 0), COALESCE(SUM(sign * cost), 0), COALESCE(SUM(sign * inp), 0) + COALESCE(SUM(sign * outp), 0), COALESCE(SUM(sign * cr), 0), COUNT(DISTINCT CASE WHEN elsewhere = 1 THEN sid END) FROM (
+  SELECT s.session_id AS sid, s.co2_grams AS co2, s.cost_usd AS cost, s.input_tokens AS inp, s.output_tokens AS outp, s.cache_read_tokens AS cr, 1 AS sign, 0 AS elsewhere FROM sessions s WHERE ${BASE}${TOTAL_AGENTS});" | tr -d '\r' | tr '|' ' ')
 EOF
 
 if [ "$N_SESSIONS" = "0" ]; then
   echo "No sessions recorded for branch '${BRANCH}' of project '${PROJECT}': nothing posted."
-  echo "A session counts for the branch it ended on: work driven from a session on another"
-  echo "branch (agents in a worktree, for one) is recorded under that session's branch."
+  echo "A session counts for the branch it ended on, and so do its agents, except an agent"
+  echo "that worked in a worktree of another branch, recorded as it ended: it counts there."
   echo "Sessions captured before the git_branch column (v1.4.0) carry no branch;"
   echo "run scripts/backfill.sh to repair them while their transcripts still exist."
   exit 0
@@ -147,9 +184,10 @@ fi
 # Per model at message grain: a session's session_models rows (main transcript and
 # subagents, each message under the model that produced it) when it has them; the
 # whole session under its dominant model otherwise (recorded before the table
-# existed). The Sessions column counts the sessions that used each model, so it can
-# add up to more than the total.
-PER_MODEL="SELECT s.session_id AS session_id,
+# existed). Agents that left are taken out, agents that came are added, per model. The
+# Sessions column counts the sessions that used each model, so it can add up to more than
+# the total.
+PER_MODEL="SELECT s.session_id AS session_id, 1 AS sign,
     CASE WHEN m.session_id IS NULL THEN s.model ELSE m.model END AS model,
     CASE WHEN m.session_id IS NULL THEN s.input_tokens ELSE m.input_tokens END AS inp,
     CASE WHEN m.session_id IS NULL THEN s.cache_creation_tokens ELSE m.cache_creation_tokens END AS cw,
@@ -157,14 +195,14 @@ PER_MODEL="SELECT s.session_id AS session_id,
     CASE WHEN m.session_id IS NULL THEN s.output_tokens ELSE m.output_tokens END AS outp,
     CASE WHEN m.session_id IS NULL THEN s.co2_grams ELSE m.co2_grams END AS co2,
     CASE WHEN m.session_id IS NULL THEN s.cost_usd ELSE m.cost_usd END AS cost
-  FROM sessions s LEFT JOIN session_models m ON m.session_id = s.session_id ${S_WHERE}"
+  FROM sessions s LEFT JOIN session_models m ON m.session_id = s.session_id WHERE ${BASE}${MODEL_AGENTS}"
 MODEL_ROWS=""
 while IFS="$(printf '\t')" read -r MODEL M_N M_IN M_CW M_CR M_OUT M_CO2 M_COST; do
   [ -n "$MODEL" ] || continue
   MODEL_ROWS="${MODEL_ROWS}| \`${MODEL}\` | ${M_N} | $(format_tokens "$M_IN") | $(format_tokens "$M_CW") | $(format_tokens "$M_CR") | $(format_tokens "$M_OUT") | $(format_co2 "$M_CO2") | \$$(echo "$M_COST" | awk '{printf "%.2f", $1}') |
 "
 done <<EOF
-$(sqlite3 -separator "$(printf '\t')" "$DB_PATH" "SELECT model, COUNT(DISTINCT session_id), COALESCE(SUM(inp), 0) - COALESCE(SUM(cw), 0), COALESCE(SUM(cw), 0), COALESCE(SUM(cr), 0), COALESCE(SUM(outp), 0), COALESCE(SUM(co2), 0), COALESCE(SUM(cost), 0) FROM (${PER_MODEL}) GROUP BY model ORDER BY SUM(co2) DESC;")
+$(sqlite3 -separator "$(printf '\t')" "$DB_PATH" "SELECT model, COUNT(DISTINCT CASE WHEN sign > 0 THEN session_id END), COALESCE(SUM(sign * inp), 0) - COALESCE(SUM(sign * cw), 0), COALESCE(SUM(sign * cw), 0), COALESCE(SUM(sign * cr), 0), COALESCE(SUM(sign * outp), 0), COALESCE(SUM(sign * co2), 0), COALESCE(SUM(sign * cost), 0) FROM (${PER_MODEL}) GROUP BY model HAVING MIN(sign) > 0 OR SUM(sign * (inp + cr + outp)) > 0 ORDER BY SUM(sign * co2) DESC;")
 EOF
 
 # ── Format ──────────────────────────────────────────────────
@@ -188,6 +226,15 @@ if [ -n "${EQUIV_DIVISOR:-}" ]; then
   EQUIV_LINE="≈ ${EQUIV_VALUE} ${EQUIV_UNIT} driven by car (${EQUIV_TAG})"
 fi
 
+# Said when part of the sum comes from agents of sessions recorded under another branch or
+# folder (a session on main that sent them to work in this branch's worktree)
+AGENTS_LINE=""
+if [ "${N_ELSEWHERE:-0}" -gt 0 ] 2>/dev/null; then
+  AGENTS_LINE="
+<sub>Includes the agents of ${N_ELSEWHERE} session(s) recorded under another branch or folder that worked on this branch.</sub>
+"
+fi
+
 # Same tone contract as the CI action's comment: figures only, no score, no
 # threshold, no judgement, no em-dash. "Estimated", the methodology link and
 # the "turn off" link are invariants.
@@ -209,7 +256,7 @@ ${MODEL_ROWS}
 </details>
 
 <sub>*API list price of the equivalent usage; a subscription bills its flat fee instead.</sub>
-
+${AGENTS_LINE}
 <sub>Local Claude Code sessions on \`${BRANCH}\` · Estimated by [claude-carbon](${REPO_URL}) · [methodology](${REPO_URL}/blob/main/METHODOLOGY.md) · [turn off](${REPO_URL}#pr-dev-footprint-carbon-pr) · team view · [tokenclimate.com](https://tokenclimate.com/en?ref=carbon-pr)</sub>"
 
 if [ "$DRY_RUN" = "1" ]; then
