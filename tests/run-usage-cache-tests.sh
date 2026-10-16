@@ -195,6 +195,8 @@ if [ -L "${PROJ}/${S1}/subagents/agent-l.jsonl" ]; then
     "$([ "$(usage "$S1" "$CACHE")" = "$(usage "$S1")" ] && echo yes || echo no)"
   rm -f "${PROJ}/${S1}/subagents/agent-l.jsonl"
 else
+  # Git Bash without Developer Mode copies instead of linking: drop the copy
+  rm -f "${PROJ}/${S1}/subagents/agent-l.jsonl"
   echo "SKIP symlinked agent: this system makes no symlink"
 fi
 # An agent outside the session's folder, given by its absolute path: read, never kept
