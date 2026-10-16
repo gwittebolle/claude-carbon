@@ -340,6 +340,21 @@ cc_ensure_schema() {
   sqlite3 -cmd ".timeout 5000" "$db" "$CC_SESSION_MODELS_DDL" >/dev/null 2>&1 || true
 }
 
+# cc_collect_subagents <session-dir>: the session's subagent transcripts into the
+# array CC_SUB_FILES. Claude Code writes a subagent at <session>/subagents/agent-*.jsonl
+# and an agent a workflow started at <session>/subagents/workflows/wf_*/agent-*.jsonl
+# (the workflow's journal.jsonl beside it carries no usage). Reading the first only
+# missed every workflow agent, up to five times a session's own CO2.
+cc_collect_subagents() {
+  CC_SUB_FILES=()
+  local dir="$1" f
+  [ -d "$dir" ] || return 0
+  for f in "$dir"/*.jsonl "$dir"/workflows/*/agent-*.jsonl; do
+    [ -f "$f" ] && CC_SUB_FILES+=("$f")
+  done
+  return 0
+}
+
 # cc_export_sessions <db>: write sessions-history.tsv next to the DB, one line per
 # session with CO2, oldest first: session id, start time in epoch seconds, grams of CO2,
 # methodology version, project (its folder's name, tabs and line breaks made spaces),

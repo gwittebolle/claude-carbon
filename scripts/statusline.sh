@@ -72,13 +72,8 @@ if [ -n "$SESSION_ID" ] && [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>
     TRANSCRIPT_PATH="$(cc_path "$(echo "$INPUT" | jq -r '.transcript_path // ""')")"
   fi
   if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-    SUB_FILES=()
-    SUB_DIR="$(dirname "$TRANSCRIPT_PATH")/${SESSION_ID}/subagents"
-    if [ -d "$SUB_DIR" ]; then
-      for SUB_FILE in "$SUB_DIR"/*.jsonl; do
-        [ -f "$SUB_FILE" ] && SUB_FILES+=("$SUB_FILE")
-      done
-    fi
+    cc_collect_subagents "$(dirname "$TRANSCRIPT_PATH")/${SESSION_ID}/subagents"
+    SUB_FILES=(${CC_SUB_FILES[@]+"${CC_SUB_FILES[@]}"})
     if USAGE="$(cc_session_usage "$FACTORS_FILE" "$PRICES_FILE" "$TRANSCRIPT_PATH" ${SUB_FILES[@]+"${SUB_FILES[@]}"})"; then
       cc_parse_usage "$USAGE"
       CO2_G="$(printf '%s\n' "$CC_U_CO2" | LC_ALL=C awk '{printf "%.0f", $1}')"

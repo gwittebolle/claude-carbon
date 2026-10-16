@@ -71,14 +71,9 @@ fi
 # Exit if no JSONL found
 [ -n "$JSONL_FILE" ] && [ -f "$JSONL_FILE" ] || exit 0
 
-# Subagent transcripts (each message priced at its own model)
-SUB_FILES=()
-SUBAGENT_DIR="$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents"
-if [ -d "$SUBAGENT_DIR" ]; then
-  for SUB_FILE in "$SUBAGENT_DIR"/*.jsonl; do
-    [ -f "$SUB_FILE" ] && SUB_FILES+=("$SUB_FILE")
-  done
-fi
+# Subagent and workflow-agent transcripts (each message priced at its own model)
+cc_collect_subagents "$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents"
+SUB_FILES=(${CC_SUB_FILES[@]+"${CC_SUB_FILES[@]}"})
 
 # One jq pass over main + subagents: tokens per model, the main transcript's dominant
 # model and its last git branch (feeds /carbon-pr); then one awk for CO2 and cost.

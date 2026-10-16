@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-10-16
+
+### fix: the agents a workflow starts are counted
+
+Claude Code writes the transcript of an agent a workflow starts to
+`<session>/subagents/workflows/wf_*/agent-*.jsonl`, one level below the subagents the
+hooks read. Those agents were left out of the session: on sessions that ran workflows,
+the CO2 and cost recorded were 10% to over five times too low. The Stop hook, the
+backfill and the status line's fallback now read them (the workflow's `journal.jsonl`,
+which carries no usage, is not read).
+
+A session already recorded without them is re-aggregated by the next daily rescan, while
+its transcripts are still on disk (Claude Code keeps them about 30 days); older ones stay
+as they were. Rows of the legacy methodology (v1), a frozen series, are never touched.
+Reported by a user.
+
 ## 2026-10-15
 
 ### fix: /carbon-card no longer stalls Chrome on Windows
