@@ -505,28 +505,39 @@ cc_is_excluded_model() {
 }
 
 # ── Session usage: tokens per model, CO2 and cost ───────────────────────────
-# The per-message aggregation behind the Stop hook and backfill. One jq pass reads the
-# main transcript and every subagent transcript, keeps the last occurrence of each
-# assistant message per file (key message.id|requestId: streaming snapshots grow
-# output_tokens, the last one carries the final value), and attributes each message to
-# the model that produced it. A message without a model string is attributed to its
-# file's dominant model, as the per-file pricing did before. If a file does not parse
-# (a line cut by a concurrent write), the pass is re-run reading lines as raw text and
-# skipping the ones that are not JSON.
+# The per-message aggregation behind the Stop hook and backfill, in two jq steps.
 #
-# The jq program emits, all tab-separated:
+# Per file (CC_JQ_FILE_USAGE): each transcript, the main one and every subagent's, is
+# reduced on its own, since the aggregation never crosses files: the last occurrence of
+# each assistant message is kept per file (key message.id|requestId: streaming snapshots
+# grow output_tokens, the last one carries the final value; the same message in two
+# files is counted in both, as it always was), a message without a model string goes to
+# its file's dominant model, and the tokens are summed per model. The main transcript
+# also gives its dominant model, its last git branch and its first timestamp. One JSON
+# line per file:
+#   {f, bad, main, dom, b, t0, t1, m: [[model, input, cache write, cache write 1h,
+#                                        cache read, output, output x context], ...]}
+# (bad: lines that did not parse, raw reading only; t0, t1: first and last timestamps).
+#
+# Merge (CC_JQ_MERGE_USAGE): the file lines, on stdin, summed per model, priced, and
+# printed as the lines below, all tab-separated:
 #   X  <exclude regex>
 #   S  <main dominant model> <git branch> <first ts (main)> <last ts (all files)>
 #   M  <model> <input> <cache write> <cache write 1h> <cache read> <output> <output x context>
 #      <fin> <fout> <crf> <pin> <pout> <cwm> <cwm1h> <crm>
-CC_JQ_USAGE='
-def lines: if $raw then (inputs | fromjson? // empty) else inputs end;
+# Both programs stay inline (a .jq file checked out with CRLF by Git for Windows is refused
+# by jq 1.7.1) and use nothing newer than jq 1.6 (Ubuntu 22.04, Debian 11).
+CC_JQ_FILE_USAGE='
 def n: if type == "number" then . else 0 end;
 def dom: map(.model) | map(select(length > 0))
          | if length == 0 then "claude-sonnet" else group_by(.) | sort_by(-length) | first | first end;
-[ lines | objects | input_filename as $fn
-  | if .type == "assistant" and (.message | type) == "object" and .message.usage != null then
-      { fn: $fn, id: .message.id, rid: .requestId,
+def lines: if $raw then (inputs | if test("^[ \t\r]*$") then empty else (try fromjson catch {cc_bad: true}) end)
+            else inputs end;
+[ lines | input_filename as $fn
+  | if type != "object" then empty
+    elif .cc_bad == true then { fn: $fn, bad: true }
+    elif .type == "assistant" and (.message | type) == "object" and .message.usage != null then
+      { fn: $fn, u: true, id: .message.id, rid: .requestId,
         model: (.message.model | if type == "string" then . else "" end),
         ts: (.timestamp | if type == "string" then . else "" end),
         b: (.gitBranch | if type == "string" then . else "" end),
@@ -536,25 +547,37 @@ def dom: map(.model) | map(select(length > 0))
         cr: (.message.usage.cache_read_input_tokens | n),
         out: (.message.usage.output_tokens | n) }
     elif $fn == $main and (.gitBranch | type) == "string" and (.gitBranch | length) > 0 then
-      { fn: $fn, branch_only: true, b: .gitBranch }
-    else empty end ] as $recs
-| ([$recs[] | select(.fn == $main and (.b | length) > 0) | .b] | last // "") as $branch
-| [$recs[] | select(.branch_only != true)] as $all
+      { fn: $fn, b: .gitBranch }
+    else empty end ]
+| group_by(.fn)[]
+| .[0].fn as $file
+| [.[] | select(.u == true)] as $all
 | ( ($all | map(select(.id != null and .rid != null))
-          | reduce .[] as $m ({}; .[$m.fn + "\u0001" + ($m.id | tostring) + "|" + ($m.rid | tostring)] = $m)
+          | reduce .[] as $m ({}; .[($m.id | tostring) + "|" + ($m.rid | tostring)] = $m)
           | [.[]])
     + ($all | map(select(.id == null or .rid == null))) ) as $d
-| ($d | map(select(.fn == $main)) | dom) as $main_model
-| ($d | group_by(.fn) | map(dom as $dm | map(if .model == "" then .model = $dm else . end)) | add // []) as $d2
+| ($d | dom) as $dm
+| ($d | map(.ts) | map(select(length > 0)) | sort) as $ts
+| { f: $file,
+    bad: (map(select(.bad == true)) | length),
+    main: ($file == $main),
+    dom: $dm,
+    b: ([.[] | (.b // "") | select(length > 0)] | last // ""),
+    t0: ($ts | first // ""),
+    t1: ($ts | last // ""),
+    m: [ $d | map(if .model == "" then .model = $dm else . end) | group_by(.model)[]
+         | [ .[0].model, (map(.it) | add), (map(.cw) | add), (map(.cw1h) | add),
+             (map(.cr) | add), (map(.out) | add), (map(.out * (.it + .cw + .cr)) | add) ] ] }
+'
+CC_JQ_MERGE_USAGE='
+[inputs] as $files
+| ([$files[] | select(.main == true)] | first // {}) as $mf
 | (["X", ($f[0].exclude_models // [] | join("|"))] | @tsv),
-  (["S", $main_model, $branch,
-    ($d | map(select(.fn == $main) | .ts) | map(select(length > 0)) | sort | first // ""),
-    ($d | map(.ts) | map(select(length > 0)) | sort | last // "")] | @tsv),
-  ( $d2 | group_by(.model)[]
-    | { model: .[0].model,
-        it: (map(.it) | add), cw: (map(.cw) | add), cw1h: (map(.cw1h) | add),
-        cr: (map(.cr) | add), out: (map(.out) | add),
-        octx: (map(.out * (.it + .cw + .cr)) | add) }
+  (["S", ($mf.dom // "claude-sonnet"), ($mf.b // ""), ($mf.t0 // ""),
+    ([$files[].t1 | select(length > 0)] | sort | last // "")] | @tsv),
+  ( [$files[].m[]] | group_by(.[0])[]
+    | { model: .[0][0], it: (map(.[1]) | add), cw: (map(.[2]) | add), cw1h: (map(.[3]) | add),
+        cr: (map(.[4]) | add), out: (map(.[5]) | add), octx: (map(.[6]) | add) }
     | select(.it + .cw + .cr + .out > 0)
     | . as $r
     | (.model | cc_params($f[0]; $p[0]) | cc_param_cols) as $pc
@@ -594,22 +617,86 @@ END {
 
 # cc_session_usage <factors.json> <prices.json> <main.jsonl> [subagent.jsonl…]
 # Prints the S line, one R line per model and the T line (see above). Fails when the
-# transcripts cannot be read at all. A subagent transcript gone or unreadable by the time
-# jq runs (deleted between its listing and this pass) is left out rather than failing
-# the session: jq gives up on all its inputs for one it cannot open.
+# transcripts cannot be read at all. A subagent transcript already gone or unreadable when
+# this function starts is left out; one that disappears after that, before or while jq
+# reads it, fails the pass (exit 1), and the session keeps its previous row.
+#
+# jq runs in the session's folder and is given relative paths, in batches of at most
+# CC_JQ_ARGV_MAX bytes of arguments, program included: a session with hundreds of agents
+# passed every absolute path to one jq, and on Windows, where a program's command line
+# stops at 32,767 characters, jq did not start and the session stayed as it was. Relative
+# paths are also left as they are by MSYS, which converts /c/... arguments for jq.exe.
+# A batch that does not parse (a line cut by a concurrent write) is read again as raw
+# text, skipping the lines that are not JSON. Raw reading runs a file's last line, if it
+# has no newline, into the next file's first: the files around one with a line that did
+# not parse are read again alone, so only the cut line is lost.
+CC_JQ_ARGV_MAX=16000
 cc_session_usage() {
   local factors="$1" prices="$2" main="$3" raw_out line tag model rest exre="" rows="" s_line="" f
-  local files=()
+  local LC_ALL=C dir sid base mainrel budget size len i all="" part bad redo
+  local rels=() batch=()
   shift 3
   [ -r "$main" ] || return 1
+  case "$main" in */*) dir="${main%/*}" ;; *) dir="." ;; esac
+  [ -n "$dir" ] || dir="/"
+  sid="${main##*/}"
+  sid="${sid%.jsonl}"
+  if [ -d "$dir/$sid" ]; then base="$dir/$sid"; mainrel="../$sid.jsonl"; else base="$dir"; mainrel="$sid.jsonl"; fi
+  rels=("$mainrel")
   for f in "$@"; do
-    [ -r "$f" ] && files+=("$f")
+    [ -r "$f" ] || continue
+    case "$f" in
+      "$base"/*) rels+=("${f#"$base"/}") ;;
+      *) rels+=("$f") ;;
+    esac
   done
-  raw_out="$(jq -n -r --slurpfile f "$factors" --slurpfile p "$prices" --arg main "$main" \
-               --argjson raw false "${CC_JQ_MODEL_DEFS}${CC_JQ_USAGE}" "$main" ${files[@]+"${files[@]}"} 2>/dev/null)" \
-    || raw_out="$(jq -n -R -r --slurpfile f "$factors" --slurpfile p "$prices" --arg main "$main" \
-               --argjson raw true "${CC_JQ_MODEL_DEFS}${CC_JQ_USAGE}" "$main" ${files[@]+"${files[@]}"} 2>/dev/null)" \
-    || return 1
+  # Bytes left for the paths, each with its terminating NUL, once the program and the other
+  # arguments are counted (LC_ALL=C: ${#} counts bytes)
+  budget=$((CC_JQ_ARGV_MAX - ${#CC_JQ_FILE_USAGE} - ${#mainrel} - 64))
+  i=0
+  size=0
+  batch=()
+  while [ "$i" -le "${#rels[@]}" ]; do
+    if [ "$i" -lt "${#rels[@]}" ]; then
+      len=$(( ${#rels[$i]} + 1 ))
+      if [ "${#batch[@]}" -eq 0 ] || [ $((size + len)) -le "$budget" ]; then
+        batch+=("${rels[$i]}")
+        size=$((size + len))
+        i=$((i + 1))
+        continue
+      fi
+    else
+      i=$((i + 1))
+    fi
+    # Read the batch: strict, then raw, then the files around a line that did not parse
+    part="$(cd "$base" && jq -n -c --arg main "$mainrel" --argjson raw false "$CC_JQ_FILE_USAGE" "${batch[@]}" 2>/dev/null)" \
+      || {
+        part="$(cd "$base" && jq -n -c -R --arg main "$mainrel" --argjson raw true "$CC_JQ_FILE_USAGE" "${batch[@]}" 2>/dev/null)" \
+          || return 1
+        part="${part//$'\r'/}"
+        bad="$(printf '%s\n' "$part" | jq -r 'select(.bad > 0) | .f' 2>/dev/null)" || return 1
+        bad="${bad//$'\r'/}"
+        if [ -n "$bad" ]; then
+          redo="$(cc_redo_neighbours "$base" "$bad" "${batch[@]}")"
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            part="$(printf '%s\n' "$part" | grep -vF "{\"f\":\"${f}\"," || true)"
+            part="${part}
+$(cd "$base" && jq -n -c -R --arg main "$mainrel" --argjson raw true "$CC_JQ_FILE_USAGE" "$f" 2>/dev/null)" \
+              || return 1
+            part="${part//$'\r'/}"
+          done <<EOF
+$redo
+EOF
+        fi
+      }
+    all="${all}${part}
+"
+    batch=()
+    size=0
+  done
+  raw_out="$(printf '%s' "$all" | jq -n -r --slurpfile f "$factors" --slurpfile p "$prices" \
+               "${CC_JQ_MODEL_DEFS}${CC_JQ_MERGE_USAGE}" 2>/dev/null)" || return 1
   # jq.exe ends its lines in CRLF, and MSYS bash only drops the CR of the last one: the
   # others reached the exclusion patterns (X) and the session's last timestamp (S), which
   # backfill stored with a CR as the end of a session it added
@@ -638,6 +725,34 @@ $raw_out
 EOF
   printf '%s\n' "$s_line"
   printf '%s' "$rows" | LC_ALL=C awk "$CC_AWK_PRICE"
+}
+
+# cc_redo_neighbours <base> <files, one per line> <batch…>: those files and the ones just
+# before and after each in the batch, once each, one per line (see cc_session_usage). An
+# empty file adds no line, so the neighbours are the nearest files that are not empty.
+cc_redo_neighbours() {
+  local base="$1" wanted="$2" f k n
+  local files=()
+  shift 2
+  for f in "$@"; do
+    case "$f" in /*) [ -s "$f" ] ;; *) [ -s "$base/$f" ] ;; esac && files+=("$f")
+  done
+  n=${#files[@]}
+  k=0
+  while [ "$k" -lt "$n" ]; do
+    case "
+$wanted
+" in
+      *"
+${files[$k]}
+"*)
+        [ "$k" -gt 0 ] && printf '%s\n' "${files[$((k - 1))]}"
+        printf '%s\n' "${files[$k]}"
+        [ $((k + 1)) -lt "$n" ] && printf '%s\n' "${files[$((k + 1))]}"
+        ;;
+    esac
+    k=$((k + 1))
+  done | awk 'length($0) > 0 && !seen[$0]++'
 }
 
 # CC_SQ: a single quote, for doubling quotes in SQL literals: X="${X//$CC_SQ/$CC_SQ$CC_SQ}".

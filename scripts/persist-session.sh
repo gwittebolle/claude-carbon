@@ -75,8 +75,9 @@ fi
 cc_collect_subagents "$(dirname "$JSONL_FILE")/${SESSION_ID}/subagents"
 SUB_FILES=(${CC_SUB_FILES[@]+"${CC_SUB_FILES[@]}"})
 
-# One jq pass over main + subagents: tokens per model, the main transcript's dominant
-# model and its last git branch (feeds /carbon-pr); then one awk for CO2 and cost.
+# The main transcript and the subagents, read file by file then summed (cc_session_usage):
+# tokens per model, the main transcript's dominant model and its last git branch (feeds
+# /carbon-pr); then one awk for CO2 and cost.
 USAGE="$(cc_session_usage "$FACTORS_FILE" "$PRICES_FILE" "$JSONL_FILE" ${SUB_FILES[@]+"${SUB_FILES[@]}"})" || exit 0
 cc_parse_usage "$USAGE"
 MODEL_RAW="$CC_U_MODEL"

@@ -2,6 +2,26 @@
 
 ## 2026-10-16
 
+### fix: sessions with hundreds of agents are recorded on Windows
+
+A session's usage was read by one jq process given every transcript's path. Windows stops
+a command line at 32,767 characters: past about 150 to 190 agents, jq did not start, and
+the Stop hook and the rescan left the session as it was, without a word. Each transcript
+is now reduced on its own and the results summed, with jq run in the session's folder on
+relative paths, in batches of at most 16 KB of arguments. The figures do not change: the
+same lines, byte for byte, on every session tested.
+
+A transcript cut mid-line with no final newline also lost the first line of the transcript
+read after it; only the cut line is lost now.
+
+### fix: the status line reads transcripts only for a session without a row
+
+The status line falls back to reading a session's transcripts when the database has
+nothing for it yet, on its first turn. It also did so for a session whose row it set
+aside (an excluded model, or no CO2 yet), at every refresh. It now shows that row's CO2,
+0 for an excluded session, and reads the transcripts only without a row, at most once
+every 10 seconds and again as soon as the transcript grows.
+
 ### fix: sessions rewritten by an older Stop hook get their workflow agents back
 
 The rescan compared each session that ran workflows once, then set a marker. A session
