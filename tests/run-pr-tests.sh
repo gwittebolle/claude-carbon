@@ -4,7 +4,7 @@
 # envelope fields, (b) backfill's repair pass fills the branch on pre-existing
 # rows, (c) generate-pr-report.sh --dry-run sums exactly the current branch's
 # sessions and renders the comment contract (marker, Estimated, turn off, no
-# em-dash). The gh posting path needs a live PR and is verified manually.
+# em-dash), (d) the posting path, through a stub gh that keeps the body it is sent.
 #
 # Every case runs against throwaway dirs (CLAUDE_CARBON_DB, CLAUDE_CONFIG_DIR,
 # a scratch git repo); the real ~/.claude is never read or written.
@@ -172,6 +172,31 @@ done
 OUT="$(cd "$WORKDIR" && CLAUDE_CARBON_DB="$DB3" bash "$PR_SCRIPT" --dry-run)"
 check "no sessions: nothing posted, worktree hint" "yes" "$(echo "$OUT" | grep -q 'nothing posted' && echo "$OUT" | grep -q 'worktree' && echo yes || echo no)"
 git -C "$WORKDIR" checkout -q feat/x 2>/dev/null
+
+# ---------------------------------------------------------------- 4c. posting
+# The real path without the network: the stub finds no earlier comment and keeps the body
+# it is sent. TMPDIR holds a native Windows path, as Git Bash can hand down: mktemp cannot
+# use it, so the body file has to come from cc_tmpdir or nothing is posted.
+POST_STUBS="${TMPROOT}/post-stubs"
+mkdir -p "$POST_STUBS"
+cat > "${POST_STUBS}/gh" <<'STUB'
+#!/usr/bin/env bash
+for LAST; do :; done
+case "$*" in
+  "pr view 42 --json headRefName,isCrossRepository --jq "*) echo "feat/x false" ;;
+  "api repos/{owner}/{repo}/issues/42/comments?per_page=100 --jq "*) ;;
+  "api -X POST repos/{owner}/{repo}/issues/42/comments --input "*) cp "$LAST" "$GH_STUB_POSTED" ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "${POST_STUBS}/gh"
+POSTED="${TMPROOT}/posted.json"
+OUT="$(cd "$WORKDIR" && PATH="${POST_STUBS}:$PATH" GH_STUB_POSTED="$POSTED" TMPDIR='C:\Users\nobody\AppData\Local\Temp' \
+  CLAUDE_CARBON_DB="$DB2" CLAUDE_CARBON_LOCALE=world bash "$PR_SCRIPT" --pr 42 2>&1)"
+RC=$?
+check "post: a Windows TMPDIR still posts" "0|yes" "$RC|$(echo "$OUT" | grep -q 'Posted the dev carbon report on PR #42' && echo yes || echo no)"
+check "post: the body sent is the report" "yes" \
+  "$(jq -r '.body' "$POSTED" 2>/dev/null | grep -qF '<!-- claude-carbon-dev-report -->' && jq -r '.body' "$POSTED" | grep -qF 'sessions on `feat/x`' && echo yes || echo no)"
 
 # ---------------------------------------------------------------- 5. guards
 
