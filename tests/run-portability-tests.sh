@@ -259,6 +259,21 @@ if [ -z "$BAD_PY" ]; then ok "no python invocation"; else bad "no python invocat
 BAD_TMP="$(grep -nE '(^|[^[:alnum:]_$"{/-])/tmp/' "${RUNTIME_FILES[@]}" 2>/dev/null | grep -v '^[^:]*:[0-9]*:[[:space:]]*#' || true)"
 if [ -z "$BAD_TMP" ]; then ok "no hardcoded /tmp path"; else bad "no hardcoded /tmp path" "$BAD_TMP"; fi
 
+# Only cc_tmpdir may read TMPDIR. Under Git Bash it can hold a native Windows path
+# (C:\Users\...\Temp) that mktemp cannot use, and the guard above does not see
+# "${TMPDIR:-/tmp}" or "$TMPDIR/". The control proves the pattern still matches the one
+# line of cc_tmpdir that reads it, which is the only line exempted.
+CC_TMPDIR_READ='/scripts/portable-lib\.sh:[0-9]*:[[:space:]]*local d="\$\{TMPDIR:-/tmp\}"$'
+TMPDIR_READS="$(grep -nE '\$\{?TMPDIR([^[:alnum:]_]|$)' "${RUNTIME_FILES[@]}" 2>/dev/null | grep -v '^[^:]*:[0-9]*:[[:space:]]*#' || true)"
+BAD_TMPDIR="$(printf '%s\n' "$TMPDIR_READS" | grep -vE "$CC_TMPDIR_READ" | grep -v '^$' || true)"
+if ! printf '%s\n' "$TMPDIR_READS" | grep -qE "$CC_TMPDIR_READ"; then
+  bad "TMPDIR read by cc_tmpdir only" "the pattern no longer matches cc_tmpdir in scripts/portable-lib.sh"
+elif [ -z "$BAD_TMPDIR" ]; then
+  ok "TMPDIR read by cc_tmpdir only"
+else
+  bad "TMPDIR read by cc_tmpdir only" "$BAD_TMPDIR"
+fi
+
 # Every path built from a CLAUDE_* variable has to go through the conversion. The user
 # sets those, so on Windows they arrive in whatever spelling the user typed. Miss one
 # and the failure is silent: a read that finds nothing, or a write that lands somewhere

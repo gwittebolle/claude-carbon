@@ -2,6 +2,15 @@
 
 ## 2026-10-19
 
+### fix: /carbon-pr posts under Git Bash when TMPDIR is a Windows path
+
+`scripts/generate-pr-report.sh` wrote the comment body to `mktemp "${TMPDIR:-/tmp}/..."`.
+When TMPDIR held a native Windows path (`C:\Users\...\Temp`), as it can under Git Bash,
+mktemp could not use it and the script stopped before posting. It now goes through
+`cc_tmpdir`, like every other temp file. The portability suite fails when a runtime file
+reads TMPDIR outside `cc_tmpdir`, and the PR tests post through a stub `gh` with such a
+TMPDIR.
+
 ### docs: a 16-second GIF at the top of the README
 
 Under the opening paragraph, a GIF shows the CO2 in the terminal status line, then the

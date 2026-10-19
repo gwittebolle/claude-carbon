@@ -345,7 +345,7 @@ if [ -z "$PR_NUMBER" ]; then
   exit 1
 fi
 
-BODY_FILE="$(mktemp "${TMPDIR:-/tmp}/carbon-pr.XXXXXX")"
+BODY_FILE="$(mktemp "$(cc_tmpdir)/carbon-pr.XXXXXX")"
 trap 'rm -f "$BODY_FILE"' EXIT
 jq -n --arg body "$BODY" '{body: $body}' > "$BODY_FILE"
 
