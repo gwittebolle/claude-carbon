@@ -2,6 +2,13 @@
 
 ## 2026-10-19
 
+### docs: a 16-second GIF at the top of the README
+
+Under the opening paragraph, a GIF shows the CO2 in the terminal status line, then the
+`/carbon-panel` pane in the Claude desktop app, with the molecule coloured by this
+session's CO2 against the median of past sessions. The GIF is hosted on GitHub, outside
+the repository, so clones and plugin installs keep their size.
+
 ### chore: the description names the desktop app
 
 The description in package.json, the plugin manifest and the marketplace entry now reads
