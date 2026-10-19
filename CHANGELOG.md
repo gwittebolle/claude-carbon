@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-19
+
+### chore: the description names the desktop app
+
+The description in package.json, the plugin manifest and the marketplace entry now reads
+"Track the carbon footprint of your Claude Code sessions, in the terminal and the Claude
+desktop app". The npm package gains the keywords `energy`, `electricity`, `kwh` and
+`power-consumption`. Both reach npm at the next publish.
+
 ## 2026-10-16
 
 ### feat: /carbon-pr counts an agent for the branch it worked on

@@ -4,7 +4,7 @@
     "name": "Gaetan Wittebolle"
   },
   "metadata": {
-    "description": "Track the carbon footprint of your Claude Code sessions"
+    "description": "Track the carbon footprint of your Claude Code sessions, in the terminal and the Claude desktop app"
   },
   "plugins": [
     {
@@ -13,7 +13,7 @@
         "source": "url",
         "url": "https://github.com/gwittebolle/claude-carbon.git"
       },
-      "description": "Track the carbon footprint of your Claude Code sessions",
+      "description": "Track the carbon footprint of your Claude Code sessions, in the terminal and the Claude desktop app",
       "version": "1.16.0",
       "author": {
         "name": "Gaetan Wittebolle"
