@@ -83,10 +83,7 @@ if [ -f "$SETTINGS_FILE" ]; then
     echo "  mod: skipped (${SETTINGS_FILE} is not valid JSON)"
     exit 0
   fi
-  PLUGIN_ON="$(jq -r '[(.enabledPlugins // {}) | to_entries[]
-      | select(.value == true)
-      | select(.key | test("^(claude-carbon|co2-tracker)@"))
-      | select(.key != "claude-carbon@skills-dir")] | length > 0' "$SETTINGS_FILE" 2>/dev/null)" || PLUGIN_ON="false"
+  PLUGIN_ON="$(cc_carbon_plugin_on < "$SETTINGS_FILE")"
 fi
 if [ "$PLUGIN_ON" = "true" ]; then
   if is_managed; then

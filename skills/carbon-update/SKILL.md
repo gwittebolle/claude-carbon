@@ -1,6 +1,6 @@
 ---
 name: carbon-update
-description: Update claude-carbon to the latest version and re-price history (CO2-only)
+description: Update claude-carbon to the latest version (a clone install also re-prices its history, CO2-only)
 ---
 
 Run the following bash script exactly as written and present its output to the user. Do not paraphrase. It updates the user's claude-carbon install, whichever way it was installed: the plugin through Claude Code's own plugin commands, or the installer's git clone (dirty-safe `git pull`, setup refreshed, stored sessions re-priced with the new factors).
@@ -38,27 +38,35 @@ SL_REPO="$REPO_DIR"
 [ -z "$REPO_DIR" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && REPO_DIR="$(ccp "$CLAUDE_PLUGIN_ROOT")"
 [ -z "$REPO_DIR" ] && REPO_DIR="$(ccp "${CLAUDE_CARBON_DIR:-$HOME/code/claude-carbon}")"
 
-# Installed as a plugin and turned on: Claude Code updates it from its marketplace
-PLUGIN_ON=""
+# Installed as a plugin and turned on, under its own name or the co2-tracker listing of
+# Anthropic's community directory (as scripts/install-mod.sh reads it): Claude Code updates
+# it from that marketplace
+PLUGIN_KEY=""
 if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS" ]; then
-  PLUGIN_ON="$(jq -r '.enabledPlugins["claude-carbon@claude-carbon"] // empty' "$SETTINGS" 2>/dev/null)"
+  PLUGIN_KEY="$(jq -r '[(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key
+      | select(test("^(claude-carbon|co2-tracker)@")) | select(. != "claude-carbon@skills-dir")]
+      | first // empty' "$SETTINGS" 2>/dev/null | tr -d '\r')"
 fi
 
-if [ "$PLUGIN_ON" = "true" ]; then
-  # The claude command, else the one the desktop app keeps for itself on a Mac
-  CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
+if [ -n "$PLUGIN_KEY" ]; then
+  MARKETPLACE="${PLUGIN_KEY#*@}"
+  # The claude running this session, else the claude command, else the newest one the
+  # desktop app keeps for itself on a Mac
+  CLAUDE_BIN=""
+  [ -x "${CLAUDE_CODE_EXECPATH:-}" ] && CLAUDE_BIN="$CLAUDE_CODE_EXECPATH"
+  [ -n "$CLAUDE_BIN" ] || CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
   if [ -z "$CLAUDE_BIN" ]; then
-    for C in "$HOME/Library/Application Support/Claude/claude-code"/*/claude.app/Contents/MacOS/claude; do
-      [ -x "$C" ] && CLAUDE_BIN="$C"
-    done
+    CLAUDE_BIN="$(for C in "$HOME/Library/Application Support/Claude/claude-code"/*/*/claude.app/Contents/MacOS/claude; do
+      [ -x "$C" ] && printf '%s\n' "$C"
+    done | sort -V | tail -1)"
   fi
-  if [ -n "$CLAUDE_BIN" ] && "$CLAUDE_BIN" plugin marketplace update claude-carbon \
-     && "$CLAUDE_BIN" plugin update claude-carbon@claude-carbon; then
+  if [ -n "$CLAUDE_BIN" ] && "$CLAUDE_BIN" plugin marketplace update "$MARKETPLACE" \
+     && "$CLAUDE_BIN" plugin update "$PLUGIN_KEY"; then
     echo "Restart Claude Code (quit the desktop app completely) to load the new version."
   else
     echo "claude-carbon is installed as a plugin. Update it from a terminal:"
-    echo "  claude plugin marketplace update claude-carbon"
-    echo "  claude plugin update claude-carbon@claude-carbon"
+    echo "  claude plugin marketplace update ${MARKETPLACE}"
+    echo "  claude plugin update ${PLUGIN_KEY}"
     echo "then restart Claude Code."
   fi
   # A clone next to the plugin, for the status line: its updater would wire the hooks a

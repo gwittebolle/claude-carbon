@@ -388,13 +388,15 @@ async function cardHintOf($: EngineInterface, lang: Lang): Promise<string | null
   if (new Date(now).getDate() > cardHintState.untilDay) return null;
   const today = new Date(now).toDateString();
   if (cardHintState.day !== today) {
+    // Kept for the day once read: a file not there yet, or not readable now, is retried
     try {
       const text = await $.fs.read(pane.historyFile);
-      cardHintState.rows = typeof text === "string" ? parseHistory(text) : [];
+      if (typeof text !== "string") return null;
+      cardHintState.rows = parseHistory(text);
+      cardHintState.day = today;
     } catch {
-      cardHintState.rows = [];
+      return null;
     }
-    cardHintState.day = today;
   }
   let stamp: string | null = null;
   try {
@@ -732,9 +734,15 @@ export const register: Register = (on, options) => {
       cardHintState.stampFile = isSet(await $.env.get("CLAUDE_CARBON_NO_CARD_NUDGE"))
         ? null
         : statePath(stateEnv, CARD_STAMP_FILE);
-      const untilDay = Number(await $.env.get("CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY"));
-      cardHintState.untilDay =
-        Number.isInteger(untilDay) && untilDay > 0 ? untilDay : CARD_NUDGE_UNTIL_DAY;
+      // Unset or empty, the 10th; a value that is not a day, as the status line reads it,
+      // never shows the hint
+      const untilText = await $.env.get("CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY");
+      const untilDay = Number(untilText);
+      cardHintState.untilDay = !isSet(untilText)
+        ? CARD_NUDGE_UNTIL_DAY
+        : Number.isInteger(untilDay) && untilDay > 0
+          ? untilDay
+          : 0;
       cardHintState.day = "";
       pane.sessionId = await $.session.id().catch(() => null);
       pane.project = folderName(e.cwd ?? "");

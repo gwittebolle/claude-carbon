@@ -21,7 +21,8 @@ OUT="${STATE_DIR}/update-check.json"
 # for third-party marketplaces); ask GitHub for the release tags instead, read-only, and
 # write plugin-update-check.json, which the mod reads. The status line keeps to the clone's
 # flag: on a machine with both installs it runs from the clone, and the plugin's version is
-# not its own.
+# not its own. There the plugin runs the hooks, so this check never runs for the clone and
+# its flag goes stale after a week: /carbon-update gives the clone's git pull instead.
 IS_PLUGIN=0
 if cc_is_plugin_cache "$REPO_DIR"; then
   # Only this plugin's own marketplace follows the releases: a listing pinned elsewhere

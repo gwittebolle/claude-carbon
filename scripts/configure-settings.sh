@@ -132,8 +132,8 @@ if [ -f "$SETTINGS_FILE" ]; then
   # rescan, which also drives the daily update check the status line reads.
   # The claude-carbon plugin, when it is on, brings these four itself (hooks/hooks.json):
   # written here as well, each would run twice. The status line above it does not bring.
-  PLUGIN_ON="$(echo "$EXISTING" | jq -r '.enabledPlugins["claude-carbon@claude-carbon"] // false' 2>/dev/null)" || PLUGIN_ON="false"
-  if [ "${PLUGIN_ON%$'\r'}" = "true" ]; then
+  # Its clone then has no hook to run check-update.sh, and /carbon-update gives its git pull.
+  if [ "$(echo "$EXISTING" | cc_carbon_plugin_on)" = "true" ]; then
     echo "  hooks: brought by the claude-carbon plugin (skipped)"
   else
     add_hook Stop "$STOP_CMD"

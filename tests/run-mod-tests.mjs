@@ -958,6 +958,11 @@ check(
   check("card nudge: a later last day", cardNudge(september, new Date(2026, 9, 14, 9).getTime(), null, 15)?.month, 8);
   const december = [1, 2, 3, 4, 5, 6, 7].map((d) => ({ ...day(d, 100), at: Date.UTC(2025, 11, d, 12) }));
   check("card nudge: January closes December", cardNudge(december, new Date(2026, 0, 2, 9).getTime(), null)?.month, 11);
+  // A session begun at 23:30 UTC on the 31st is in August, as the card counts it, wherever
+  // the machine is
+  const lateAugust = { ...day(1, 9000), at: Date.UTC(2026, 7, 31, 23, 30) };
+  check("card nudge: the UTC date decides the month", cardNudge([...september, lateAugust], october3, null)?.grams, 7000);
+  check("card nudge: no last day, no hint", cardNudge(september, october3, null, 0), null);
 }
 check(
   "update text fr",

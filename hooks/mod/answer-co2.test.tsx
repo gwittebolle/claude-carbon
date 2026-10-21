@@ -61,6 +61,8 @@ type World = {
   files?: Record<string, string>;
   // The clock's start, ms since the epoch
   now?: number;
+  // More environment variables
+  env?: Record<string, string>;
 };
 
 const storedHistory = (values: number[], welcomed: boolean) => ({
@@ -109,6 +111,7 @@ function world(on: any, options: World = {}) {
       ...(options.lang === null ? {} : { LANG: options.lang ?? "fr_FR.UTF-8" }),
       // A home for the files a test hands the mod, so that it finds them
       ...(options.files === undefined ? {} : { HOME: "/home/test" }),
+      ...(options.env ?? {}),
     },
   );
   on("process.run", ($: any, e: any) => {
@@ -773,6 +776,45 @@ describe("desktop", () => {
     expect(plain(statuses.at(-1))).toBe(
       "Cette session : 4,0 gCO₂ · 0,06 $ · ⬆ 1.18.0 /carbon-update · 📊 Septembre : 84,0 kgCO₂ · /carbon-card",
     );
+  });
+
+  test("the status line's opt-out turns the card hint off", async ($: any, on: any) => {
+    const now = new Date(2026, 9, 3, 9).getTime();
+    const september = [1, 2, 3, 4, 5, 6, 7]
+      .map((d) => `s${d}\t${Date.UTC(2026, 8, d, 12) / 1000}\t12000\t2`)
+      .join("\n");
+    const entryWith = async (env: Record<string, string>) => {
+      const { statuses } = world(on, {
+        surfaces: ["desktop"],
+        history: ONE_GRAM_HISTORY,
+        now,
+        env,
+        files: { "/sessions-history.tsv": september },
+      });
+      engineSteps(on);
+      await startSession($);
+      await runTurn($, [ORDINARY], 38000);
+      return plain(statuses.at(-1));
+    };
+    expect(await entryWith({ CLAUDE_CARBON_NO_CARD_NUDGE: "1" })).toBe("Cette session : 4,0 gCO₂ · 0,06 $");
+  });
+
+  test("a last day of 0 never shows the card hint, as in the status line", async ($: any, on: any) => {
+    const now = new Date(2026, 9, 3, 9).getTime();
+    const september = [1, 2, 3, 4, 5, 6, 7]
+      .map((d) => `s${d}\t${Date.UTC(2026, 8, d, 12) / 1000}\t12000\t2`)
+      .join("\n");
+    const { statuses } = world(on, {
+      surfaces: ["desktop"],
+      history: ONE_GRAM_HISTORY,
+      now,
+      env: { CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY: "0" },
+      files: { "/sessions-history.tsv": september },
+    });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $");
   });
 
   test("no card hint once this month's card is made", async ($: any, on: any) => {

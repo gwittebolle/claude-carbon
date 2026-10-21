@@ -112,7 +112,7 @@ Accurate on every plan, including Max 20x.
 
 - `/carbon-report` - text report with totals, a car equivalent, this year's share of a 2 t per-person budget, top sessions
 - `/carbon-card` - generate shareable PNG report cards (drawn with the Chrome or Edge already on your machine, see [Dependencies](#dependencies); without one the card opens in your browser)
-- `/carbon-update` - update to the latest version and re-price history (see [Updating](#updating))
+- `/carbon-update` - update to the latest version, whichever way you installed (see [Updating](#updating))
 
 ## Example report
 
@@ -330,7 +330,7 @@ Sessions recorded since September 2026 are re-derived model by model, exactly. O
 | `/carbon-card`   | Generate shareable PNG report cards                 |
 | `/carbon-badge`  | Shields.io badge of your total footprint for your READMEs |
 | `/carbon-pr`     | Post the dev footprint of the current branch on its PR |
-| `/carbon-update` | Update to the latest version and re-price history   |
+| `/carbon-update` | Update to the latest version, whichever way you installed |
 
 <details>
 <summary>Scripts (run automatically, rarely needed manually)</summary>
@@ -464,7 +464,7 @@ To update, run `/carbon-update` in Claude Code, whichever way you installed: for
 curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
 ```
 
-- Updating re-prices your stored history with the new factors automatically (CO2 only; cost figures are left intact). Run `scripts/recompute.sh --with-cost` yourself only after a price change.
+- Updating an installer's clone re-prices your stored history with the new factors automatically (CO2 only; cost figures are left intact); updating the plugin does not. Run `scripts/recompute.sh --with-cost` yourself only after a price change.
 - If you edited `data/factors.json` or `data/prices.json` locally, the update keeps your edits; on a conflict with upstream it saves yours to `*.local.bak` and tells you.
 - The update also refreshes the [mod](#the-mod-carbon-panel-and-the-co2-of-each-answer)'s copy. When it asks for a restart (on Windows, a copy in use cannot be replaced), restart Claude Code and run it again; until then the previous copy stays.
 - Installed from the plugin marketplace, you can also let Claude Code update it by itself: in `/plugin`, tab **Marketplaces**, select `claude-carbon`, then **Enable auto-update**. The new version loads with the next session.

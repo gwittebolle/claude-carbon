@@ -284,6 +284,17 @@ S="${CFG}/settings.json"
 check "plugin on: status line added"   "$STATUSLINE" "$(jq -r '.statusLine.command // ""' "$S" 2>/dev/null)"
 check "plugin on: no hook written"     "0" "$(jq -r '[.hooks // {} | .[][]?.hooks[]?] | length' "$S" 2>/dev/null)"
 check "plugin on: the setting kept"    "true" "$(jq -r '.enabledPlugins["claude-carbon@claude-carbon"]' "$S" 2>/dev/null)"
+# The community listing is the same plugin; the installer's own copy of the mod is not
+CFG="${TMPROOT}/plugin-listing"
+mkdir -p "$CFG"
+echo '{"enabledPlugins": {"co2-tracker@claude-community": true}}' > "${CFG}/settings.json"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+check "community listing on: no hook written" "0" "$(jq -r '[.hooks // {} | .[][]?.hooks[]?] | length' "${CFG}/settings.json" 2>/dev/null)"
+CFG="${TMPROOT}/skills-dir-copy"
+mkdir -p "$CFG"
+echo '{"enabledPlugins": {"claude-carbon@skills-dir": true}}' > "${CFG}/settings.json"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+check "installer's mod copy on: hooks written" "1" "$(hook_count "${CFG}/settings.json" Stop)"
 
 # ---------------------------------------------------------------- 7c. /carbon-update for each install
 
@@ -299,14 +310,19 @@ chmod +x "${UPD_BIN}/claude"
 printf 'touch "%s"\n' "${TMPROOT}/update-ran" > "${FAKE_CLONE}/scripts/update.sh"
 : > "${FAKE_CLONE}/scripts/statusline.sh"
 FAKE_SL="$(hook_form "$(cc_native_path "$FAKE_CLONE")/scripts/statusline.sh")"
+# A PATH with jq and the system's tools but no claude of the machine's own: only the stubs
+# a case puts there answer
+UPD_SYS_PATH="$(dirname "$(command -v jq)"):/usr/bin:/bin"
+# run_update_skill <settings.json> [stub dir on PATH, or "" for none]
 run_update_skill() {
   rm -f "${TMPROOT}/claude-calls" "${TMPROOT}/update-ran"
   mkdir -p "${TMPROOT}/upd-home/cfg"
   printf '%s\n' "$1" > "${TMPROOT}/upd-home/cfg/settings.json"
+  local stub_dir="${2-$UPD_BIN}"
   (
-    unset CLAUDE_PLUGIN_ROOT CLAUDE_CARBON_DIR
-    HOME="${TMPROOT}/upd-home" CLAUDE_CONFIG_DIR="${TMPROOT}/upd-home/cfg" PATH="${UPD_BIN}:$PATH" \
-      bash "$UPD_SKILL" 2>&1
+    unset CLAUDE_PLUGIN_ROOT CLAUDE_CARBON_DIR CLAUDE_CODE_EXECPATH
+    HOME="${TMPROOT}/upd-home" CLAUDE_CONFIG_DIR="${TMPROOT}/upd-home/cfg" \
+      PATH="${stub_dir:+${stub_dir}:}${UPD_SYS_PATH}" bash "$UPD_SKILL" 2>&1
   )
 }
 
@@ -320,6 +336,37 @@ case "$OUT" in
   *"git -C"*) ok "update, plugin on: says how to update the clone" ;;
   *) bad "update, plugin on: says how to update the clone" "a git -C line" "$OUT" ;;
 esac
+
+# The co2-tracker listing of Anthropic's community directory: updated from that marketplace
+OUT="$(run_update_skill '{"enabledPlugins": {"co2-tracker@claude-community": true}}')"
+check "update, community listing: its marketplace" "1" "$(grep -c "^plugin marketplace update claude-community$" "${TMPROOT}/claude-calls" 2>/dev/null)"
+check "update, community listing: its own name" "1" "$(grep -c "^plugin update co2-tracker@claude-community$" "${TMPROOT}/claude-calls" 2>/dev/null)"
+
+# No claude on PATH: the one running the session (CLAUDE_CODE_EXECPATH), else the newest the
+# desktop app keeps on a Mac, by version order (2.1.10 after 2.1.9)
+PLUGIN_SETTINGS='{"enabledPlugins": {"claude-carbon@claude-carbon": true}}'
+OUT="$(run_update_skill "$PLUGIN_SETTINGS" "")"
+case "$OUT" in
+  *"from a terminal"*) ok "update, no claude anywhere: says what to run" ;;
+  *) bad "update, no claude anywhere: says what to run" "the manual commands" "$OUT" ;;
+esac
+DESKTOP="${TMPROOT}/upd-home/Library/Application Support/Claude/claude-code"
+for v in 2.1.9 2.1.10; do
+  mkdir -p "${DESKTOP}/${v}/h${v}/claude.app/Contents/MacOS"
+  printf '#!/usr/bin/env bash\necho "%s $*" >> "%s"\n' "$v" "${TMPROOT}/claude-calls" \
+    > "${DESKTOP}/${v}/h${v}/claude.app/Contents/MacOS/claude"
+  chmod +x "${DESKTOP}/${v}/h${v}/claude.app/Contents/MacOS/claude"
+done
+run_update_skill "$PLUGIN_SETTINGS" "" >/dev/null
+check "update, the desktop app's claude: the newest" "1" "$(grep -c "^2.1.10 plugin update claude-carbon@claude-carbon$" "${TMPROOT}/claude-calls" 2>/dev/null)"
+OUT="$(
+  rm -f "${TMPROOT}/claude-calls"
+  unset CLAUDE_PLUGIN_ROOT CLAUDE_CARBON_DIR
+  HOME="${TMPROOT}/upd-home" CLAUDE_CONFIG_DIR="${TMPROOT}/upd-home/cfg" PATH="$UPD_SYS_PATH" \
+    CLAUDE_CODE_EXECPATH="${UPD_BIN}/claude" bash "$UPD_SKILL" 2>&1
+)"
+check "update, the session's own claude first" "1" "$(grep -c "^plugin update claude-carbon@claude-carbon$" "${TMPROOT}/claude-calls" 2>/dev/null)"
+rm -r "${TMPROOT}/upd-home/Library"
 
 # The installer's clone alone: its updater runs, Claude Code's plugin commands do not
 OUT="$(run_update_skill "$(jq -n --arg sl "$FAKE_SL" '{statusLine: {type: "command", command: $sl}}')")"
