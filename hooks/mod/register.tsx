@@ -101,6 +101,8 @@ import {
   quotaText,
   rangeLabel,
   sessionLine,
+  updateHint,
+  cardHint,
   showLabel,
   stripesAlt,
   stripesCaption,
@@ -145,8 +147,12 @@ import {
   folderName,
   panelSite,
   historyPath,
-  newerRelease,
-  updateFlagPath,
+  newestRelease,
+  updateFlagPaths,
+  statePath,
+  cardNudge,
+  CARD_STAMP_FILE,
+  CARD_NUDGE_UNTIL_DAY,
   isView,
   dayKey,
   parseDay,
@@ -296,9 +302,9 @@ async function resetSessionState($: EngineInterface) {
 // another reason (a new request's total) keeps the step.
 const pane: {
   historyFile: string | null;
-  // The daily release check's flag, the running plugin's version, and the newer release
-  // the foot names (null when there is none)
-  updateFile: string | null;
+  // The daily release check's flags (a marketplace install's, a clone's), the running
+  // plugin's version, and the newer release the foot names (null when there is none)
+  updateFiles: string[];
   ownVersion: string | null;
   newer: string | null;
   sessionId: string | null;
@@ -331,7 +337,7 @@ const pane: {
   reactUntil: number;
 } = {
   historyFile: null,
-  updateFile: null,
+  updateFiles: [],
   ownVersion: null,
   newer: null,
   sessionId: null,
@@ -352,17 +358,57 @@ const pane: {
   reactUntil: 0,
 };
 
-async function loadPaneHistory($: EngineInterface) {
-  pane.newer = null;
-  if (pane.updateFile !== null) {
+// The newest release the flags name above this copy's version, null when none does
+async function newerReleaseOf($: EngineInterface): Promise<string | null> {
+  const flags: string[] = [];
+  for (const file of pane.updateFiles) {
     try {
-      const flag = await $.fs.read(pane.updateFile);
-      if (typeof flag === "string")
-        pane.newer = newerRelease(flag, pane.ownVersion, await $.clock.now());
+      const text = await $.fs.read(file);
+      if (typeof text === "string") flags.push(text);
     } catch {
-      pane.newer = null;
+      // No flag yet, or none for this kind of install
     }
   }
+  return newestRelease(flags, pane.ownVersion, await $.clock.now());
+}
+
+// The month just closed, for the entry's card hint: its total is read from the history
+// once a day, as the status line reads it; the stamp at every answer, so that a card made
+// in the meantime clears the hint.
+const cardHintState: {
+  stampFile: string | null;
+  untilDay: number;
+  day: string;
+  rows: ReturnType<typeof parseHistory>;
+} = { stampFile: null, untilDay: CARD_NUDGE_UNTIL_DAY, day: "", rows: [] };
+
+async function cardHintOf($: EngineInterface, lang: Lang): Promise<string | null> {
+  if (cardHintState.stampFile === null || pane.historyFile === null) return null;
+  const now = await $.clock.now();
+  if (new Date(now).getDate() > cardHintState.untilDay) return null;
+  const today = new Date(now).toDateString();
+  if (cardHintState.day !== today) {
+    try {
+      const text = await $.fs.read(pane.historyFile);
+      cardHintState.rows = typeof text === "string" ? parseHistory(text) : [];
+    } catch {
+      cardHintState.rows = [];
+    }
+    cardHintState.day = today;
+  }
+  let stamp: string | null = null;
+  try {
+    const text = await $.fs.read(cardHintState.stampFile);
+    stamp = typeof text === "string" ? text : null;
+  } catch {
+    stamp = null;
+  }
+  const nudge = cardNudge(cardHintState.rows, now, stamp, cardHintState.untilDay);
+  return nudge === null ? null : cardHint(nudge.month, nudge.grams, lang);
+}
+
+async function loadPaneHistory($: EngineInterface) {
+  pane.newer = await newerReleaseOf($);
   if (pane.historyFile === null) {
     pane.rows = null;
     return;
@@ -673,16 +719,23 @@ export const register: Register = (on, options) => {
         home: await $.env.get("HOME"),
         userProfile: await $.env.get("USERPROFILE"),
       });
-      // The same opt-out as the status line's hint
-      const noNotice = await $.env.get("CLAUDE_CARBON_NO_UPDATE_NOTIFIER");
-      pane.updateFile =
-        noNotice !== undefined && noNotice !== ""
-          ? null
-          : updateFlagPath({
-              configDir: await $.env.get("CLAUDE_CONFIG_DIR"),
-              home: await $.env.get("HOME"),
-              userProfile: await $.env.get("USERPROFILE"),
-            });
+      const stateEnv = {
+        configDir: await $.env.get("CLAUDE_CONFIG_DIR"),
+        home: await $.env.get("HOME"),
+        userProfile: await $.env.get("USERPROFILE"),
+      };
+      // The same opt-outs and the same last day as the status line's hints
+      const isSet = (v: string | undefined) => v !== undefined && v !== "";
+      pane.updateFiles = isSet(await $.env.get("CLAUDE_CARBON_NO_UPDATE_NOTIFIER"))
+        ? []
+        : updateFlagPaths(stateEnv);
+      cardHintState.stampFile = isSet(await $.env.get("CLAUDE_CARBON_NO_CARD_NUDGE"))
+        ? null
+        : statePath(stateEnv, CARD_STAMP_FILE);
+      const untilDay = Number(await $.env.get("CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY"));
+      cardHintState.untilDay =
+        Number.isInteger(untilDay) && untilDay > 0 ? untilDay : CARD_NUDGE_UNTIL_DAY;
+      cardHintState.day = "";
       pane.sessionId = await $.session.id().catch(() => null);
       pane.project = folderName(e.cwd ?? "");
       pane.subagents = 0;
@@ -939,7 +992,19 @@ export const register: Register = (on, options) => {
           .usage()
           .then((u) => quotaText(u.rateLimits, lang))
           .catch(() => null);
-        $.ui.status(sessionLine(total.grams, lang, total.usd ?? null, quota));
+        // Then the status line's two hints: a newer release, and the month's card
+        const newer = await newerReleaseOf($).catch(() => null);
+        const card = await cardHintOf($, lang).catch(() => null);
+        $.ui.status(
+          sessionLine(
+            total.grams,
+            lang,
+            total.usd ?? null,
+            quota,
+            newer === null ? null : updateHint(newer),
+            card,
+          ),
+        );
       }
       // The figure becomes a line under the answer, for unusual answers only.
       if (co2 !== null && co2.isUnusual && showPerTurn && remoteOnly) {

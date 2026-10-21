@@ -272,6 +272,60 @@ EOF
   fi
 fi
 
+# ---------------------------------------------------------------- 7b. the plugin turned on
+
+# The plugin brings the four hooks itself: the installer adds the status line only, or each
+# hook would run twice.
+CFG="${TMPROOT}/plugin-on"
+mkdir -p "$CFG"
+echo '{"enabledPlugins": {"claude-carbon@claude-carbon": true}}' > "${CFG}/settings.json"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+S="${CFG}/settings.json"
+check "plugin on: status line added"   "$STATUSLINE" "$(jq -r '.statusLine.command // ""' "$S" 2>/dev/null)"
+check "plugin on: no hook written"     "0" "$(jq -r '[.hooks // {} | .[][]?.hooks[]?] | length' "$S" 2>/dev/null)"
+check "plugin on: the setting kept"    "true" "$(jq -r '.enabledPlugins["claude-carbon@claude-carbon"]' "$S" 2>/dev/null)"
+
+# ---------------------------------------------------------------- 7c. /carbon-update for each install
+
+# The skill's bash block, run the way a user's Claude runs it, with a stub claude on PATH
+# and a stand-in clone whose updater only leaves a mark.
+UPD_SKILL="${TMPROOT}/carbon-update.sh"
+awk '/^```bash$/{inb=1;next} /^```$/{inb=0} inb' "${REPO_DIR}/skills/carbon-update/SKILL.md" > "$UPD_SKILL"
+UPD_BIN="${TMPROOT}/upd-bin"
+FAKE_CLONE="${TMPROOT}/fake-clone"
+mkdir -p "$UPD_BIN" "${FAKE_CLONE}/scripts" "${FAKE_CLONE}/.git"
+printf '#!/usr/bin/env bash\necho "$*" >> "%s"\n' "${TMPROOT}/claude-calls" > "${UPD_BIN}/claude"
+chmod +x "${UPD_BIN}/claude"
+printf 'touch "%s"\n' "${TMPROOT}/update-ran" > "${FAKE_CLONE}/scripts/update.sh"
+: > "${FAKE_CLONE}/scripts/statusline.sh"
+FAKE_SL="$(hook_form "$(cc_native_path "$FAKE_CLONE")/scripts/statusline.sh")"
+run_update_skill() {
+  rm -f "${TMPROOT}/claude-calls" "${TMPROOT}/update-ran"
+  mkdir -p "${TMPROOT}/upd-home/cfg"
+  printf '%s\n' "$1" > "${TMPROOT}/upd-home/cfg/settings.json"
+  (
+    unset CLAUDE_PLUGIN_ROOT CLAUDE_CARBON_DIR
+    HOME="${TMPROOT}/upd-home" CLAUDE_CONFIG_DIR="${TMPROOT}/upd-home/cfg" PATH="${UPD_BIN}:$PATH" \
+      bash "$UPD_SKILL" 2>&1
+  )
+}
+
+# Both installs, as on the plugin author's machine: the plugin is updated through Claude
+# Code, the clone left alone (its updater would wire the hooks twice and re-price history)
+OUT="$(run_update_skill "$(jq -n --arg sl "$FAKE_SL" '{statusLine: {type: "command", command: $sl}, enabledPlugins: {"claude-carbon@claude-carbon": true}}')")"
+check "update, plugin on: marketplace refreshed" "1" "$(grep -c "^plugin marketplace update claude-carbon$" "${TMPROOT}/claude-calls" 2>/dev/null)"
+check "update, plugin on: plugin updated" "1" "$(grep -c "^plugin update claude-carbon@claude-carbon$" "${TMPROOT}/claude-calls" 2>/dev/null)"
+check "update, plugin on: the clone's updater not run" "no" "$([ -f "${TMPROOT}/update-ran" ] && echo yes || echo no)"
+case "$OUT" in
+  *"git -C"*) ok "update, plugin on: says how to update the clone" ;;
+  *) bad "update, plugin on: says how to update the clone" "a git -C line" "$OUT" ;;
+esac
+
+# The installer's clone alone: its updater runs, Claude Code's plugin commands do not
+OUT="$(run_update_skill "$(jq -n --arg sl "$FAKE_SL" '{statusLine: {type: "command", command: $sl}}')")"
+check "update, clone only: its updater run" "yes" "$([ -f "${TMPROOT}/update-ran" ] && echo yes || echo no)"
+check "update, clone only: no plugin command" "no" "$([ -s "${TMPROOT}/claude-calls" ] && echo yes || echo no)"
+
 # ---------------------------------------------------------------- 8. settings survive a broken write
 
 # configure-settings.sh writes through tmp + mv precisely so a failed write cannot truncate a

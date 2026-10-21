@@ -2,6 +2,23 @@
 
 ## 2026-10-21
 
+### feat: the status line's hints in the desktop app, and one update command
+
+The session entry under the prompt now ends with the two hints the terminal status line
+gives: `⬆ 1.18.0 /carbon-update` when a newer version is out, and from the 1st to the 10th
+the month just closed with its total, `📊 Septembre : 84,0 kgCO₂ · /carbon-card`, until
+the card is made (same rules as the status line: 7 days of sessions at least,
+`CLAUDE_CARBON_NO_CARD_NUDGE`, `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`). The mod reads the
+release flag of a git clone as well as a plugin's, so the hint shows for both installs.
+
+`/carbon-update` now updates every kind of install. With the plugin on, it runs
+`claude plugin marketplace update claude-carbon` and `claude plugin update
+claude-carbon@claude-carbon` (the claude command, or the desktop app's own on a Mac),
+and only gives the `git pull` for a clone next to it: that clone's updater would wire the
+hooks a second time and re-price the stored history. The pane's notice now says
+`/carbon-update` too. The installer no longer writes the four hooks into settings.json
+while the claude-carbon plugin is on, since the plugin brings them.
+
 ### chore: release.sh refuses a release that would only bump the version
 
 Run a second time right after a release, `scripts/release.sh` bumped the version again

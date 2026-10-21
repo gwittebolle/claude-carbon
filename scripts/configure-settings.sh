@@ -130,13 +130,20 @@ if [ -f "$SETTINGS_FILE" ]; then
   # Stop: persist the session after each turn. SessionEnd: persist it once more as it closes,
   # which catches a last turn interrupted before Stop fired. SessionStart: throttled safety
   # rescan, which also drives the daily update check the status line reads.
-  add_hook Stop "$STOP_CMD"
-  add_hook SessionEnd "$SESSIONEND_CMD"
-  add_hook SessionStart "$SESSIONSTART_CMD"
-  # SubagentStop: the branch an agent worked on, for /carbon-pr. ".+" leaves out the events
-  # of Claude Code's own agents, whose type is empty (from Claude Code 2.1.275; before, the
-  # script leaves them out itself).
-  add_hook SubagentStop "$AGENTSTOP_CMD" ".+"
+  # The claude-carbon plugin, when it is on, brings these four itself (hooks/hooks.json):
+  # written here as well, each would run twice. The status line above it does not bring.
+  PLUGIN_ON="$(echo "$EXISTING" | jq -r '.enabledPlugins["claude-carbon@claude-carbon"] // false' 2>/dev/null)" || PLUGIN_ON="false"
+  if [ "${PLUGIN_ON%$'\r'}" = "true" ]; then
+    echo "  hooks: brought by the claude-carbon plugin (skipped)"
+  else
+    add_hook Stop "$STOP_CMD"
+    add_hook SessionEnd "$SESSIONEND_CMD"
+    add_hook SessionStart "$SESSIONSTART_CMD"
+    # SubagentStop: the branch an agent worked on, for /carbon-pr. ".+" leaves out the events
+    # of Claude Code's own agents, whose type is empty (from Claude Code 2.1.275; before, the
+    # script leaves them out itself).
+    add_hook SubagentStop "$AGENTSTOP_CMD" ".+"
+  fi
 
   # Write via tmp + mv: a truncating redirect would destroy the user's settings if jq failed.
   TMP="${SETTINGS_FILE}.tmp.$$"

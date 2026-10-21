@@ -57,6 +57,10 @@ type World = {
   hinted?: boolean;
   // The rate-limit windows $.session.usage() reports; unset, the call is not answered
   rateLimits?: Array<{ kind: string; percentUsed: number; resetsAt?: string }>;
+  // Files the mod reads, by the end of their path, answered before the default
+  files?: Record<string, string>;
+  // The clock's start, ms since the epoch
+  now?: number;
 };
 
 const storedHistory = (values: number[], welcomed: boolean) => ({
@@ -70,7 +74,7 @@ let clock: any;
 // The engine beneath the plugin: each noun the mod calls, answered as a session would.
 // A mods API call answers { value } (or { deny }).
 function world(on: any, options: World = {}) {
-  clock = mock.clock(on, { now: 1_000_000 });
+  clock = mock.clock(on, { now: options.now ?? 1_000_000 });
   const statuses: Array<string | undefined> = [];
   const toasts: string[] = [];
   // Any process the mod would start: it starts none.
@@ -101,13 +105,20 @@ function world(on: any, options: World = {}) {
     );
   mock.env(
     on,
-    options.lang === null ? {} : { LANG: options.lang ?? "fr_FR.UTF-8" },
+    {
+      ...(options.lang === null ? {} : { LANG: options.lang ?? "fr_FR.UTF-8" }),
+      // A home for the files a test hands the mod, so that it finds them
+      ...(options.files === undefined ? {} : { HOME: "/home/test" }),
+    },
   );
   on("process.run", ($: any, e: any) => {
     processes.push([...e.argv]);
     return { deny: "not expected" };
   });
   on("fs.read", ($: any, e: any) => {
+    for (const [end, text] of Object.entries(options.files ?? {})) {
+      if (String(e.path).endsWith(end)) return { value: text };
+    }
     if (!String(e.path).endsWith("/data/prices.json")) return { value: FACTORS };
     const prices = options.prices === undefined ? PRICES : options.prices;
     return prices === null ? { deny: "not found" } : { value: prices };
@@ -736,6 +747,49 @@ describe("desktop", () => {
     await startSession($);
     const result = await runTurn($, [HEAVY], 90000);
     expect(plain(result.text)).toBe("10 gCO₂ · 10× votre médiane");
+  });
+
+  test("the entry ends with the status line's hints: a newer release, then the month's card", async ($: any, on: any) => {
+    // The 3rd of October, local time; September has sessions on seven days
+    const now = new Date(2026, 9, 3, 9).getTime();
+    const september = [1, 2, 3, 4, 5, 6, 7]
+      .map((d) => `s${d}\t${Date.UTC(2026, 8, d, 12) / 1000}\t12000\t2`)
+      .join("\n");
+    const checkedAt = Math.floor(now / 1000);
+    const { statuses } = world(on, {
+      surfaces: ["desktop"],
+      history: ONE_GRAM_HISTORY,
+      now,
+      files: {
+        "/.claude-plugin/plugin.json": '{"name":"claude-carbon","version":"1.17.0"}',
+        // A clone's flag: the mod reads it as well as a marketplace install's
+        "/update-check.json": `{"behind":true,"local":"1.17.0","remote":"1.18.0","checked_at":${checkedAt}}`,
+        "/sessions-history.tsv": september,
+      },
+    });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe(
+      "Cette session : 4,0 gCO₂ · 0,06 $ · ⬆ 1.18.0 /carbon-update · 📊 Septembre : 84,0 kgCO₂ · /carbon-card",
+    );
+  });
+
+  test("no card hint once this month's card is made", async ($: any, on: any) => {
+    const now = new Date(2026, 9, 3, 9).getTime();
+    const september = [1, 2, 3, 4, 5, 6, 7]
+      .map((d) => `s${d}\t${Date.UTC(2026, 8, d, 12) / 1000}\t12000\t2`)
+      .join("\n");
+    const { statuses } = world(on, {
+      surfaces: ["desktop"],
+      history: ONE_GRAM_HISTORY,
+      now,
+      files: { "/sessions-history.tsv": september, "/last-card-month": "2026-10\n" },
+    });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $");
   });
 
   test("an unusual answer keeps its line when the entry also shows the quota", async ($: any, on: any) => {

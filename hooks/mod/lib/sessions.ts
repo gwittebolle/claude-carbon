@@ -108,18 +108,32 @@ export function historyPath(env: {
 // the newest released version. In the config's claude-carbon folder, where the hooks keep
 // their state, whatever CLAUDE_CARBON_DB says.
 export const UPDATE_FILE = "plugin-update-check.json";
-export function updateFlagPath(env: {
-  configDir?: string;
-  home?: string;
-  userProfile?: string;
-}): string | null {
+// The one a git clone gets. The mod runs from a copy of either install, so it reads both.
+export const CLONE_UPDATE_FILE = "update-check.json";
+// When the last card was made, "YYYY-MM", written by the card's script
+export const CARD_STAMP_FILE = "last-card-month";
+
+type StateEnv = { configDir?: string; home?: string; userProfile?: string };
+
+// A file in that folder, null when nothing names it
+export function statePath(env: StateEnv, name: string): string | null {
   const nonEmpty = (v: string | undefined) =>
     v !== undefined && v !== "" ? v : undefined;
   const config = nonEmpty(env.configDir);
-  if (config !== undefined) return `${config}/claude-carbon/${UPDATE_FILE}`;
+  if (config !== undefined) return `${config}/claude-carbon/${name}`;
   const home = nonEmpty(env.home) ?? nonEmpty(env.userProfile);
-  if (home !== undefined) return `${home}/.claude/claude-carbon/${UPDATE_FILE}`;
+  if (home !== undefined) return `${home}/.claude/claude-carbon/${name}`;
   return null;
+}
+
+export function updateFlagPath(env: StateEnv): string | null {
+  return statePath(env, UPDATE_FILE);
+}
+
+export function updateFlagPaths(env: StateEnv): string[] {
+  return [UPDATE_FILE, CLONE_UPDATE_FILE]
+    .map((name) => statePath(env, name))
+    .filter((p): p is string => p !== null);
 }
 
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
@@ -154,6 +168,51 @@ export function newerRelease(
   if (typeof remote !== "string" || typeof checked_at !== "number") return null;
   if (nowMs - checked_at * 1000 > 7 * 86400 * 1000) return null;
   return isNewer(remote, ownVersion) ? remote : null;
+}
+
+// The newest release any of the flags names above this copy's version
+export function newestRelease(
+  flagTexts: readonly string[],
+  ownVersion: string | null,
+  nowMs: number,
+): string | null {
+  let newest: string | null = null;
+  for (const text of flagTexts) {
+    const found = newerRelease(text, ownVersion, nowMs);
+    if (found !== null && (newest === null || isNewer(found, newest))) newest = found;
+  }
+  return newest;
+}
+
+export const CARD_NUDGE_UNTIL_DAY = 10;
+const CARD_NUDGE_MIN_DAYS = 7;
+
+// The status line's monthly nudge: from the 1st to the `untilDay`th, unless a card was made
+// this month (the stamp), the month just closed and its total, as the card's bar for it.
+// Like the card, months and days are those of the sessions' UTC start; a month with
+// sessions on fewer than 7 days shows nothing, which keeps a near-empty card unadvertised.
+export function cardNudge(
+  rows: readonly SessionRow[],
+  nowMs: number,
+  stamp: string | null,
+  untilDay: number = CARD_NUDGE_UNTIL_DAY,
+): { month: number; grams: number } | null {
+  const now = new Date(nowMs);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (now.getDate() > untilDay) return null;
+  if (stamp?.trim() === `${now.getFullYear()}-${pad(now.getMonth() + 1)}`) return null;
+  const closed = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const key = `${closed.getFullYear()}-${pad(closed.getMonth() + 1)}`;
+  const days = new Set<string>();
+  let grams = 0;
+  for (const row of rows) {
+    const day = new Date(row.at).toISOString().slice(0, 10);
+    if (day.slice(0, 7) !== key) continue;
+    days.add(day);
+    grams += row.grams;
+  }
+  if (days.size < CARD_NUDGE_MIN_DAYS || !(grams > 0)) return null;
+  return { month: closed.getMonth(), grams };
 }
 
 // One line per session: id, start in epoch seconds, grams, methodology version, project,
