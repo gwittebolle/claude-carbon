@@ -77,6 +77,8 @@ CMD_BASE="$(cc_native_path "$REPO_DIR")"
 # than opening the .sh in a Git Bash window (see configure-settings.sh).
 hook_form() { if cc_is_windows; then printf '"%s"' "$1"; else printf '%s' "$1"; fi; }
 STATUSLINE="$(hook_form "${CMD_BASE}/scripts/statusline.sh")"
+# The file itself, for the tests that run it
+SL_SCRIPT="${REPO_DIR}/scripts/statusline.sh"
 STOP="$(hook_form "${CMD_BASE}/scripts/persist-session.sh")"
 RESCAN="$(hook_form "${CMD_BASE}/scripts/safety-rescan.sh")"
 SESSIONEND="$(hook_form "${CMD_BASE}/scripts/persist-on-exit.sh")"
@@ -116,15 +118,12 @@ check "cold start: /carbon-* commands installed" "" "$MISSING"
 # our Stop hook, no SessionStart at all.
 CFG="${TMPROOT}/legacy"
 mkdir -p "$CFG"
-cat > "${CFG}/settings.json" <<EOF
-{
-  "model": "opus",
-  "statusLine": {"type": "command", "command": "${STATUSLINE}"},
-  "hooks": {
-    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "${STOP}"}]}]
-  }
-}
-EOF
+# Through jq, not a here-doc: on Windows the commands carry double quotes of their own.
+jq -n --arg sl "$STATUSLINE" --arg stop "$STOP" '{
+  model: "opus",
+  statusLine: {type: "command", command: $sl},
+  hooks: {Stop: [{matcher: "", hooks: [{type: "command", command: $stop}]}]}
+}' > "${CFG}/settings.json"
 CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
 S="${CFG}/settings.json"
 
@@ -181,14 +180,12 @@ RESCAN_ALT="$RESCAN"
 case "$REPO_DIR" in
   "${HOME}"/*) RESCAN_ALT="~/${REPO_DIR#"${HOME}"/}/scripts/safety-rescan.sh" ;;
 esac
-cat > "${CFG}/settings.json" <<EOF
-{
-  "hooks": {
-    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "${STOP_DOTTED}"}]}],
-    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "${RESCAN_ALT}"}]}]
+jq -n --arg stop "$STOP_DOTTED" --arg start "$RESCAN_ALT" '{
+  hooks: {
+    Stop: [{matcher: "", hooks: [{type: "command", command: $stop}]}],
+    SessionStart: [{matcher: "", hooks: [{type: "command", command: $start}]}]
   }
-}
-EOF
+}' > "${CFG}/settings.json"
 CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
 S="${CFG}/settings.json"
 
@@ -294,7 +291,7 @@ cp "${REPO_DIR}/data/prices.json" "${CACHE_DATA}/prices.json"
 # drift_shown: "yes" when the statusline prints the drift segment for the current cache.
 drift_shown() {
   if echo '{}' | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_NO_CARD_NUDGE=1 CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 \
-       bash "$STATUSLINE" 2>/dev/null | grep -q "install drift"; then echo yes; else echo no; fi
+       bash "$SL_SCRIPT" 2>/dev/null | grep -q "install drift"; then echo yes; else echo no; fi
 }
 
 cp "${REPO_DIR}/data/factors.json" "${CACHE_DATA}/factors.json"
@@ -349,7 +346,7 @@ else
   nudge_line() {
     echo '{}' | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="${CFG}/claude-carbon/carbon.db" \
       CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 CLAUDE_CARBON_NO_DRIFT_CHECK=1 \
-      bash "$STATUSLINE" 2>/dev/null | grep -o '📊 .*' || true
+      bash "$SL_SCRIPT" 2>/dev/null | grep -o '📊 .*' || true
   }
 
   CFG="${TMPROOT}/nudge"
@@ -395,7 +392,7 @@ sqlite3 "$SL_DB" "INSERT INTO sessions (session_id, project, model, co2_grams, c
 # A 200k context window on Opus factors is ~16 g; the stored session total is 26.3 kg.
 sl_co2() {
   printf '{"session_id":"%s","model":{"id":"%s","display_name":"M"},"context_window":{"total_input_tokens":200000,"total_output_tokens":0,"used_percentage":20},"cost":{"total_cost_usd":1342.13},"workspace":{"current_dir":"/tmp/p"}}' "$1" "${2:-claude-opus-5}" \
-    | TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+    | TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$SL_SCRIPT" --segment 2>/dev/null | sed -E 's/.*· //'
 }
 
 check "statusline: cumulative total from the DB, not the context window" "26.3kgCO₂" "$(sl_co2 sess-known)"
@@ -410,7 +407,7 @@ SL_TRANSCRIPT="${TMPROOT}/statusline/sess-first.jsonl"
 printf '%s\n' '{"type":"assistant","requestId":"r1","timestamp":"2026-10-13T13:53:55Z","message":{"id":"m1","model":"claude-opus-5-5","usage":{"input_tokens":2,"cache_creation_input_tokens":50784,"cache_creation":{"ephemeral_1h_input_tokens":50784},"cache_read_input_tokens":29416,"output_tokens":113}}}' > "$SL_TRANSCRIPT"
 sl_first() {
   printf '{"session_id":"sess-first","transcript_path":"%s","model":{"id":"claude-opus-5-5","display_name":"M"},"context_window":{"total_input_tokens":80202,"total_output_tokens":113,"used_percentage":8},"cost":{"total_cost_usd":0.41},"workspace":{"current_dir":"/tmp/p"}}' "$1" \
-    | TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+    | TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$SL_SCRIPT" --segment 2>/dev/null | sed -E 's/.*· //'
 }
 check "statusline: first turn takes the transcript, as the Stop hook will" "4gCO₂" "$(sl_first "$SL_TRANSCRIPT")"
 check "statusline: first turn, transcript gone, falls back to the window"  "6gCO₂" "$(sl_first "${TMPROOT}/statusline/none.jsonl")"
@@ -423,7 +420,7 @@ printf '#!/usr/bin/env bash\ncase "$*" in *"--arg main"*) echo x >> "%s" ;; esac
 chmod +x "${SL_SHIM}/jq"
 sl_tx() {
   printf '{"session_id":"%s","transcript_path":"%s","model":{"id":"claude-opus-5-5","display_name":"M"},"context_window":{"total_input_tokens":80202,"total_output_tokens":113,"used_percentage":8},"cost":{"total_cost_usd":0.41},"workspace":{"current_dir":"/tmp/p"}}' "$1" "$2" \
-    | PATH="${SL_SHIM}:$PATH" TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+    | PATH="${SL_SHIM}:$PATH" TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$SL_SCRIPT" --segment 2>/dev/null | sed -E 's/.*· //'
 }
 passes() { wc -l < "${TMPROOT}/statusline/passes" | tr -d ' '; }
 SL_X="sess-excluded-claude-$$"
