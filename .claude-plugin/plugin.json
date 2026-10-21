@@ -1,6 +1,6 @@
 {
   "name": "claude-carbon",
-  "version": "1.18.0",
+  "version": "1.18.1",
   "description": "Track the carbon footprint of your Claude Code sessions, in the terminal and the Claude desktop app",
   "author": {
     "name": "Gaetan Wittebolle",
