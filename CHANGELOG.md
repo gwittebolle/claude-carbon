@@ -19,6 +19,16 @@ hooks a second time and re-price the stored history. The pane's notice now says
 `/carbon-update` too. The installer no longer writes the four hooks into settings.json
 while the claude-carbon plugin is on, since the plugin brings them.
 
+### fix: cards go to an accented Downloads folder on Windows
+
+On a French Windows whose Downloads folder had been moved under Documents, `/carbon-card`
+saved the cards to a new folder named "T l chargements" instead of "Téléchargements".
+The folder's path comes from the registry, and `reg.exe` prints it in the console's code
+page, which turned each "é" into a byte that is not UTF-8. The path is now read first
+through Git Bash's own `/proc/registry`, in the shell's encoding, with `reg.exe` as the
+fallback; and only a folder that exists is taken, so a path read wrong falls back to
+`~/Downloads` instead of creating a folder.
+
 ### chore: release.sh refuses a release that would only bump the version
 
 Run a second time right after a release, `scripts/release.sh` bumped the version again
