@@ -708,6 +708,23 @@ check "no input: exits 0" "0" "$(: | CLAUDE_CONFIG_DIR="$CFG" bash "$HOOK"; echo
 check "no database: exits 0" "0" "$(stop_input "$S" aaa | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="${TMPROOT}/absent.db" bash "$HOOK"; echo $?)"
 check "not JSON: exits 0" "0" "$(printf 'not json' | CLAUDE_CONFIG_DIR="$CFG" bash "$HOOK"; echo $?)"
 
+# ---------------------------------------------------------------- 11. a frozen session
+# A published figure: an agent of that session resumed later neither replaces its row (its
+# share in /carbon-pr would move) nor adds one for a new agent
+SF="33333333-aaaa-bbbb-cccc-000000000099"
+session "$SF" "$P_MAIN" main 100 10
+agent "$SF" fz1 200 20 "$P_ISO1"
+stop "$SF" fz1 "$P_ISO1"
+FZ_BEFORE="$(q "SELECT group_concat(agent_id || ':' || input_tokens, ',') FROM agent_usage WHERE session_id='${SF}';")"
+check "frozen session: fixture, the agent recorded" "fz1:200" "$FZ_BEFORE"
+q "INSERT INTO sessions (session_id, co2_grams, methodology_version, frozen) VALUES ('${SF}', 1, 2, 1);"
+agent "$SF" fz1 900 90 "$P_ISO1"
+agent "$SF" fz2 300 30 "$P_ISO1"
+stop "$SF" fz1 "$P_ISO1"
+stop "$SF" fz2 "$P_ISO1"
+check "frozen session: its agents' rows as they were" "$FZ_BEFORE" \
+  "$(q "SELECT group_concat(agent_id || ':' || input_tokens, ',') FROM agent_usage WHERE session_id='${SF}';")"
+
 echo
 echo "$PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

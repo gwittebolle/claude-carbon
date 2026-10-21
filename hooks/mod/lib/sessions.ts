@@ -10,7 +10,7 @@ export type SessionRow = {
   // Start of the session, ms since the epoch
   at: number;
   grams: number;
-  // Methodology version: 1 for legacy rows, kept as they were stored (never recomputed)
+  // Methodology version: 1 for legacy rows whose transcript is gone, kept as stored
   version: number;
   // The project's folder name, as the hooks record it; "" when unknown
   project: string;

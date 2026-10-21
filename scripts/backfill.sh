@@ -23,7 +23,10 @@ set -euo pipefail
 #
 # A row is rewritten from its transcripts (refresh, workflow pass) only if it holds no
 # more tokens than the new parse once the write lock is held: usage only grows, so a row
-# with more was written meanwhile by a Stop hook that saw more of the session.
+# with more was written meanwhile by a Stop hook that saw more of the session. The one
+# exception is a legacy (v1) row, which over-counted: it is rebuilt with fewer tokens, as
+# long as its transcripts are all still there (see legacy_complete). A frozen row is never
+# rewritten, checked again under the write lock.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/portable-lib.sh
@@ -53,6 +56,28 @@ FILLED=0
 REFRESHED=0
 WORKFLOWS=0
 REBUILT=0
+# The CO2 of the rebuilt legacy rows, as stored and as rebuilt: the gap is said once
+REBUILT_FROM=0
+REBUILT_TO=0
+
+# legacy_complete <main transcript> <session id>: 0 when the session's transcripts still give
+# at least what its legacy row stored. That row summed, over the main transcript and
+# subagents/*.jsonl, every assistant line's input plus cache write, and its output, replayed
+# lines included (no dedup). Less than that now means a file is gone, and a rebuild from
+# what is left would lower the figure for good: the row then stays as it is.
+legacy_complete() {
+  local stored raw dir f
+  local files=("$1")
+  dir="$(dirname "$1")/$2/subagents"
+  for f in "$dir"/*.jsonl; do [ -f "$f" ] && files+=("$f"); done
+  stored="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COALESCE(input_tokens, 0) || ' ' || COALESCE(output_tokens, 0) FROM sessions WHERE session_id='$2';" 2>/dev/null)" || return 1
+  raw="$(jq -Rrn '[inputs | fromjson? | select(.type == "assistant" and .message.usage != null) | .message.usage]
+    | "\(map((.input_tokens // 0) + (.cache_creation_input_tokens // 0)) | add // 0) \(map(.output_tokens // 0) | add // 0)"' \
+    "${files[@]}" 2>/dev/null)" || return 1
+  stored="${stored%$'\r'}"; raw="${raw%$'\r'}"
+  case "${stored}${raw}" in *[!0-9\ ]*|'') return 1 ;; esac
+  [ "${raw% *}" -ge "${stored% *}" ] && [ "${raw#* }" -ge "${stored#* }" ]
+}
 SPLIT=0
 ERRORS=0
 
@@ -125,7 +150,7 @@ while IFS= read -r JSONL_FILE; do
   # any parse: a pass writes only if the row still has both when it writes (every Stop
   # hook sets the end to its own time), so a turn an older Stop hook records meanwhile is
   # never overwritten by a parse that did not see it.
-  ROW_SNAP="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COUNT(*) || '|' || COALESCE(MAX(frozen), 0) || '|' || COALESCE(MAX(methodology_version), 1) || '|' || COALESCE(MAX(RTRIM(ended_at, char(13))), '') || '|' || COALESCE(MAX(${TOKENS_SQL}), 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
+  ROW_SNAP="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COUNT(*) || '|' || MAX(CASE WHEN ${CC_NOT_FROZEN} THEN 0 ELSE 1 END, 0) || '|' || COALESCE(MAX(methodology_version), 1) || '|' || COALESCE(MAX(RTRIM(ended_at, char(13))), '') || '|' || COALESCE(MAX(${TOKENS_SQL}), 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
   EXISTS="${ROW_SNAP%%|*}"
   ROW_REST="${ROW_SNAP#*|}"
   ROW_FROZEN="${ROW_REST%%|*}"; ROW_REST="${ROW_REST#*|}"
@@ -141,7 +166,7 @@ while IFS= read -r JSONL_FILE; do
   ROW_END="${ROW_END//$CC_SQ/$CC_SQ$CC_SQ}"
   # The end is read and compared without a trailing CR: earlier versions on Windows stored
   # the end of a session they added with one (jq's CRLF), which sqlite3 may print as ^M
-  UNCHANGED="RTRIM(COALESCE(ended_at, ''), char(13)) = '${ROW_END}' AND (${TOKENS_SQL}) = ${ROW_TOKENS}"
+  UNCHANGED="RTRIM(COALESCE(ended_at, ''), char(13)) = '${ROW_END}' AND (${TOKENS_SQL}) = ${ROW_TOKENS} AND ${CC_NOT_FROZEN}"
   END_EPOCH=""
   # Refresh check: a row whose transcript was written well after its ended_at is missing
   # the session's tail (a turn interrupted before the Stop hook, then a crash, a kill, or a
@@ -151,10 +176,13 @@ while IFS= read -r JSONL_FILE; do
   # A legacy row (methodology_version 1, before 2026-06-05) counted replayed messages more
   # than once, about 3 times too many tokens, and no cache reads. While its transcript is
   # here it is rebuilt from it, as a fresh v2 row, even though that holds fewer tokens.
+  # Only when the transcripts are all still there: one purged before the others would
+  # lower the figure for good.
   LEGACY=0
-  if [ "$EXISTS" -gt 0 ] && [ "$ROW_VERSION" -lt 2 ]; then
+  if [ "$EXISTS" -gt 0 ] && [ "$ROW_VERSION" -lt 2 ] && legacy_complete "$JSONL_FILE" "$SESSION_ID"; then
     LEGACY=1
     STALE=1
+    LEGACY_G="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COALESCE(co2_grams, 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null)" || LEGACY_G=0
   fi
   if [ "$EXISTS" -gt 0 ] && [ "$LEGACY" = "0" ]; then
     MTIME="$(cc_mtime "$JSONL_FILE")"
@@ -235,7 +263,7 @@ while IFS= read -r JSONL_FILE; do
     if [ "$SPLIT_MISSING" = "1" ] && parse_once; then
       STORED="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COALESCE(input_tokens, 0) || '|' || COALESCE(cache_creation_tokens, 0) || '|' || COALESCE(cache_read_tokens, 0) || '|' || COALESCE(output_tokens, 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null || echo "")"
       if [ "$STORED" = "${CC_U_IN}|${CC_U_CW}|${CC_U_CR}|${CC_U_OUT}" ]; then
-        SAME="COALESCE(input_tokens, 0) = ${CC_U_IN} AND COALESCE(cache_creation_tokens, 0) = ${CC_U_CW} AND COALESCE(cache_read_tokens, 0) = ${CC_U_CR} AND COALESCE(output_tokens, 0) = ${CC_U_OUT} AND RTRIM(COALESCE(ended_at, ''), char(13)) = '${ROW_END}'"
+        SAME="COALESCE(input_tokens, 0) = ${CC_U_IN} AND COALESCE(cache_creation_tokens, 0) = ${CC_U_CW} AND COALESCE(cache_read_tokens, 0) = ${CC_U_CR} AND COALESCE(output_tokens, 0) = ${CC_U_OUT} AND RTRIM(COALESCE(ended_at, ''), char(13)) = '${ROW_END}' AND ${CC_NOT_FROZEN}"
         case "$USAGE" in
           *"
 R	"*)
@@ -346,7 +374,8 @@ COMMIT;" 2>/dev/null || echo "")"
   # changed since it was read (UNCHANGED): a Stop hook recorded it meanwhile, and an older
   # one left it unstamped for the next rescan. A row holding more tokens than this parse
   # (a Stop hook saw more of the session) is kept, and only takes the new end, so a
-  # transcript that now yields less is not parsed at every rescan. A statement that fails
+  # transcript that now yields less is not parsed at every rescan; a legacy row, which
+  # over-counted, is the exception. A statement that fails
   # (a lock held past the timeout, for one) stops sqlite3, which exits with the transaction
   # open, so nothing is written; -bail keeps that true should the SQL ever come through
   # stdin.
@@ -372,7 +401,10 @@ COMMIT;" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
     # Counted once written, under the legacy rebuild or the workflow pass when either was
     # the cause
     if [ "$WROTE" = "1" ]; then
-      if [ "$LEGACY" = "1" ]; then REBUILT=$((REBUILT + 1))
+      if [ "$LEGACY" = "1" ]; then
+        REBUILT=$((REBUILT + 1))
+        REBUILT_FROM="$(LC_ALL=C awk -v a="$REBUILT_FROM" -v b="${LEGACY_G%$'\r'}" 'BEGIN { printf "%.3f", a + b }')"
+        REBUILT_TO="$(LC_ALL=C awk -v a="$REBUILT_TO" -v b="$CC_U_CO2" 'BEGIN { printf "%.3f", a + b }')"
       elif [ "$WF_TRIGGER" = "1" ]; then WORKFLOWS=$((WORKFLOWS + 1))
       else REFRESHED=$((REFRESHED + 1)); fi
     fi
@@ -400,8 +432,15 @@ echo "  Backfill complete: ${ADDED} sessions added, ${SKIPPED} skipped, ${ERRORS
 if [ "$REFRESHED" -gt 0 ]; then
   echo "  Refreshed ${REFRESHED} session(s) whose transcript grew after they were last recorded."
 fi
+# Said only when the figure moved: the total drops, and /carbon-update shows this line
 if [ "$REBUILT" -gt 0 ]; then
-  echo "  Rebuilt ${REBUILT} session(s) recorded with the method used before June 2026 from their transcripts."
+  # In kgCO2 from a kilogram on, one decimal, as the status line writes it
+  co2_text() { printf '%sCO₂' "$(LC_ALL=C awk -v g="$1" 'BEGIN { if (g >= 1000) printf "%.1f kg", g / 1000; else printf "%.1f g", g }')"; }
+  REBUILT_FROM="$(co2_text "$REBUILT_FROM")"
+  REBUILT_TO="$(co2_text "$REBUILT_TO")"
+  if [ "$REBUILT_FROM" != "$REBUILT_TO" ]; then
+    echo "  Rebuilt ${REBUILT} session(s) recorded with the method used before June 2026, from their transcripts: ${REBUILT_FROM} → ${REBUILT_TO}. That method counted replayed messages more than once."
+  fi
 fi
 if [ "$WORKFLOWS" -gt 0 ]; then
   echo "  Counted the workflow agents of ${WORKFLOWS} session(s) recorded without them."

@@ -11,7 +11,9 @@ a re-backfill", but no rescan ever replaced them, even with the transcript still
 The daily rescan now rebuilds each of them as a current row from its transcript while it is
 there: the figure becomes exact, and is never raised back by a later rescan. Sessions whose
 transcript Claude Code has purged keep their stored values: nothing exact is left to
-rebuild them from. Reported in #83.
+rebuild them from, and so does a session whose subagent transcripts are gone while the
+main one is still there. A rebuilt session also takes its project name from the folder it
+ran in and its git branch from the transcript, as current rows do. Reported in #83.
 
 A row marked `frozen` in the database (`UPDATE sessions SET frozen = 1 …`) is never
 rewritten, by the rescan, `recompute.sh`, or the Stop hook of a resumed session.

@@ -61,11 +61,12 @@ done
 EXCLUDE_MODELS="$(cc_exclude_regex "$FACTORS_FILE")"
 
 # Rows recompute may touch: raw-token rows (methodology_version >= 2) not excluded.
-ELIGIBLE="methodology_version >= 2 AND COALESCE(excluded, 0) = 0 AND COALESCE(frozen, 0) = 0"
+ELIGIBLE="methodology_version >= 2 AND COALESCE(excluded, 0) = 0 AND ${CC_NOT_FROZEN}"
 HAS_CHILDREN="EXISTS (SELECT 1 FROM session_models m WHERE m.session_id = sessions.session_id)"
 # An agent's share for /carbon-pr (agent_usage) holds tokens its session's row also holds:
 # re-derived alike, it keeps matching it. Its session may not be recorded yet (still
-# running): the row is re-derived all the same, unless the session is legacy or excluded.
+# running): the row is re-derived all the same, unless the session is legacy, excluded or
+# frozen.
 AGENT_ELIGIBLE="NOT EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = agent_usage.session_id AND NOT (COALESCE(s.methodology_version, 1) >= 2 AND COALESCE(s.excluded, 0) = 0 AND COALESCE(s.frozen, 0) = 0))"
 
 # co2  = (input_tokens * fin + cache_read_tokens * (fin*crf) + output_tokens * fout) / 1e6
