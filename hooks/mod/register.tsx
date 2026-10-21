@@ -100,6 +100,7 @@ import {
   pushHistory,
   rangeLabel,
   sessionLine,
+  quotaText,
   showLabel,
   stripesAlt,
   stripesCaption,
@@ -933,7 +934,12 @@ export const register: Register = (on, options) => {
         total !== undefined &&
         total.grams > 0
       ) {
-        $.ui.status(sessionLine(total.grams, lang, total.usd ?? null));
+        // The 5-hour quota the status line also shows, from the engine's own reading
+        const quota = await $.session
+          .usage()
+          .then((u) => quotaText(u.rateLimits, lang))
+          .catch(() => null);
+        $.ui.status(sessionLine(total.grams, lang, total.usd ?? null, quota));
       }
       // The figure becomes a line under the answer, for unusual answers only.
       if (co2 !== null && co2.isUnusual && showPerTurn && remoteOnly) {

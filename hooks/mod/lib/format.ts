@@ -160,16 +160,38 @@ export function formatUsd(usd: number, lang: Lang): string {
 
 // The entry pinned under the prompt. The surface already heads it with the plugin's name.
 // The cost is left out when there is none to show (no price list read), never shown as 0.
+// The quota, when there is one, ends it.
 export function sessionLine(
   sessionGrams: number,
   lang: Lang,
   sessionUsd: number | null = null,
+  quota: string | null = null,
 ): string {
   const fr = lang === "fr";
   const head = fr ? `Cette session${NBSP}:` : "This session:";
   const total = `${head} ${formatGrams(sessionGrams, lang)}`;
-  if (sessionUsd === null || !(sessionUsd > 0)) return total;
-  return `${total} · ${formatUsd(sessionUsd, lang)}`;
+  const cost = sessionUsd !== null && sessionUsd > 0 ? formatUsd(sessionUsd, lang) : null;
+  return [total, cost, quota].filter((part) => part !== null).join(" · ");
+}
+
+export type RateLimit = { kind: string; percentUsed: number; resetsAt?: string };
+
+// The 5-hour window of a subscription as the terminal status line shows it, "Usage 23 %
+// ↻14:00": rounded, capped at 100, the reset in local time. Null off a subscription or
+// before the first response has reported the window.
+export function quotaText(
+  limits: readonly RateLimit[] | undefined,
+  lang: Lang,
+): string | null {
+  const window = limits?.find((limit) => limit.kind === "five_hour");
+  if (window === undefined || !Number.isFinite(window.percentUsed)) return null;
+  const percent = Math.min(100, Math.max(0, Math.round(window.percentUsed)));
+  const head = lang === "fr" ? `Usage ${percent}${NBSP}%` : `Use ${percent}%`;
+  const reset = window.resetsAt === undefined ? NaN : Date.parse(window.resetsAt);
+  if (Number.isNaN(reset)) return head;
+  const d = new Date(reset);
+  const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${head} ↻${time}`;
 }
 
 // Shown once per machine, the same on every surface.

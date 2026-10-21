@@ -55,6 +55,8 @@ type World = {
   prices?: string | null;
   // The one-time /carbon-panel hint already shown (its own tests are in carbon-pane.test.tsx)
   hinted?: boolean;
+  // The rate-limit windows $.session.usage() reports; unset, the call is not answered
+  rateLimits?: Array<{ kind: string; percentUsed: number; resetsAt?: string }>;
 };
 
 const storedHistory = (values: number[], welcomed: boolean) => ({
@@ -119,6 +121,12 @@ function world(on: any, options: World = {}) {
     },
   }));
   on("session.surfaces", () => ({ value: options.surfaces ?? ["terminal"] }));
+  if (options.rateLimits !== undefined) {
+    const rateLimits = options.rateLimits;
+    on("session.usage", () => ({
+      value: { startedAt: 0, context: { percent: 12 }, rateLimits },
+    }));
+  }
   on("ui.status", ($: any, e: any) => {
     statuses.push(e.text);
     return { value: undefined };
@@ -289,6 +297,21 @@ describe("terminal", () => {
     expect(drawn).toContain("4,0 gCO₂");
     expect(drawn).not.toContain("warning");
     expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $");
+  });
+
+  test("the status entry ends with the 5-hour quota, as the status line has it", async ($: any, on: any) => {
+    // A local time, so the reset reads 14:05 in any time zone
+    const resetsAt = new Date(2026, 9, 21, 14, 5).toISOString();
+    const { statuses } = world(on, {
+      rateLimits: [
+        { kind: "seven_day", percentUsed: 61 },
+        { kind: "five_hour", percentUsed: 23.4, resetsAt },
+      ],
+    });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $ · Usage 23 % ↻14:05");
   });
 
   test("an unusual answer shows its ratio to the median and its subagents", async ($: any, on: any) => {
