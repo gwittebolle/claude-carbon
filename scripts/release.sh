@@ -4,11 +4,12 @@ set -euo pipefail
 # release.sh — cut a release: bump the three manifests that must stay in sync, tag, push, and
 # open a GitHub release draft pre-filled with the CHANGELOG lines added since the last tag.
 #
-#   bash scripts/release.sh patch|minor|major|X.Y.Z [--dry-run] [--npm] [--publish]
+#   bash scripts/release.sh patch|minor|major|X.Y.Z [--dry-run] [--npm] [--publish] [--force]
 #
 #   --dry-run   print every step, change nothing
 #   --npm       also run `npm publish` (needs npm auth; skipped by default)
 #   --publish   publish the GitHub release instead of leaving it a draft
+#   --force     release even though no runtime file changed since the last tag
 #
 # Why this exists: the update notice users see is keyed on the version in
 # .claude-plugin/plugin.json, not on commits. A change to anything that runs on their machine
@@ -31,21 +32,23 @@ BUMP=""
 DRY_RUN=0
 DO_NPM=0
 DRAFT=1
+FORCE=0
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
     --npm)     DO_NPM=1 ;;
     --publish) DRAFT=0 ;;
+    --force)   FORCE=1 ;;
     patch|minor|major) BUMP="$arg" ;;
     [0-9]*.[0-9]*.[0-9]*) BUMP="$arg" ;;
     *) echo "Unknown argument: $arg" >&2
-       echo "Usage: bash scripts/release.sh patch|minor|major|X.Y.Z [--dry-run] [--npm] [--publish]" >&2
+       echo "Usage: bash scripts/release.sh patch|minor|major|X.Y.Z [--dry-run] [--npm] [--publish] [--force]" >&2
        exit 2 ;;
   esac
 done
 
-[ -n "$BUMP" ] || { echo "Missing bump level. Usage: bash scripts/release.sh patch|minor|major|X.Y.Z [--dry-run] [--npm] [--publish]" >&2; exit 2; }
+[ -n "$BUMP" ] || { echo "Missing bump level. Usage: bash scripts/release.sh patch|minor|major|X.Y.Z [--dry-run] [--npm] [--publish] [--force]" >&2; exit 2; }
 
 for cmd in jq git gh; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "ERROR: $cmd is required." >&2; exit 1; }
@@ -119,6 +122,14 @@ git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null && { echo "ERROR: tag ${
 
 LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
 
+# Run again right after a release, HEAD is that release's own commit: the same code would go
+# out under a second number (the empty v1.18.0 of 2026-10-21, cut over v1.17.0). Not even
+# --force releases a commit twice.
+if [ -n "$LAST_TAG" ] && [ "$(git rev-parse "${LAST_TAG}^{commit}")" = "$(git rev-parse HEAD)" ]; then
+  echo "ERROR: HEAD is already released as ${LAST_TAG}; there is nothing new to release." >&2
+  exit 1
+fi
+
 echo ""
 echo "  claude-carbon release"
 echo "  ${CURRENT} → ${NEW}   (tag ${TAG}${LAST_TAG:+, previous ${LAST_TAG}})"
@@ -131,9 +142,14 @@ if [ -n "$LAST_TAG" ]; then
   if [ -n "$RUNTIME_CHANGED" ]; then
     echo "Runtime files changed since ${LAST_TAG}:"
     echo "$RUNTIME_CHANGED" | sed 's/^/  /'
+  elif [ "$FORCE" = "1" ]; then
+    echo "No runtime file changed since ${LAST_TAG}; releasing anyway (--force)."
   else
-    echo "No runtime file changed since ${LAST_TAG}; this release is docs-only."
-    echo "Users gain nothing by updating, and the notice will nag them anyway."
+    # Stop before anything is written: a docs-only release nags every user for nothing.
+    echo "ERROR: no runtime file changed since ${LAST_TAG}; this release would be docs-only." >&2
+    echo "  Users gain nothing by updating, and the notice would nag them anyway." >&2
+    echo "  Pass --force to release regardless." >&2
+    exit 1
   fi
   echo ""
 fi
@@ -187,7 +203,8 @@ fi
 
 # ---------------------------------------------------------------- release notes
 
-NOTES_FILE="$(mktemp -t claude-carbon-release)"
+# An explicit template: GNU mktemp refuses a -t name without X's, BSD's accepts it
+NOTES_FILE="$(mktemp "${TMPDIR:-/tmp}/claude-carbon-release.XXXXXX")"
 {
   echo "## What's new"
   echo ""

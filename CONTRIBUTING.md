@@ -92,6 +92,11 @@ bumps it. Docs, CHANGELOG, stats and CI changes deliberately do not nag anyone
 and need no bump. `scripts/check-versions.sh` (run in CI) fails on a manifest
 mismatch and warns when runtime changes have piled up unreleased.
 
+`release.sh` stops before writing anything when the release would only bump a
+number: when HEAD is already the last release's commit (a second run of the same
+command), and when no runtime file changed since the last tag. The second case
+goes through with `--force`, the first never does.
+
 ## Reporting bugs and proposing features
 
 Use the [issue templates](https://github.com/gwittebolle/claude-carbon/issues/new/choose).
