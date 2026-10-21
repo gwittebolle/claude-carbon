@@ -73,10 +73,10 @@ hook_count()    { jq -r --arg e "$2" '[.hooks[$e][]?.hooks[]?.command] | length'
 # forward slashes because Git Bash eats unquoted backslashes. cc_native_path is the
 # identity function on macOS and Linux, so these expectations are unchanged there.
 CMD_BASE="$(cc_native_path "$REPO_DIR")"
-STATUSLINE="${CMD_BASE}/scripts/statusline.sh"
-# On Windows the hook paths are also quoted, so that a PowerShell fallback prints them
-# rather than opening the .sh in a Git Bash window (see configure-settings.sh).
+# On Windows the paths are also quoted, so that a PowerShell fallback prints them rather
+# than opening the .sh in a Git Bash window (see configure-settings.sh).
 hook_form() { if cc_is_windows; then printf '"%s"' "$1"; else printf '%s' "$1"; fi; }
+STATUSLINE="$(hook_form "${CMD_BASE}/scripts/statusline.sh")"
 STOP="$(hook_form "${CMD_BASE}/scripts/persist-session.sh")"
 RESCAN="$(hook_form "${CMD_BASE}/scripts/safety-rescan.sh")"
 SESSIONEND="$(hook_form "${CMD_BASE}/scripts/persist-on-exit.sh")"

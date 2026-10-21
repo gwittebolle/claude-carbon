@@ -13,11 +13,13 @@ wrong in four places.
 - Claude Code looks for Git Bash when a session starts. In a session opened before Git
   was installed it ran the hooks in PowerShell, which opened each `.sh` in a Git Bash
   window through the file association; the hook then waited on its input and the window
-  stayed open, one more after every answer. On Windows the hook paths in settings.json
-  are now in double quotes, as hooks/hooks.json writes them: PowerShell prints a quoted
-  path and runs nothing. Each hook and the status line also leave at once when their
-  input is a terminal, which closes those windows on installs made before this change.
-  A bare path and a quoted one count as the same hook, so an update adds no second copy.
+  stayed open, one more after every answer. The status line goes the same way in a
+  terminal. On Windows the hook and status line paths in settings.json are now in double
+  quotes, as hooks/hooks.json writes them: PowerShell prints a quoted path and runs
+  nothing. Each hook and the status line also leave at once when their input is a
+  terminal, which closes those windows on installs made before this change. A bare path
+  and a quoted one count as the same hook, so an update adds no second copy, and the
+  slash commands strip the quotes when they read the status line to find the install.
 - install.ps1 installs `jq` and `sqlite3` with winget when they are missing (user-level
   portable packages, no administrator prompt), and prints the winget commands only when
   that fails. Git stays a manual install.

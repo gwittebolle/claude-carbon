@@ -203,6 +203,11 @@ case "$WRITTEN_SL" in
   *\\*) bad "statusLine path has no backslash" "no backslash" "$WRITTEN_SL" ;;
   *)    ok  "statusLine path has no backslash" ;;
 esac
+case "$WRITTEN_SL" in
+  \"*\") ok  "statusLine path is quoted" ;;
+  *)     bad "statusLine path is quoted" "\"…/statusline.sh\"" "$WRITTEN_SL" ;;
+esac
+WRITTEN_SL="${WRITTEN_SL#\"}"; WRITTEN_SL="${WRITTEN_SL%\"}"
 check "statusLine path is openable" "yes" "$([ -f "$WRITTEN_SL" ] && echo yes || echo no)"
 
 WRITTEN_STOP="$(jq -r '.hooks.Stop[0].hooks[0].command // ""' "$SETTINGS" 2>/dev/null)"

@@ -153,6 +153,24 @@ check "en: over the budget" \
   "  Since January 1: 2,468 kg, 123% of a 2 t per-person annual budget" \
   "$(line_after "$(run_report "$DB" en_US)" "--- Annual budget (${YEAR}) ---")"
 
+# ---------------------------------------------------------------- 3. finding the install
+
+# The skill finds the install from statusLine.command, which a Windows install writes in
+# double quotes. Without CLAUDE_CARBON_DIR it must still reach this repository from there,
+# not fall back to ~/code/claude-carbon, which this throwaway home does not have.
+QHOME="${TMPROOT}/qhome"
+mkdir -p "${QHOME}/cfg"
+jq -n --arg c "\"${REPO_DIR}/scripts/statusline.sh\"" '{statusLine: {type: "command", command: $c}}' \
+  > "${QHOME}/cfg/settings.json"
+OUT="$(
+  unset CLAUDE_PLUGIN_ROOT CLAUDE_CARBON_DIR
+  HOME="$QHOME" CLAUDE_CONFIG_DIR="${QHOME}/cfg" CLAUDE_CARBON_DB="$DB" CLAUDE_CARBON_LOCALE=en_US \
+    bash "$REPORT" 2>&1
+)"
+check "quoted statusLine: the install is found" \
+  "  Since January 1: 2,468 kg, 123% of a 2 t per-person annual budget" \
+  "$(line_after "$OUT" "--- Annual budget (${YEAR}) ---")"
+
 echo ""
 echo "passed: ${PASSED}   failed: ${FAILED}"
 [ "$FAILED" -eq 0 ] || exit 1
