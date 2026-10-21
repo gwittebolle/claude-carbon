@@ -738,6 +738,21 @@ describe("desktop", () => {
     expect(plain(result.text)).toBe("10 gCO₂ · 10× votre médiane");
   });
 
+  test("an unusual answer keeps its line when the entry also shows the quota", async ($: any, on: any) => {
+    const resetsAt = new Date(2026, 9, 21, 14, 5).toISOString();
+    const { statuses } = world(on, {
+      surfaces: ["desktop"],
+      lang: "en_US.UTF-8",
+      history: ONE_GRAM_HISTORY,
+      rateLimits: [{ kind: "five_hour", percentUsed: 23, resetsAt }],
+    });
+    engineSteps(on);
+    await startSession($);
+    const result = await runTurn($, [HEAVY], 90000);
+    expect(plain(result.text)).toContain("10 gCO₂");
+    expect(plain(statuses.at(-1))).toBe("This session: 10 gCO₂ · $0.13 · Use 23% ↻14:05");
+  });
+
   test("a terminal session never gets the line under the answer", async ($: any, on: any) => {
     world(on, { surfaces: ["terminal", "desktop"], history: ONE_GRAM_HISTORY });
     engineSteps(on);

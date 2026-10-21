@@ -498,6 +498,10 @@ const resetsAt = new Date(2026, 9, 21, 14, 5).toISOString();
 const q = (limits, lang = "fr") => quotaText(limits, lang)?.replaceAll(NBSP, " ") ?? null;
 check("quota", q([{ kind: "five_hour", percentUsed: 23.4, resetsAt }]), "Usage 23 % ↻14:05");
 check("quota en", q([{ kind: "five_hour", percentUsed: 23.5, resetsAt }], "en"), "Use 24% ↻14:05");
+// Half to even, as the status line's awk rounds: 22.5 reads 22 there, so here too
+check("quota, 22.5 rounds to even", q([{ kind: "five_hour", percentUsed: 22.5 }]), "Usage 22 %");
+check("quota, 0.5 rounds to even", q([{ kind: "five_hour", percentUsed: 0.5 }]), "Usage 0 %");
+check("quota, 22.6 rounds up", q([{ kind: "five_hour", percentUsed: 22.6 }]), "Usage 23 %");
 check("quota, the 5-hour window among others", q([
   { kind: "seven_day", percentUsed: 61, resetsAt },
   { kind: "five_hour", percentUsed: 7 },
