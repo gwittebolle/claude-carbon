@@ -41,6 +41,7 @@ import {
   percentile,
   pushHistory,
   sessionLine,
+  quotaText,
   answerLine,
   welcomeText,
   HISTORY_SIZE,
@@ -487,7 +488,30 @@ const sessionCases = [
   ["session line, no cost", [212.3, "fr", null], "Cette session : 212 gCO₂"],
   ["session line, no cost en", [212.3, "en"], "This session: 212 gCO₂"],
   ["session line, zero cost dropped", [14, "fr", 0], "Cette session : 14 gCO₂"],
+  ["session line, quota last", [5.4, "fr", 0.53, "Usage 23 %"], "Cette session : 5,4 gCO₂ · 0,53 $ · Usage 23 %"],
+  ["session line, quota without cost", [5.4, "fr", null, "Usage 23 %"], "Cette session : 5,4 gCO₂ · Usage 23 %"],
 ];
+
+// The 5-hour window, as the terminal status line shows it. Built from a local time, so the
+// reset reads 14:05 whatever the machine's time zone.
+const resetsAt = new Date(2026, 9, 21, 14, 5).toISOString();
+const q = (limits, lang = "fr") => quotaText(limits, lang)?.replaceAll(NBSP, " ") ?? null;
+check("quota", q([{ kind: "five_hour", percentUsed: 23.4, resetsAt }]), "Usage 23 % ↻14:05");
+check("quota en", q([{ kind: "five_hour", percentUsed: 23.5, resetsAt }], "en"), "Use 24% ↻14:05");
+// Half to even, as the status line's awk rounds: 22.5 reads 22 there, so here too
+check("quota, 22.5 rounds to even", q([{ kind: "five_hour", percentUsed: 22.5 }]), "Usage 22 %");
+check("quota, 0.5 rounds to even", q([{ kind: "five_hour", percentUsed: 0.5 }]), "Usage 0 %");
+check("quota, 22.6 rounds up", q([{ kind: "five_hour", percentUsed: 22.6 }]), "Usage 23 %");
+check("quota, the 5-hour window among others", q([
+  { kind: "seven_day", percentUsed: 61, resetsAt },
+  { kind: "five_hour", percentUsed: 7 },
+]), "Usage 7 %");
+check("quota capped at 100", q([{ kind: "five_hour", percentUsed: 104.2 }]), "Usage 100 %");
+check("quota, unreadable reset left out", q([{ kind: "five_hour", percentUsed: 7, resetsAt: "soon" }]), "Usage 7 %");
+check("no quota off a subscription", q([]), null);
+check("no quota without the 5-hour window", q([{ kind: "seven_day", percentUsed: 61 }]), null);
+check("no quota from an older engine", q(undefined), null);
+check("nbsp before % in French", quotaText([{ kind: "five_hour", percentUsed: 7 }], "fr") === `Usage 7${NBSP}%`, true);
 check(
   "nbsp before the French colon",
   sessionLine(14, "fr").startsWith(`Cette session${NBSP}:`),
@@ -511,6 +535,7 @@ for (const lang of ["fr", "en"]) {
   shown.push(view.main, view.sub, answerLine(view));
   shown.push(welcomeText(lang));
   shown.push(sessionLine(52, lang, 0.38), sessionLine(52, lang));
+  shown.push(quotaText([{ kind: "five_hour", percentUsed: 23, resetsAt }], lang));
   shown.push(formatUsd(0.12, lang), formatUsd(0.001, lang));
   for (const n of [0.02, 4.24, 37.6, 1234]) shown.push(formatGrams(n, lang));
 }

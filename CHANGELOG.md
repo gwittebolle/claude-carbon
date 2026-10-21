@@ -27,6 +27,16 @@ wrong in four places.
   restarted. On Windows the scripts now add winget's links folder to the PATH when
   either is missing.
 
+### feat: the 5-hour quota in the desktop app
+
+The session entry under the prompt now ends with the 5-hour quota, as the terminal status
+line shows it: `Cette session : 5,4 gCO₂ · 0,53 $ · Usage 23 % ↻14:00`, in English
+`This session: 5.4 gCO₂ · $0.53 · Use 23% ↻14:00`. The desktop app draws no status line,
+so it had no way to show it. The figure comes from Claude Code's own reading of the last
+response (`$.session.usage()`), refreshed after each answer; the mod still makes no
+network call. Off a subscription, or on a Claude Code too old to report the window, the
+entry stays as it was.
+
 ## 2026-10-19
 
 ### fix: /carbon-pr posts under Git Bash when TMPDIR is a Windows path

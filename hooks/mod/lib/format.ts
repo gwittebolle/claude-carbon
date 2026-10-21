@@ -160,16 +160,43 @@ export function formatUsd(usd: number, lang: Lang): string {
 
 // The entry pinned under the prompt. The surface already heads it with the plugin's name.
 // The cost is left out when there is none to show (no price list read), never shown as 0.
+// The quota, when there is one, ends it.
 export function sessionLine(
   sessionGrams: number,
   lang: Lang,
   sessionUsd: number | null = null,
+  quota: string | null = null,
 ): string {
   const fr = lang === "fr";
   const head = fr ? `Cette session${NBSP}:` : "This session:";
   const total = `${head} ${formatGrams(sessionGrams, lang)}`;
-  if (sessionUsd === null || !(sessionUsd > 0)) return total;
-  return `${total} · ${formatUsd(sessionUsd, lang)}`;
+  const cost = sessionUsd !== null && sessionUsd > 0 ? formatUsd(sessionUsd, lang) : null;
+  return [total, cost, quota].filter((part) => part !== null).join(" · ");
+}
+
+export type RateLimit = { kind: string; percentUsed: number; resetsAt?: string };
+
+// The 5-hour window of a subscription as the terminal status line shows it, "Usage 23 %
+// ↻14:00": rounded half to even like its awk printf "%.0f" (22.5 reads 22 on both),
+// capped at 100, the reset in local time. Null off a subscription or before the first
+// response has reported the window.
+export function quotaText(
+  limits: readonly RateLimit[] | undefined,
+  lang: Lang,
+): string | null {
+  const fiveHour = limits?.find((limit) => limit.kind === "five_hour");
+  if (fiveHour === undefined || !Number.isFinite(fiveHour.percentUsed)) return null;
+  const used = Math.max(0, fiveHour.percentUsed);
+  const floor = Math.floor(used);
+  const rounded =
+    used - floor === 0.5 ? (floor % 2 === 0 ? floor : floor + 1) : Math.round(used);
+  const percent = Math.min(100, rounded);
+  const head = lang === "fr" ? `Usage ${percent}${NBSP}%` : `Use ${percent}%`;
+  const reset = fiveHour.resetsAt === undefined ? NaN : Date.parse(fiveHour.resetsAt);
+  if (Number.isNaN(reset)) return head;
+  const d = new Date(reset);
+  const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${head} ↻${time}`;
 }
 
 // Shown once per machine, the same on every surface.
