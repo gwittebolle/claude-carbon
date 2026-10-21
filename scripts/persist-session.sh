@@ -18,6 +18,9 @@
 # and the main transcript's dominant model. See cc_session_usage in portable-lib.sh.
 # Intentionally no set -euo pipefail: this hook must exit 0 silently in all cases.
 
+# stdin is a terminal, not Claude Code's JSON: the Git Bash window case in statusline.sh.
+[ -t 0 ] && exit 0
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/portable-lib.sh
 . "${SCRIPT_DIR}/portable-lib.sh"

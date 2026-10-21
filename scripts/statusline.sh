@@ -6,6 +6,12 @@ set -euo pipefail
 #        ... | statusline.sh --segment   (cost + CO2 only, for embedding in
 #        another status line, e.g. a ccstatusline custom command widget)
 
+# stdin is a terminal rather than Claude Code's JSON when Windows opens this file in a Git
+# Bash window: Claude Code ran the command in PowerShell (no Git Bash when the session
+# started), and PowerShell launched the .sh through its file association. Nothing will
+# arrive, so leave now instead of holding that window open.
+[ -t 0 ] && exit 0
+
 SEGMENT_MODE=0
 [ "${1:-}" = "--segment" ] && SEGMENT_MODE=1
 

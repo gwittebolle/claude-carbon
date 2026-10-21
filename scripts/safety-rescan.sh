@@ -5,6 +5,9 @@
 # INSERT OR IGNORE, so already-captured sessions are skipped cheaply.
 # Must exit 0 immediately and never block session start.
 
+# stdin is a terminal, not Claude Code's JSON: the Git Bash window case in statusline.sh.
+[ -t 0 ] && exit 0
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/portable-lib.sh
 . "${SCRIPT_DIR}/portable-lib.sh"

@@ -34,7 +34,7 @@ Already installed? See [Updating](#updating).
 
 ![Illustration of the Claude desktop app with the claude-carbon pane open: a blue pixel molecule, "This session: 8.2 gCO₂ · 0.04× your median", the last 30 days as tiles and warming stripes, a "Get my 2026 card" button, and "This session: 8.2 gCO₂" under the prompt](docs/desktop-pane.png)
 
-1. Open the **Code** tab of the Claude desktop app and start a session, in any folder.
+1. Open the **Code** tab of the Claude desktop app and start a session, in any folder. In the mode selector under the prompt box, pick **Manual** if it shows **Auto**: auto mode blocks any command that downloads a script and runs it, and Claude would hand you the command instead of running it. Switch back once the install is done.
 2. Paste the message for your system. It works in any language. Claude runs the installer for you and asks before running the command: accept.
 
    macOS or Linux:
@@ -58,8 +58,8 @@ Already installed? See [Updating](#updating).
 **If the install stops**
 
 - **macOS opens a window about "command line developer tools".** That is `git`, which the installer needs and a Mac without developer tools does not have yet. Click **Install**, wait until it finishes (a few minutes), then tell Claude: "Run the claude-carbon install again."
-- **"jq is not installed" or "sqlite3 is not installed".** Tell Claude: "Install what is missing, then run the claude-carbon install again." Every Mac has `sqlite3`, and macOS 15 and later also have `jq`; on an older Mac the installer fetches the official `jq` itself, checked against its published checksum. On Windows the installer prints the `winget` command to use.
-- **Windows says Git Bash is missing.** Install [Git for Windows](https://git-scm.com/downloads/win) (Claude Code needs it on Windows anyway), reopen the app, and ask Claude again.
+- **"jq is not installed" or "sqlite3 is not installed".** Tell Claude: "Install what is missing, then run the claude-carbon install again." Every Mac has `sqlite3`, and macOS 15 and later also have `jq`; on an older Mac the installer fetches the official `jq` itself, checked against its published checksum. On Windows the installer installs both with `winget` itself, and prints the `winget` commands only when that fails.
+- **Windows says Git Bash is missing.** Install [Git for Windows](https://git-scm.com/downloads/win) (Claude Code needs it on Windows anyway), quit the app completely and reopen it, then ask Claude again in a new session. Claude Code looks for Git Bash when a session starts, so a session open during the Git install still runs without it.
 
 The chat and Cowork tabs are not covered: their sessions run on Anthropic's servers, so nothing reaches your machine to count.
 
@@ -492,15 +492,13 @@ back to PowerShell only when Git Bash is absent
 [hooks docs](https://code.claude.com/docs/en/hooks)). The plugin speaks the shell its
 host already spawns.
 
-**Native Windows.** Install Git for Windows, plus the two commands it does not ship:
+**Native Windows.** Install Git for Windows first, then restart Claude Code so that it finds Git Bash:
 
 ```powershell
 winget install Git.Git --source winget
-winget install jqlang.jq --source winget
-winget install SQLite.SQLite --source winget
 ```
 
-Then, in the same terminal:
+Then, in the same terminal (the installer adds `jq` and `sqlite3`, the two commands Git for Windows does not ship, with `winget` when they are missing):
 
 ```powershell
 irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex

@@ -206,7 +206,17 @@ esac
 check "statusLine path is openable" "yes" "$([ -f "$WRITTEN_SL" ] && echo yes || echo no)"
 
 WRITTEN_STOP="$(jq -r '.hooks.Stop[0].hooks[0].command // ""' "$SETTINGS" 2>/dev/null)"
+# Quoted, so that PowerShell (Claude Code's fallback when it found no Git Bash) prints the
+# path instead of opening the .sh in a Git Bash window that waits forever on stdin
+case "$WRITTEN_STOP" in
+  \"*\") ok  "Stop hook path is quoted" ;;
+  *)     bad "Stop hook path is quoted" "\"…/persist-session.sh\"" "$WRITTEN_STOP" ;;
+esac
+WRITTEN_STOP="${WRITTEN_STOP#\"}"; WRITTEN_STOP="${WRITTEN_STOP%\"}"
 check "Stop hook path is openable"  "yes" "$([ -f "$WRITTEN_STOP" ] && echo yes || echo no)"
+# What Claude Code runs is the quoted string through Git Bash, stdin a pipe: it must work
+# as written. And from a terminal (the Git Bash window case) the hook must not wait.
+check "quoted Stop hook runs under bash" "0" "$(echo '{}' | bash -c "$(jq -r '.hooks.Stop[0].hooks[0].command' "$SETTINGS")" >/dev/null 2>&1; echo $?)"
 
 # Rerunning must not register a second copy of anything, even though the path was
 # written in the mixed spelling and normalize_cmd resolves it through `cd`+`pwd -P`.
@@ -243,6 +253,9 @@ OURS_COUNT="$(jq -r --arg c "${NATIVE_SCRIPTS}/safety-rescan.sh" \
 check "our hook not duplicated when it is not last" "1" "$OURS_COUNT"
 check "the foreign hook survives" "1" \
   "$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(. == "/opt/other/start.sh")] | length' "${CFG3}/settings.json")"
+# The bare path of an install from before the quotes is the same hook as the quoted one
+check "no quoted copy next to the bare one" "2" \
+  "$(jq -r '[.hooks.SessionStart[]?.hooks[]?] | length' "${CFG3}/settings.json")"
 
 # ── 6. Slash commands: copies, and refreshed on update ───────────────────────
 echo ""

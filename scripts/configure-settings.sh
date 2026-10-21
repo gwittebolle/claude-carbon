@@ -32,10 +32,19 @@ mkdir -p "$CONFIG_DIR"
 # Identity on macOS and Linux, so nothing changes there.
 CMD_DIR="$(cc_native_path "$INSTALL_DIR")"
 STATUSLINE_CMD="${CMD_DIR}/scripts/statusline.sh"
-STOP_CMD="${CMD_DIR}/scripts/persist-session.sh"
-SESSIONSTART_CMD="${CMD_DIR}/scripts/safety-rescan.sh"
-SESSIONEND_CMD="${CMD_DIR}/scripts/persist-on-exit.sh"
-AGENTSTOP_CMD="${CMD_DIR}/scripts/agent-stop.sh"
+# On Windows the hook paths go in double quotes, as hooks/hooks.json writes them. Claude Code
+# runs hooks in PowerShell when it found no Git Bash as the session started (Git installed
+# during that session, the usual case on a first install from the desktop app). PowerShell
+# takes a quoted path for a string and only prints it; a bare one it opens through the .sh
+# file association, a Git Bash window per hook that stays open. Git Bash runs both alike.
+# The status line keeps the bare path: the skills read it back as a file to find this folder.
+hook_cmd() {
+  if cc_is_windows; then printf '"%s"' "$1"; else printf '%s' "$1"; fi
+}
+STOP_CMD="$(hook_cmd "${CMD_DIR}/scripts/persist-session.sh")"
+SESSIONSTART_CMD="$(hook_cmd "${CMD_DIR}/scripts/safety-rescan.sh")"
+SESSIONEND_CMD="$(hook_cmd "${CMD_DIR}/scripts/persist-on-exit.sh")"
+AGENTSTOP_CMD="$(hook_cmd "${CMD_DIR}/scripts/agent-stop.sh")"
 
 # Resolve a hook command to a comparable form. The same script reaches settings.json spelled
 # several ways: the README's manual block uses `~/code/claude-carbon/...`, this script writes
@@ -50,6 +59,8 @@ normalize_cmd() {
   # hook fails to match itself whenever another tool's hook sits after it in the same
   # event, and every install or update registers a second copy of ours.
   c="${c%$'\r'}"
+  # A path in double quotes (Windows installs, hooks/hooks.json) is the same path bare
+  case "$c" in \"*\") c="${c#\"}"; c="${c%\"}" ;; esac
   c="${c//\\ / }"
   # SC2088: the tilde here is data, not a path being expanded — we are matching a literal "~/"
   # prefix inside a string read from settings.json and expanding it ourselves.

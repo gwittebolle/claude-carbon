@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-10-21
+
+### fix: first install on Windows from the desktop app
+
+Installing from the Code tab of the desktop app on a Windows machine without Git went
+wrong in four places.
+
+- Auto mode blocks a command that downloads a script and runs it, so Claude gave the
+  installer command back instead of running it. The README now says to pick Manual in
+  the mode selector before pasting the message, on every system.
+- Claude Code looks for Git Bash when a session starts. In a session opened before Git
+  was installed it ran the hooks in PowerShell, which opened each `.sh` in a Git Bash
+  window through the file association; the hook then waited on its input and the window
+  stayed open, one more after every answer. On Windows the hook paths in settings.json
+  are now in double quotes, as hooks/hooks.json writes them: PowerShell prints a quoted
+  path and runs nothing. Each hook and the status line also leave at once when their
+  input is a terminal, which closes those windows on installs made before this change.
+  A bare path and a quoted one count as the same hook, so an update adds no second copy.
+- install.ps1 installs `jq` and `sqlite3` with winget when they are missing (user-level
+  portable packages, no administrator prompt), and prints the winget commands only when
+  that fails. Git stays a manual install.
+- A Claude Code started before winget installed `jq` or `sqlite3` did not see them until
+  restarted. On Windows the scripts now add winget's links folder to the PATH when
+  either is missing.
+
 ## 2026-10-19
 
 ### fix: /carbon-pr posts under Git Bash when TMPDIR is a Windows path

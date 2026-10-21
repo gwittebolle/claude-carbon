@@ -125,6 +125,20 @@ if ! command -v jq >/dev/null 2>&1; then
   fi
 fi
 
+# ── winget's links ──────────────────────────────────────────────────────────
+# winget reaches the jq and sqlite3 it installs through links in
+# %LOCALAPPDATA%\Microsoft\WinGet\Links, a folder it adds to the user PATH. A Claude
+# Code started before that install keeps its old PATH until it restarts, and so do
+# the hooks and slash commands it spawns. Appended, so any other jq or sqlite3 wins.
+if [ "$CC_OS" = "windows" ] && [ -n "${LOCALAPPDATA:-}" ] &&
+   { ! command -v jq >/dev/null 2>&1 || ! command -v sqlite3 >/dev/null 2>&1; }; then
+  CC_WINGET_LINKS="$(cc_path "$LOCALAPPDATA")/Microsoft/WinGet/Links"
+  if [ -d "$CC_WINGET_LINKS" ]; then
+    PATH="${PATH}:${CC_WINGET_LINKS}"
+    export PATH
+  fi
+fi
+
 # cc_native_path <path> — the inverse of cc_path: echoes a path that the native
 # Windows side understands, in the "mixed" spelling ("C:/Users/me/x"). Forward
 # slashes, so bash can also open it verbatim without escaping. Used for the paths

@@ -39,6 +39,9 @@
 # converted in one cygpath call and nothing else is forked for a string.
 # Intentionally no set -e: this hook must exit 0 in all cases.
 
+# stdin is a terminal, not Claude Code's JSON: the Git Bash window case in statusline.sh.
+[ -t 0 ] && exit 0
+
 # This script's folder, without a subshell: Claude Code may pass a native path
 CC_SELF="${BASH_SOURCE[0]//\\//}"
 case "$CC_SELF" in */*) SCRIPT_DIR="${CC_SELF%/*}" ;; *) SCRIPT_DIR="." ;; esac

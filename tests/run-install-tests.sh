@@ -74,10 +74,13 @@ hook_count()    { jq -r --arg e "$2" '[.hooks[$e][]?.hooks[]?.command] | length'
 # identity function on macOS and Linux, so these expectations are unchanged there.
 CMD_BASE="$(cc_native_path "$REPO_DIR")"
 STATUSLINE="${CMD_BASE}/scripts/statusline.sh"
-STOP="${CMD_BASE}/scripts/persist-session.sh"
-RESCAN="${CMD_BASE}/scripts/safety-rescan.sh"
-SESSIONEND="${CMD_BASE}/scripts/persist-on-exit.sh"
-AGENTSTOP="${CMD_BASE}/scripts/agent-stop.sh"
+# On Windows the hook paths are also quoted, so that a PowerShell fallback prints them
+# rather than opening the .sh in a Git Bash window (see configure-settings.sh).
+hook_form() { if cc_is_windows; then printf '"%s"' "$1"; else printf '%s' "$1"; fi; }
+STOP="$(hook_form "${CMD_BASE}/scripts/persist-session.sh")"
+RESCAN="$(hook_form "${CMD_BASE}/scripts/safety-rescan.sh")"
+SESSIONEND="$(hook_form "${CMD_BASE}/scripts/persist-on-exit.sh")"
+AGENTSTOP="$(hook_form "${CMD_BASE}/scripts/agent-stop.sh")"
 
 # ---------------------------------------------------------------- 1. cold start
 
@@ -193,6 +196,24 @@ check "spelling: /./ form not duplicated"   "1" "$(hook_count "$S" Stop)"
 check "spelling: tilde form not duplicated" "1" "$(hook_count "$S" SessionStart)"
 check "spelling: original left as written"  "$STOP_DOTTED" "$(hook_commands "$S" Stop)"
 
+# Quoted and bare are the same hook: a Windows install from before the quotes, or a
+# settings.json copied between machines, must not end up with both.
+CFG="${TMPROOT}/quoted"
+mkdir -p "$CFG"
+cat > "${CFG}/settings.json" <<EOF
+{
+  "hooks": {
+    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "\"${CMD_BASE}/scripts/persist-session.sh\""}]}],
+    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "${CMD_BASE}/scripts/safety-rescan.sh"}]}]
+  }
+}
+EOF
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+S="${CFG}/settings.json"
+
+check "spelling: quoted form not duplicated" "1" "$(hook_count "$S" Stop)"
+check "spelling: bare form not duplicated"   "1" "$(hook_count "$S" SessionStart)"
+
 # ---------------------------------------------------------------- 6. marketplace guard
 
 # Claude Code declares the plugin's hooks from hooks/hooks.json for marketplace installs;
@@ -232,7 +253,7 @@ EOF
     UPD_OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "${CLONE}/scripts/update.sh" 2>&1)"
     # configure-settings.sh writes the hook in native spelling (C:/... on Windows,
     # see CMD_BASE above), so the expectation has to be spelled the same way.
-    check "update repairs SessionStart" "$(cc_native_path "$CLONE")/scripts/safety-rescan.sh" "$(hook_commands "${CFG}/settings.json" SessionStart)"
+    check "update repairs SessionStart" "$(hook_form "$(cc_native_path "$CLONE")/scripts/safety-rescan.sh")" "$(hook_commands "${CFG}/settings.json" SessionStart)"
     check "update keeps Stop single"    "1" "$(hook_count "${CFG}/settings.json" Stop)"
     # update.sh hides the settings chatter but not the mod's lines, which may ask for a restart.
     check "update installs the mod" "yes" "$([ -f "${CFG}/skills/claude-carbon/.claude-carbon-managed" ] && echo yes || echo no)"

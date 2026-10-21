@@ -10,6 +10,9 @@
 # after a short wait for the transcript's last asynchronous writes to land.
 # Must exit 0 immediately in all cases.
 
+# stdin is a terminal, not Claude Code's JSON: the Git Bash window case in statusline.sh.
+[ -t 0 ] && exit 0
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/portable-lib.sh
 . "${SCRIPT_DIR}/portable-lib.sh"
