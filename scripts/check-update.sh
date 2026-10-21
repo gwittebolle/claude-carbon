@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check-update.sh — backgrounded, throttled remote version check. Writes a cached flag:
 # ~/.claude/claude-carbon/update-check.json for a git clone, read by statusline.sh, or
-# plugin-update-check.json for a marketplace install, read by the mod's pane. NEVER run
+# plugin-update-check.json for a marketplace install; the mod reads both. NEVER run
 # this from the statusline: it does network I/O. It is launched detached by the SessionStart
 # hook (safety-rescan.sh), at most once/day. Swallows every error; safe to kill anytime.
 
@@ -19,8 +19,10 @@ OUT="${STATE_DIR}/update-check.json"
 # the status line reads. A marketplace install lives in Claude Code's managed cache: never
 # fetch into that clone (it updates via `claude plugin update`, auto-update being OPT-IN
 # for third-party marketplaces); ask GitHub for the release tags instead, read-only, and
-# write plugin-update-check.json, which only the mod's pane reads (the status line's
-# /carbon-update hint would be the wrong command there).
+# write plugin-update-check.json, which the mod reads. The status line keeps to the clone's
+# flag: on a machine with both installs it runs from the clone, and the plugin's version is
+# not its own. There the plugin runs the hooks, so this check never runs for the clone and
+# its flag goes stale after a week: /carbon-update gives the clone's git pull instead.
 IS_PLUGIN=0
 if cc_is_plugin_cache "$REPO_DIR"; then
   # Only this plugin's own marketplace follows the releases: a listing pinned elsewhere

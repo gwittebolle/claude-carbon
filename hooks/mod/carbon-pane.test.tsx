@@ -504,7 +504,7 @@ describe("the /carbon-panel pane", () => {
     await openPane($);
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     expect(await drawn(ui)).toContain(
-      "Version 1.12.6 disponible : demandez à Claude de lancer « claude plugin update claude-carbon@claude-carbon », puis redémarrez.",
+      "Version 1.12.6 disponible : tapez /carbon-update, puis redémarrez.",
     );
     const tree = (await ui.drawn()) as any;
     expect(JSON.stringify(tree.children.at(-1))).toContain("Version 1.12.6");

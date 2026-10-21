@@ -200,6 +200,20 @@ cc_mtime() {
   printf '%s\n' "$m"
 }
 
+# cc_carbon_plugin_on <settings JSON on stdin>: prints true when the claude-carbon plugin
+# is installed from a marketplace and turned on, under its own name or the co2-tracker
+# listing of Anthropic's community directory, and false otherwise. The installer's copy of
+# the mod (claude-carbon@skills-dir) is not the plugin. The plugin brings the hooks and the
+# mod itself, so the installer then writes neither.
+cc_carbon_plugin_on() {
+  local on
+  on="$(jq -r '[(.enabledPlugins // {}) | to_entries[]
+      | select(.value == true)
+      | select(.key | test("^(claude-carbon|co2-tracker)@"))
+      | select(.key != "claude-carbon@skills-dir")] | length > 0' 2>/dev/null)" || on=""
+  if [ "${on%$'\r'}" = "true" ]; then echo true; else echo false; fi
+}
+
 # cc_is_plugin_cache <dir>: 0 when <dir> is a copy Claude Code's plugin marketplace
 # manages (under the config folder's plugins/), which only `claude plugin update` may change.
 cc_is_plugin_cache() {

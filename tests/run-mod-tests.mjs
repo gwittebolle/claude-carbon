@@ -101,6 +101,8 @@ import {
   moneyValue,
   tileLabel,
   updateText,
+  updateHint,
+  cardHint,
   formatTokens,
   formatWh,
   formatShare,
@@ -159,7 +161,11 @@ import {
   colourMedian,
   windowOf,
   newerRelease,
+  newestRelease,
   updateFlagPath,
+  updateFlagPaths,
+  statePath,
+  cardNudge,
 } from "../hooks/mod/lib/sessions.ts";
 import { carEquivalence, equivalenceSet } from "../hooks/mod/lib/equiv.ts";
 
@@ -536,6 +542,7 @@ for (const lang of ["fr", "en"]) {
   shown.push(welcomeText(lang));
   shown.push(sessionLine(52, lang, 0.38), sessionLine(52, lang));
   shown.push(quotaText([{ kind: "five_hour", percentUsed: 23, resetsAt }], lang));
+  shown.push(updateHint("1.18.0"), cardHint(8, 84213, lang), updateText("1.18.0", lang));
   shown.push(formatUsd(0.12, lang), formatUsd(0.001, lang));
   for (const n of [0.02, 4.24, 37.6, 1234]) shown.push(formatGrams(n, lang));
 }
@@ -911,16 +918,61 @@ check("no update flag", updateFlagPath({ configDir: "" }), null);
   check("flag not JSON", newerRelease("{", "1.12.5", at), null);
   check("flag without remote", newerRelease('{"checked_at":1}', "1.12.5", at), null);
   check("remote not a version", newerRelease(flag("latest"), "1.12.5", at), null);
+  // A clone's flag and a marketplace install's, whichever names the newer release
+  check("newest of two flags", newestRelease([flag("1.12.6"), flag("1.13.0")], "1.12.5", at), "1.13.0");
+  check("newest of two flags, either order", newestRelease([flag("1.13.0"), flag("1.12.6")], "1.12.5", at), "1.13.0");
+  check("newest: an unreadable flag skipped", newestRelease(["{", flag("1.12.6")], "1.12.5", at), "1.12.6");
+  check("newest: none newer", newestRelease([flag("1.12.5")], "1.12.5", at), null);
+  check("newest: no flag", newestRelease([], "1.12.5", at), null);
+}
+check(
+  "both update flags",
+  updateFlagPaths({ home: "/h" }).join(" "),
+  "/h/.claude/claude-carbon/plugin-update-check.json /h/.claude/claude-carbon/update-check.json",
+);
+check("no update flags", updateFlagPaths({}).length, 0);
+check("card stamp path", statePath({ configDir: "/cfg" }, "last-card-month"), "/cfg/claude-carbon/last-card-month");
+check("update hint, as the status line", updateHint("1.18.0"), "⬆ 1.18.0 /carbon-update");
+check("card hint fr", cardHint(8, 84213, "fr").replaceAll(NBSP, " "), "📊 Septembre : 84,2 kgCO₂ · /carbon-card");
+check("card hint en", cardHint(8, 84213, "en").replaceAll(NBSP, " "), "📊 September: 84.2 kgCO₂ · /carbon-card");
+check(
+  "session line with the hints",
+  sessionLine(6.1, "fr", 0.59, "Usage 0 %", null, "📊 Septembre : 84,2 kgCO₂ · /carbon-card").replaceAll(NBSP, " "),
+  "Cette session : 6,1 gCO₂ · 0,59 $ · Usage 0 % · 📊 Septembre : 84,2 kgCO₂ · /carbon-card",
+);
+
+// The monthly card hint, as the status line's: from the 1st to the 10th, the month just
+// closed when it has sessions on 7 days or more, unless a card was made this month.
+{
+  const day = (d, g) => ({ id: `s${d}-${g}`, at: Date.UTC(2026, 8, d, 12), grams: g, version: 2, project: "", usd: null, model: "", tokens: null });
+  const september = [1, 2, 3, 4, 5, 6, 7].map((d) => day(d, 1000));
+  const october3 = new Date(2026, 9, 3, 9).getTime();
+  check("card nudge: the closed month", JSON.stringify(cardNudge(september, october3, null)), '{"month":8,"grams":7000}');
+  check("card nudge: other months left out", cardNudge([...september, { ...day(1, 500), at: Date.UTC(2026, 7, 20, 12) }], october3, null)?.grams, 7000);
+  check("card nudge: six days are not enough", cardNudge(september.slice(1), october3, null), null);
+  check("card nudge: two sessions on one day count one day", cardNudge([...september.slice(1), day(2, 300)], october3, null), null);
+  check("card nudge: a card made this month", cardNudge(september, october3, "2026-10\n"), null);
+  check("card nudge: a card made last month", cardNudge(september, october3, "2026-09")?.grams, 7000);
+  check("card nudge: after the 10th", cardNudge(september, new Date(2026, 9, 11, 9).getTime(), null), null);
+  check("card nudge: on the 10th", cardNudge(september, new Date(2026, 9, 10, 23).getTime(), null)?.month, 8);
+  check("card nudge: a later last day", cardNudge(september, new Date(2026, 9, 14, 9).getTime(), null, 15)?.month, 8);
+  const december = [1, 2, 3, 4, 5, 6, 7].map((d) => ({ ...day(d, 100), at: Date.UTC(2025, 11, d, 12) }));
+  check("card nudge: January closes December", cardNudge(december, new Date(2026, 0, 2, 9).getTime(), null)?.month, 11);
+  // A session begun at 23:30 UTC on the 31st is in August, as the card counts it, wherever
+  // the machine is
+  const lateAugust = { ...day(1, 9000), at: Date.UTC(2026, 7, 31, 23, 30) };
+  check("card nudge: the UTC date decides the month", cardNudge([...september, lateAugust], october3, null)?.grams, 7000);
+  check("card nudge: no last day, no hint", cardNudge(september, october3, null, 0), null);
 }
 check(
   "update text fr",
   updateText("1.12.6", "fr").replaceAll("\u00a0", " "),
-  "Version 1.12.6 disponible : demandez à Claude de lancer « claude plugin update claude-carbon@claude-carbon », puis redémarrez.",
+  "Version 1.12.6 disponible : tapez /carbon-update, puis redémarrez.",
 );
 check(
   "update text en",
   updateText("1.12.6", "en"),
-  'Version 1.12.6 is out: ask Claude to run "claude plugin update claude-carbon@claude-carbon", then restart.',
+  'Version 1.12.6 is out: type /carbon-update, then restart.',
 );
 check("update text: no em dash", /\u2014/.test(updateText("1.12.6", "fr") + updateText("1.12.6", "en")), false);
 check("path at the root", historyPath({ db: "/carbon.db" }), "/sessions-history.tsv");

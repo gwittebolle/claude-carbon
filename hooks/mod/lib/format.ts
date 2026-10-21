@@ -160,18 +160,33 @@ export function formatUsd(usd: number, lang: Lang): string {
 
 // The entry pinned under the prompt. The surface already heads it with the plugin's name.
 // The cost is left out when there is none to show (no price list read), never shown as 0.
-// The quota, when there is one, ends it.
+// What the status line ends with follows, in its order: the quota, then the hints.
 export function sessionLine(
   sessionGrams: number,
   lang: Lang,
   sessionUsd: number | null = null,
-  quota: string | null = null,
+  ...after: (string | null)[]
 ): string {
   const fr = lang === "fr";
   const head = fr ? `Cette session${NBSP}:` : "This session:";
   const total = `${head} ${formatGrams(sessionGrams, lang)}`;
   const cost = sessionUsd !== null && sessionUsd > 0 ? formatUsd(sessionUsd, lang) : null;
-  return [total, cost, quota].filter((part) => part !== null).join(" · ");
+  return [total, cost, ...after].filter((part) => part !== null).join(" · ");
+}
+
+// The status line's two hints, for the entry: a newer release, and from the 1st to the
+// 10th the month just closed with its total
+export function updateHint(version: string): string {
+  return `⬆ ${version} ${UPDATE_COMMAND}`;
+}
+
+const MONTH_NAMES_FR = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+const MONTH_NAMES_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+export function cardHint(month: number, grams: number, lang: Lang): string {
+  const fr = lang === "fr";
+  const name = (fr ? MONTH_NAMES_FR : MONTH_NAMES_EN)[month] ?? "";
+  return `📊 ${name}${fr ? `${NBSP}:` : ":"} ${formatGrams(grams, lang)} · /carbon-card`;
 }
 
 export type RateLimit = { kind: string; percentUsed: number; resetsAt?: string };
@@ -520,11 +535,12 @@ export function repoLabel(lang: Lang): string {
 }
 
 // A newer release, at the top of the foot: what to ask Claude, the plugin command
-export const UPDATE_COMMAND = "claude plugin update claude-carbon@claude-carbon";
+// The one command for every install: the skill updates the plugin, the clone, or both
+export const UPDATE_COMMAND = "/carbon-update";
 export function updateText(version: string, lang: Lang): string {
   return lang === "fr"
-    ? `Version ${version} disponible${NBSP}: demandez à Claude de lancer «${NBSP}${UPDATE_COMMAND}${NBSP}», puis redémarrez.`
-    : `Version ${version} is out: ask Claude to run "${UPDATE_COMMAND}", then restart.`;
+    ? `Version ${version} disponible${NBSP}: tapez ${UPDATE_COMMAND}, puis redémarrez.`
+    : `Version ${version} is out: type ${UPDATE_COMMAND}, then restart.`;
 }
 
 // The foot's two credit lines, a label and a colon each, the link after it

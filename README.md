@@ -112,7 +112,7 @@ Accurate on every plan, including Max 20x.
 
 - `/carbon-report` - text report with totals, a car equivalent, this year's share of a 2 t per-person budget, top sessions
 - `/carbon-card` - generate shareable PNG report cards (drawn with the Chrome or Edge already on your machine, see [Dependencies](#dependencies); without one the card opens in your browser)
-- `/carbon-update` - update to the latest version and re-price history (see [Updating](#updating))
+- `/carbon-update` - update to the latest version, whichever way you installed (see [Updating](#updating))
 
 ## Example report
 
@@ -330,7 +330,7 @@ Sessions recorded since September 2026 are re-derived model by model, exactly. O
 | `/carbon-card`   | Generate shareable PNG report cards                 |
 | `/carbon-badge`  | Shields.io badge of your total footprint for your READMEs |
 | `/carbon-pr`     | Post the dev footprint of the current branch on its PR |
-| `/carbon-update` | Update to the latest version and re-price history   |
+| `/carbon-update` | Update to the latest version, whichever way you installed |
 
 <details>
 <summary>Scripts (run automatically, rarely needed manually)</summary>
@@ -378,7 +378,7 @@ The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/
 - **Terminal**, including the integrated terminal of an editor and the JetBrains plugin: at the right end of the line that closes each answer, `✻ Worked for 38s · done 10:32 PM          16 gCO₂`. A line keeps its own answer's figure when it is drawn again (a resize, a scroll, ctrl+o); a line drawn for the first time later, such as one only ctrl+o shows, gets no figure.
 - **Desktop app, Code tab**: a line under the answer, only for an unusual answer.
 - **An unusual answer** shows the ratio, and the subagents' share when they weighed on it: `230 gCO₂ · 14× your median`. An answer is unusual when it is above the 97th percentile of your last 200 answers, over 3× their median and at least 10 g, which is about one answer in 27; none is flagged before 50 answers are recorded.
-- **The session total** is pinned under the prompt, CO2 and API-price cost: `This session: 142 gCO₂ · $3.41`, in French `Cette session : 142 gCO₂ · 3,41 $`. It shows unless the claude-carbon status line already gives it or the `showSessionTotal` option is off (both in a terminal only, see [ccstatusline](#using-with-ccstatusline)). The cost is the pay-as-you-go API list price of the same requests as the CO2, from `data/prices.json` with the formula of `/carbon-report`, cache writes at the 1-hour tier Claude Code uses; under a cent it reads `< $0.01`, and it is left out when the price list cannot be read, then until the total starts over, so the cost never covers only part of the requests. It is what the usage would cost on the API, not what a subscription bills. On a subscription the entry ends with the 5-hour quota as the status line shows it, `Use 23% ↻14:00` (`Usage 23 % ↻14:00`): the share of the window used and the local time it resets, read from Claude Code itself after each answer, with no network call. Background subagents, which is how Claude Code starts most of them, count in the session total only: never in an answer, nor in your median. A foreground subagent counts in the answer that started it, not in the next one.
+- **The session total** is pinned under the prompt, CO2 and API-price cost: `This session: 142 gCO₂ · $3.41`, in French `Cette session : 142 gCO₂ · 3,41 $`. It shows unless the claude-carbon status line already gives it or the `showSessionTotal` option is off (both in a terminal only, see [ccstatusline](#using-with-ccstatusline)). The cost is the pay-as-you-go API list price of the same requests as the CO2, from `data/prices.json` with the formula of `/carbon-report`, cache writes at the 1-hour tier Claude Code uses; under a cent it reads `< $0.01`, and it is left out when the price list cannot be read, then until the total starts over, so the cost never covers only part of the requests. It is what the usage would cost on the API, not what a subscription bills. On a subscription the entry ends with the 5-hour quota as the status line shows it, `Use 23% ↻14:00` (`Usage 23 % ↻14:00`): the share of the window used and the local time it resets, read from Claude Code itself after each answer, with no network call. Then come the status line's two hints: `⬆ 1.18.0 /carbon-update` when a newer version is out, and from the 1st to the 10th of the month the month just closed with its total, `📊 September: 84.2 kgCO₂ · /carbon-card`, until you make the card. Background subagents, which is how Claude Code starts most of them, count in the session total only: never in an answer, nor in your median. A foreground subagent counts in the answer that started it, not in the next one.
 - **`/carbon-panel` opens a pane** with the mascot, a pixel CO2 molecule. Its colour compares this session with the median of your past sessions, from dark blue (under an eighth of it) to dark red (over eight times it). Until 10 sessions are recorded it compares with a starting reference of 0.5 kgCO₂ instead, so it has a colour from the first answer. It hops a pixel up and down while Claude works, faster as it gets redder, and pulls faces as it goes: it looks around before the first answer, blinks and glances aside at work, smiles through a light session and sweats through a heavy one, reacts to each answer, winks at rest, and falls asleep after five minutes without a turn.
 
   <p align="center"><img src="docs/molecule-moods.svg" width="560" alt="The molecule's eight moods: it looks around before the first answer, glances aside at work, smiles through a light session, sweats through a heavy one, smiles or startles after an answer, winks at rest and falls asleep after five idle minutes"></p>
@@ -402,7 +402,7 @@ The curl, PowerShell and npm installers set up the status line, the database and
 
 To turn it off, run `claude plugin disable claude-carbon@skills-dir`. To remove it, run the installer with `CLAUDE_CARBON_NO_MOD=1` on the `bash` side (`curl … | CLAUDE_CARBON_NO_MOD=1 bash`); keep the variable set, in your shell or in the `env` block of `settings.json`, or the next `/carbon-update` puts it back. The installer leaves alone a `skills/claude-carbon/` folder it did not make, and skips the copy while the claude-carbon plugin is enabled. Pick one of the two: the plugin added on top of an installer runs the hooks twice.
 
-Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, starts no process, makes no network call and never changes what Claude does; besides its own data files, it reads only `sessions-history.tsv` and `plugin-update-check.json`. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then French.
+Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, starts no process, makes no network call and never changes what Claude does; besides its own data files, it reads only `sessions-history.tsv`, the two release flags of the daily check (`plugin-update-check.json`, `update-check.json`) and `last-card-month`. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then French.
 
 The mod's own tests run with `bash tests/run-mod-kit.sh`, under `claude plugin test`, which mocks the engine: no login needed. CI runs them on every push with Claude Code 2.1.296.
 
@@ -455,20 +455,19 @@ The methodology is pinned by golden test vectors in [`tests/methodology-vectors.
 When a newer version is available, the status line shows a discreet `⬆ /carbon-update` hint. The check runs in the background (at most once a day, never on the status line's hot path); opt out with `CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1`.
 
 - **In a terminal with a git-clone install**, that hint appears at the end of the status line, naming the new version.
-- **Installed from the plugin marketplace** (the terminal or the desktop app): the hint is in the `/carbon-panel` pane, at the top of its foot, with the command to ask Claude to run, `claude plugin update claude-carbon@claude-carbon`, then restart. The same daily background check asks GitHub for the release tags only and never touches Claude Code's plugin cache.
-- **In the desktop app with a git-clone install** there is no status line, so no hint: type `/carbon-update` in the Code tab now and then, or ask Claude to update claude-carbon.
+- **Everywhere the mod runs** (the desktop app, and a terminal without the claude-carbon status line), the same hint ends the session entry under the prompt, and the `/carbon-panel` pane names the version at the top of its foot. For a plugin install, the same daily background check asks GitHub for the release tags only and never touches Claude Code's plugin cache.
 - **Installed before the summer of 2026** (version 1.0, no hint at all)? Run the install again, from the app or the terminal, as in [Install](#install).
 
-To update, run `/carbon-update` in Claude Code, or re-run the installer:
+To update, run `/carbon-update` in Claude Code, whichever way you installed: for the plugin it runs Claude Code's `claude plugin marketplace update claude-carbon` and `claude plugin update claude-carbon@claude-carbon`, for the installer's clone its own updater. Restart Claude Code afterwards. With both installs, as when the status line runs from a clone, only the plugin is updated and the command gives the `git pull` for the clone. You can also re-run the installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
 ```
 
-- Updating re-prices your stored history with the new factors automatically (CO2 only; cost figures are left intact). Run `scripts/recompute.sh --with-cost` yourself only after a price change.
+- Updating an installer's clone re-prices your stored history with the new factors automatically (CO2 only; cost figures are left intact); updating the plugin does not. Run `scripts/recompute.sh --with-cost` yourself only after a price change.
 - If you edited `data/factors.json` or `data/prices.json` locally, the update keeps your edits; on a conflict with upstream it saves yours to `*.local.bak` and tells you.
 - The update also refreshes the [mod](#the-mod-carbon-panel-and-the-co2-of-each-answer)'s copy. When it asks for a restart (on Windows, a copy in use cannot be replaced), restart Claude Code and run it again; until then the previous copy stays.
-- Installed via the plugin marketplace? Update with Claude Code's built-in `/plugin update` instead.
+- Installed from the plugin marketplace, you can also let Claude Code update it by itself: in `/plugin`, tab **Marketplaces**, select `claude-carbon`, then **Enable auto-update**. The new version loads with the next session.
 
 ## Dependencies
 
