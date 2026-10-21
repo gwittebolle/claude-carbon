@@ -73,11 +73,16 @@ hook_count()    { jq -r --arg e "$2" '[.hooks[$e][]?.hooks[]?.command] | length'
 # forward slashes because Git Bash eats unquoted backslashes. cc_native_path is the
 # identity function on macOS and Linux, so these expectations are unchanged there.
 CMD_BASE="$(cc_native_path "$REPO_DIR")"
-STATUSLINE="${CMD_BASE}/scripts/statusline.sh"
-STOP="${CMD_BASE}/scripts/persist-session.sh"
-RESCAN="${CMD_BASE}/scripts/safety-rescan.sh"
-SESSIONEND="${CMD_BASE}/scripts/persist-on-exit.sh"
-AGENTSTOP="${CMD_BASE}/scripts/agent-stop.sh"
+# On Windows the paths are also quoted, so that a PowerShell fallback prints them rather
+# than opening the .sh in a Git Bash window (see configure-settings.sh).
+hook_form() { if cc_is_windows; then printf '"%s"' "$1"; else printf '%s' "$1"; fi; }
+STATUSLINE="$(hook_form "${CMD_BASE}/scripts/statusline.sh")"
+# The file itself, for the tests that run it
+SL_SCRIPT="${REPO_DIR}/scripts/statusline.sh"
+STOP="$(hook_form "${CMD_BASE}/scripts/persist-session.sh")"
+RESCAN="$(hook_form "${CMD_BASE}/scripts/safety-rescan.sh")"
+SESSIONEND="$(hook_form "${CMD_BASE}/scripts/persist-on-exit.sh")"
+AGENTSTOP="$(hook_form "${CMD_BASE}/scripts/agent-stop.sh")"
 
 # ---------------------------------------------------------------- 1. cold start
 
@@ -113,15 +118,12 @@ check "cold start: /carbon-* commands installed" "" "$MISSING"
 # our Stop hook, no SessionStart at all.
 CFG="${TMPROOT}/legacy"
 mkdir -p "$CFG"
-cat > "${CFG}/settings.json" <<EOF
-{
-  "model": "opus",
-  "statusLine": {"type": "command", "command": "${STATUSLINE}"},
-  "hooks": {
-    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "${STOP}"}]}]
-  }
-}
-EOF
+# Through jq, not a here-doc: on Windows the commands carry double quotes of their own.
+jq -n --arg sl "$STATUSLINE" --arg stop "$STOP" '{
+  model: "opus",
+  statusLine: {type: "command", command: $sl},
+  hooks: {Stop: [{matcher: "", hooks: [{type: "command", command: $stop}]}]}
+}' > "${CFG}/settings.json"
 CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
 S="${CFG}/settings.json"
 
@@ -171,13 +173,16 @@ check "idempotent: foreign hook still there" "1" "$(jq -r '[.hooks.SessionStart[
 CFG="${TMPROOT}/spelling"
 mkdir -p "$CFG"
 STOP_DOTTED="${REPO_DIR}/./scripts/persist-session.sh"
-RESCAN_ALT="$RESCAN"
+# Bare, so the here-doc below stays valid JSON where $RESCAN is quoted (Windows)
+RESCAN_ALT="${CMD_BASE}/scripts/safety-rescan.sh"
 # SC2088: the literal tilde is the point — this builds the unexpanded spelling a user would
 # have hand-written, to prove configure-settings.sh recognizes it as the same hook.
 # shellcheck disable=SC2088
 case "$REPO_DIR" in
   "${HOME}"/*) RESCAN_ALT="~/${REPO_DIR#"${HOME}"/}/scripts/safety-rescan.sh" ;;
 esac
+# A here-doc, not jq --arg: Git Bash rewrites a POSIX path handed to the native jq.exe
+# ("/d/a/x/./scripts" becomes "D:/a/x/scripts"), which would erase the spelling under test.
 cat > "${CFG}/settings.json" <<EOF
 {
   "hooks": {
@@ -192,6 +197,24 @@ S="${CFG}/settings.json"
 check "spelling: /./ form not duplicated"   "1" "$(hook_count "$S" Stop)"
 check "spelling: tilde form not duplicated" "1" "$(hook_count "$S" SessionStart)"
 check "spelling: original left as written"  "$STOP_DOTTED" "$(hook_commands "$S" Stop)"
+
+# Quoted and bare are the same hook: a Windows install from before the quotes, or a
+# settings.json copied between machines, must not end up with both.
+CFG="${TMPROOT}/quoted"
+mkdir -p "$CFG"
+cat > "${CFG}/settings.json" <<EOF
+{
+  "hooks": {
+    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "\"${CMD_BASE}/scripts/persist-session.sh\""}]}],
+    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "${CMD_BASE}/scripts/safety-rescan.sh"}]}]
+  }
+}
+EOF
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+S="${CFG}/settings.json"
+
+check "spelling: quoted form not duplicated" "1" "$(hook_count "$S" Stop)"
+check "spelling: bare form not duplicated"   "1" "$(hook_count "$S" SessionStart)"
 
 # ---------------------------------------------------------------- 6. marketplace guard
 
@@ -232,7 +255,7 @@ EOF
     UPD_OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "${CLONE}/scripts/update.sh" 2>&1)"
     # configure-settings.sh writes the hook in native spelling (C:/... on Windows,
     # see CMD_BASE above), so the expectation has to be spelled the same way.
-    check "update repairs SessionStart" "$(cc_native_path "$CLONE")/scripts/safety-rescan.sh" "$(hook_commands "${CFG}/settings.json" SessionStart)"
+    check "update repairs SessionStart" "$(hook_form "$(cc_native_path "$CLONE")/scripts/safety-rescan.sh")" "$(hook_commands "${CFG}/settings.json" SessionStart)"
     check "update keeps Stop single"    "1" "$(hook_count "${CFG}/settings.json" Stop)"
     # update.sh hides the settings chatter but not the mod's lines, which may ask for a restart.
     check "update installs the mod" "yes" "$([ -f "${CFG}/skills/claude-carbon/.claude-carbon-managed" ] && echo yes || echo no)"
@@ -273,7 +296,7 @@ cp "${REPO_DIR}/data/prices.json" "${CACHE_DATA}/prices.json"
 # drift_shown: "yes" when the statusline prints the drift segment for the current cache.
 drift_shown() {
   if echo '{}' | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_NO_CARD_NUDGE=1 CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 \
-       bash "$STATUSLINE" 2>/dev/null | grep -q "install drift"; then echo yes; else echo no; fi
+       bash "$SL_SCRIPT" 2>/dev/null | grep -q "install drift"; then echo yes; else echo no; fi
 }
 
 cp "${REPO_DIR}/data/factors.json" "${CACHE_DATA}/factors.json"
@@ -328,7 +351,7 @@ else
   nudge_line() {
     echo '{}' | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="${CFG}/claude-carbon/carbon.db" \
       CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 CLAUDE_CARBON_NO_DRIFT_CHECK=1 \
-      bash "$STATUSLINE" 2>/dev/null | grep -o '📊 .*' || true
+      bash "$SL_SCRIPT" 2>/dev/null | grep -o '📊 .*' || true
   }
 
   CFG="${TMPROOT}/nudge"
@@ -374,7 +397,7 @@ sqlite3 "$SL_DB" "INSERT INTO sessions (session_id, project, model, co2_grams, c
 # A 200k context window on Opus factors is ~16 g; the stored session total is 26.3 kg.
 sl_co2() {
   printf '{"session_id":"%s","model":{"id":"%s","display_name":"M"},"context_window":{"total_input_tokens":200000,"total_output_tokens":0,"used_percentage":20},"cost":{"total_cost_usd":1342.13},"workspace":{"current_dir":"/tmp/p"}}' "$1" "${2:-claude-opus-5}" \
-    | TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+    | TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$SL_SCRIPT" --segment 2>/dev/null | sed -E 's/.*· //'
 }
 
 check "statusline: cumulative total from the DB, not the context window" "26.3kgCO₂" "$(sl_co2 sess-known)"
@@ -389,7 +412,7 @@ SL_TRANSCRIPT="${TMPROOT}/statusline/sess-first.jsonl"
 printf '%s\n' '{"type":"assistant","requestId":"r1","timestamp":"2026-10-13T13:53:55Z","message":{"id":"m1","model":"claude-opus-5-5","usage":{"input_tokens":2,"cache_creation_input_tokens":50784,"cache_creation":{"ephemeral_1h_input_tokens":50784},"cache_read_input_tokens":29416,"output_tokens":113}}}' > "$SL_TRANSCRIPT"
 sl_first() {
   printf '{"session_id":"sess-first","transcript_path":"%s","model":{"id":"claude-opus-5-5","display_name":"M"},"context_window":{"total_input_tokens":80202,"total_output_tokens":113,"used_percentage":8},"cost":{"total_cost_usd":0.41},"workspace":{"current_dir":"/tmp/p"}}' "$1" \
-    | TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+    | TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$SL_SCRIPT" --segment 2>/dev/null | sed -E 's/.*· //'
 }
 check "statusline: first turn takes the transcript, as the Stop hook will" "4gCO₂" "$(sl_first "$SL_TRANSCRIPT")"
 check "statusline: first turn, transcript gone, falls back to the window"  "6gCO₂" "$(sl_first "${TMPROOT}/statusline/none.jsonl")"
@@ -402,7 +425,7 @@ printf '#!/usr/bin/env bash\ncase "$*" in *"--arg main"*) echo x >> "%s" ;; esac
 chmod +x "${SL_SHIM}/jq"
 sl_tx() {
   printf '{"session_id":"%s","transcript_path":"%s","model":{"id":"claude-opus-5-5","display_name":"M"},"context_window":{"total_input_tokens":80202,"total_output_tokens":113,"used_percentage":8},"cost":{"total_cost_usd":0.41},"workspace":{"current_dir":"/tmp/p"}}' "$1" "$2" \
-    | PATH="${SL_SHIM}:$PATH" TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$STATUSLINE" --segment 2>/dev/null | sed -E 's/.*· //'
+    | PATH="${SL_SHIM}:$PATH" TMPDIR="$TMPROOT" CLAUDE_CONFIG_DIR="${TMPROOT}/statusline/cfg" CLAUDE_CARBON_DB="$SL_DB" bash "$SL_SCRIPT" --segment 2>/dev/null | sed -E 's/.*· //'
 }
 passes() { wc -l < "${TMPROOT}/statusline/passes" | tr -d ' '; }
 SL_X="sess-excluded-claude-$$"

@@ -8,8 +8,9 @@
     claude-carbon itself is bash, and stays bash on Windows: Claude Code spawns the
     bash.exe from Git for Windows to run hooks and the status line, so the plugin
     has to speak the same shell its host does. This script only does the part
-    PowerShell is needed for - finding that bash.exe, checking the two commands Git
-    for Windows does not ship - and then hands over to install.sh.
+    PowerShell is needed for - finding that bash.exe, installing with winget the two
+    commands Git for Windows does not ship when they are missing - and then hands
+    over to install.sh.
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -82,15 +83,53 @@ function Merge-RegistryPath {
 }
 Merge-RegistryPath
 
-$missing = @()
-foreach ($dep in @(
+$deps = @(
     @{ Name = 'jq';      Package = 'jqlang.jq' },
     @{ Name = 'sqlite3'; Package = 'SQLite.SQLite' }
-)) {
-    # Resolved through Git Bash, not PowerShell: that is the PATH the plugin will
-    # actually run under, and it includes the Git usr\bin directory.
-    & $bash -lc "command -v $($dep.Name)" *> $null
-    if ($LASTEXITCODE -ne 0) { $missing += $dep } else { Write-Host "  $($dep.Name): OK" }
+)
+
+function Find-Missing {
+    $absent = @()
+    foreach ($dep in $deps) {
+        # Resolved through Git Bash, not PowerShell: that is the PATH the plugin will
+        # actually run under, and it includes the Git usr\bin directory.
+        & $bash -lc "command -v $($dep.Name)" *> $null
+        if ($LASTEXITCODE -ne 0) { $absent += $dep }
+    }
+    return ,$absent
+}
+
+$missing = Find-Missing
+
+# Both are winget "portable" packages: unpacked under the user's profile, no
+# administrator prompt, so the installer fetches them itself, as install.sh does
+# for jq on a Mac. `--source winget`: see the error message below.
+# Its exit code is kept for the message below; whether the command is now found is
+# what decides, since winget also exits non-zero for a package already installed.
+$wingetExit = @{}
+if ($missing.Count -gt 0 -and (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
+    foreach ($dep in $missing) {
+        Write-Host "  $($dep.Name): installing $($dep.Package) with winget..."
+        # Windows PowerShell 5.1 turns each stderr line of a redirected native command
+        # into an error, which 'Stop' would make fatal before the fallback message.
+        $ErrorActionPreference = 'Continue'
+        try {
+            winget install --id $dep.Package --exact --source winget `
+                --accept-package-agreements --accept-source-agreements --disable-interactivity *> $null
+            $wingetExit[$dep.Name] = $LASTEXITCODE
+        } catch {
+            $wingetExit[$dep.Name] = 'error'
+        } finally {
+            $ErrorActionPreference = 'Stop'
+        }
+    }
+    Merge-RegistryPath
+    $missing = Find-Missing
+}
+
+$missingNames = @($missing | ForEach-Object { $_.Name })
+foreach ($dep in $deps) {
+    if ($missingNames -notcontains $dep.Name) { Write-Host "  $($dep.Name): OK" }
 }
 
 if ($missing.Count -gt 0) {
@@ -100,6 +139,9 @@ if ($missing.Count -gt 0) {
     # and when that one is unreachable (a TLS-inspecting proxy, a locked-down
     # Store) it aborts the whole install with exit code 94 instead of falling back.
     foreach ($dep in $missing) {
+        if ($wingetExit.ContainsKey($dep.Name)) {
+            Write-Host "  $($dep.Name) - winget could not install it (exit $($wingetExit[$dep.Name]))."
+        }
         Write-Host "  $($dep.Name) - install with:  winget install $($dep.Package) --source winget"
     }
     Write-Host ''

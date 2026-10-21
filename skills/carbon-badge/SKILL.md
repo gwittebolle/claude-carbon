@@ -25,7 +25,9 @@ if ! command -v jq >/dev/null 2>&1 && [ -x "$CFG/claude-carbon/bin/jq" ]; then P
 REPO_DIR=""
 if command -v jq >/dev/null 2>&1 && [ -f "$CFG/settings.json" ]; then
   SL_CMD="$(jq -r '.statusLine.command // empty' "$CFG/settings.json" 2>/dev/null)"
-  # statusLine.command stores a shell-escaped path: expand ~ and unescape spaces
+  # statusLine.command stores a path, shell-escaped, or in double quotes on Windows:
+  # unquote, expand ~ and unescape spaces
+  SL_CMD="${SL_CMD#\"}"; SL_CMD="${SL_CMD%\"}"
   SL_CMD="${SL_CMD//\\ / }"; SL_CMD="${SL_CMD/#\~/$HOME}"; SL_CMD="$(ccp "$SL_CMD")"
   [ -n "$SL_CMD" ] && [ -f "$SL_CMD" ] && REPO_DIR="$(cd "$(dirname "$SL_CMD")/.." 2>/dev/null && pwd)"
 fi

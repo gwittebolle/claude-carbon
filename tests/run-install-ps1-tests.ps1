@@ -124,6 +124,28 @@ if ($mergeMatch.Success) {
     }
 }
 
+# -- 3b. Which dependencies are missing ---------------------------------------
+# What the installer hands to winget: only the commands Git Bash cannot find, and
+# always as a list, even of one, so that .Count and the loop over it hold.
+Write-Host ""
+Write-Host "missing dependencies"
+
+$missingMatch = [regex]::Match($source, '(?ms)^function Find-Missing \{.*?^\}')
+Assert-Equal "Find-Missing extracted from install.ps1" $true $missingMatch.Success
+if ($missingMatch.Success -and $bash) {
+    Invoke-Expression $missingMatch.Value
+    $deps = @(
+        @{ Name = 'bash';                       Package = 'none' },
+        @{ Name = 'claude-carbon-no-such-cmd';  Package = 'Example.Absent' }
+    )
+    $found = Find-Missing
+    Assert-Equal "one dependency reported missing"  1 $found.Count
+    Assert-Equal "the absent one"  'claude-carbon-no-such-cmd' $found[0].Name
+
+    $deps = @(@{ Name = 'bash'; Package = 'none' })
+    Assert-Equal "nothing missing: an empty list"  0 (Find-Missing).Count
+}
+
 # -- 4. End to end against a stubbed installer --------------------------------
 Write-Host ""
 Write-Host "handover to install.sh"

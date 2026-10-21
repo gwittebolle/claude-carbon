@@ -25,7 +25,9 @@ JQ_DIR="$(ccp "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")/claude-carbon/bin"
 if ! command -v jq >/dev/null 2>&1 && [ -x "$JQ_DIR/jq" ]; then PATH="$JQ_DIR:$PATH"; fi
 if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS" ]; then
   SL_CMD="$(jq -r '.statusLine.command // empty' "$SETTINGS" 2>/dev/null)"
-  # statusLine.command stores a shell-escaped path: expand ~ and unescape spaces
+  # statusLine.command stores a path, shell-escaped, or in double quotes on Windows:
+  # unquote, expand ~ and unescape spaces
+  SL_CMD="${SL_CMD#\"}"; SL_CMD="${SL_CMD%\"}"
   SL_CMD="${SL_CMD//\\ / }"; SL_CMD="${SL_CMD/#\~/$HOME}"; SL_CMD="$(ccp "$SL_CMD")"
   if [ -n "$SL_CMD" ] && [ -f "$SL_CMD" ]; then
     REPO_DIR="$(cd "$(dirname "$SL_CMD")/.." 2>/dev/null && pwd)"

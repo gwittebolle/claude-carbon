@@ -319,6 +319,16 @@ for spec in ".claude-plugin/plugin.json" "hooks/hooks.json"; do
   if [ -z "$UNQUOTED" ]; then ok "${spec}: placeholders quoted"; else bad "${spec}: placeholders quoted" "$UNQUOTED"; fi
 done
 
+# Started with a terminal for stdin, a hook has no JSON coming: the Git Bash window Windows
+# opens when Claude Code fell back to PowerShell. Each script must leave rather than wait.
+for s in statusline.sh persist-session.sh persist-on-exit.sh safety-rescan.sh agent-stop.sh; do
+  if grep -q '^\[ -t 0 \] && exit 0$' "${REPO_DIR}/scripts/${s}"; then
+    ok "${s}: leaves when stdin is a terminal"
+  else
+    bad "${s}: leaves when stdin is a terminal" "no '[ -t 0 ] && exit 0' line"
+  fi
+done
+
 # ── 7. Where the cards go, and how they are shown ────────────────────────────
 # cc_downloads_dir consults a different authority per platform; each branch is
 # exercised with the platform forced and the authority faked on PATH. cc_reveal
