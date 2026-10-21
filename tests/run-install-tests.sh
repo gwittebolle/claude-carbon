@@ -173,19 +173,24 @@ check "idempotent: foreign hook still there" "1" "$(jq -r '[.hooks.SessionStart[
 CFG="${TMPROOT}/spelling"
 mkdir -p "$CFG"
 STOP_DOTTED="${REPO_DIR}/./scripts/persist-session.sh"
-RESCAN_ALT="$RESCAN"
+# Bare, so the here-doc below stays valid JSON where $RESCAN is quoted (Windows)
+RESCAN_ALT="${CMD_BASE}/scripts/safety-rescan.sh"
 # SC2088: the literal tilde is the point — this builds the unexpanded spelling a user would
 # have hand-written, to prove configure-settings.sh recognizes it as the same hook.
 # shellcheck disable=SC2088
 case "$REPO_DIR" in
   "${HOME}"/*) RESCAN_ALT="~/${REPO_DIR#"${HOME}"/}/scripts/safety-rescan.sh" ;;
 esac
-jq -n --arg stop "$STOP_DOTTED" --arg start "$RESCAN_ALT" '{
-  hooks: {
-    Stop: [{matcher: "", hooks: [{type: "command", command: $stop}]}],
-    SessionStart: [{matcher: "", hooks: [{type: "command", command: $start}]}]
+# A here-doc, not jq --arg: Git Bash rewrites a POSIX path handed to the native jq.exe
+# ("/d/a/x/./scripts" becomes "D:/a/x/scripts"), which would erase the spelling under test.
+cat > "${CFG}/settings.json" <<EOF
+{
+  "hooks": {
+    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "${STOP_DOTTED}"}]}],
+    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "${RESCAN_ALT}"}]}]
   }
-}' > "${CFG}/settings.json"
+}
+EOF
 CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
 S="${CFG}/settings.json"
 
