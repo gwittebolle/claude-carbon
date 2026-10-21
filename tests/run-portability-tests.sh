@@ -347,6 +347,8 @@ downloads() ( # downloads <os> [extra PATH dir]
   CC_CYGPATH=""
   HOME="$FAKE_HOME"
   PATH="${2:-/nonexistent}:/usr/bin:/bin"
+  # A registry tree of the test's own, empty unless a case fills it
+  CC_REGISTRY_ROOT="${FAKE_REGISTRY:-/nonexistent}"
   cc_downloads_dir
 )
 
@@ -363,14 +365,36 @@ is "linux: xdg-user-dir answering HOME is treated as unset" "${FAKE_HOME}/Downlo
 # reg.exe output as Git Bash sees it: the known-folder GUID, the type, an
 # unexpanded %USERPROFILE%, a trailing CR. OneDrive redirection is the reason to
 # read the registry at all, so the fake answers with a redirected path.
+# The profile is a folder of the test's own, so that the folders the registry names exist
+# (only an existing one is taken).
+PROFILE="${FAKE_HOME}/profile"
+mkdir -p "${PROFILE}/OneDrive/Downloads" "${PROFILE}/Documents/Téléchargements"
 cat > "${FAKE_BIN}/reg" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\r\n' '' 'HKEY_CURRENT_USER\Software\...' '    {374DE290-123F-4565-9164-39C4925E467B}    REG_EXPAND_SZ    %USERPROFILE%\OneDrive\Downloads' ''
 EOF
 chmod +x "${FAKE_BIN}/reg"
-is "windows: registry known folder, %USERPROFILE% expanded, converted" \
-   "/c/Users/me/OneDrive/Downloads" \
-   "$(USERPROFILE='C:\Users\me' downloads windows "$FAKE_BIN")"
+is "windows: reg.exe known folder, %USERPROFILE% expanded, converted" \
+   "${PROFILE}/OneDrive/Downloads" \
+   "$(USERPROFILE="$PROFILE" downloads windows "$FAKE_BIN")"
+
+# The runtime's /proc/registry first: a value file, NUL-terminated, in the shell's encoding.
+# A French Windows with Downloads moved under Documents (2026-10-21).
+REGISTRY_DIR="${FAKE_HOME}/registry"
+KNOWN="${REGISTRY_DIR}/HKEY_CURRENT_USER/Software/Microsoft/Windows/CurrentVersion/Explorer/User Shell Folders"
+mkdir -p "$KNOWN"
+printf '%s\0' '%USERPROFILE%\Documents\Téléchargements' > "${KNOWN}/{374DE290-123F-4565-9164-39C4925E467B}"
+is "windows: /proc/registry wins, accents kept" \
+   "${PROFILE}/Documents/Téléchargements" \
+   "$(FAKE_REGISTRY="$REGISTRY_DIR" USERPROFILE="$PROFILE" downloads windows "$FAKE_BIN")"
+
+# reg.exe's console code page turns é into a byte that is not UTF-8: that folder does not
+# exist, so it is neither taken nor created
+printf '#!/usr/bin/env bash\nprintf "    {374DE290-123F-4565-9164-39C4925E467B}    REG_EXPAND_SZ    %%%%USERPROFILE%%%%\\\\Documents\\\\T\\202l\\202chargements\\r\\n"\n' > "${FAKE_BIN}/reg"
+is "windows: a path read in the wrong encoding falls back to HOME/Downloads" \
+   "${FAKE_HOME}/Downloads" \
+   "$(USERPROFILE="$PROFILE" downloads windows "$FAKE_BIN")"
+is "windows: and no folder of that name is made" "1" "$(find "${PROFILE}/Documents" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
 
 printf '#!/usr/bin/env bash\nexit 1\n' > "${FAKE_BIN}/reg"
 is "windows: registry unavailable falls back to HOME/Downloads" "${FAKE_HOME}/Downloads" "$(downloads windows "$FAKE_BIN")"

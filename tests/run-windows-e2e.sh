@@ -262,6 +262,16 @@ check "the foreign hook survives" "1" \
 check "no quoted copy next to the bare one" "2" \
   "$(jq -r '[.hooks.SessionStart[]?.hooks[]?] | length' "${CFG3}/settings.json")"
 
+# ── 5b. The Downloads folder, from the real registry ─────────────────────────
+# The cards go there. The runtime's /proc/registry is read first, since reg.exe prints
+# in the console's code page and broke an accented folder name (2026-10-21).
+echo ""
+echo "the Downloads folder, from the real registry"
+
+REG_VALUE="/proc/registry/HKEY_CURRENT_USER/Software/Microsoft/Windows/CurrentVersion/Explorer/User Shell Folders/{374DE290-123F-4565-9164-39C4925E467B}"
+check "the known folder reads through /proc/registry" "yes" "$([ -r "$REG_VALUE" ] && echo yes || echo no)"
+check "cc_downloads_dir names a folder that exists" "yes" "$([ -d "$(cc_downloads_dir)" ] && echo yes || echo no)"
+
 # ── 6. Slash commands: copies, and refreshed on update ───────────────────────
 echo ""
 echo "slash commands are copied and stay current"

@@ -285,20 +285,22 @@ cc_downloads_dir() {
   local d=""
   case "$CC_OS" in
     windows)
-      # The Downloads known folder can be redirected (OneDrive does it), so ask
-      # the registry rather than assume %USERPROFILE%\Downloads. The value is a
-      # REG_EXPAND_SZ and comes back with its %VARS% unexpanded.
-      # Output: "    {374DE290-...}    REG_EXPAND_SZ    %USERPROFILE%\Downloads"
-      d="$(reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders' \
-             //v '{374DE290-123F-4565-9164-39C4925E467B}' 2>/dev/null \
-           | LC_ALL=C awk '/374DE290/ { sub(/^[ \t]*\{[^}]*\}[ \t]+REG_[A-Z_]+[ \t]+/, ""); sub(/[ \t\r]+$/, ""); print }' \
-           || true)"
-      local name
-      while [[ "$d" =~ %([A-Za-z_][A-Za-z0-9_]*)% ]]; do
-        name="${BASH_REMATCH[1]}"
-        d="${d//%${name}%/${!name:-}}"
-      done
-      d="$(cc_path "$d")"
+      # The Downloads known folder can be redirected (OneDrive does it, and so does
+      # moving it under Documents), so ask the registry rather than assume
+      # %USERPROFILE%\Downloads. The value is a REG_EXPAND_SZ, its %VARS% unexpanded.
+      # First through the runtime's /proc/registry, which hands it over in the shell's
+      # own encoding. reg.exe prints it in the console's code page: on a French Windows
+      # "Téléchargements" came back as "T?l?chargements", and the cards went to a new
+      # folder of that name (2026-10-21). Either way only a folder that exists is taken.
+      local value="${CC_REGISTRY_ROOT:-/proc/registry}/HKEY_CURRENT_USER/Software/Microsoft/Windows/CurrentVersion/Explorer/User Shell Folders/{374DE290-123F-4565-9164-39C4925E467B}"
+      [ -r "$value" ] && d="$(cc_existing_win_dir "$(tr -d '\000\r' < "$value")")"
+      if [ -z "$d" ]; then
+        # Output: "    {374DE290-...}    REG_EXPAND_SZ    %USERPROFILE%\Downloads"
+        d="$(cc_existing_win_dir "$(reg query 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders' \
+               //v '{374DE290-123F-4565-9164-39C4925E467B}' 2>/dev/null \
+             | LC_ALL=C awk '/374DE290/ { sub(/^[ \t]*\{[^}]*\}[ \t]+REG_[A-Z_]+[ \t]+/, ""); sub(/[ \t\r]+$/, ""); print }' \
+             || true)")"
+      fi
       ;;
     linux)
       if command -v xdg-user-dir >/dev/null 2>&1; then
@@ -311,6 +313,20 @@ cc_downloads_dir() {
   esac
   [ -n "$d" ] || d="$HOME/Downloads"
   printf '%s' "$d"
+}
+
+# cc_existing_win_dir <registry path>: the path with its %VARS% expanded, as bash opens
+# it, when that folder exists; nothing otherwise. A path read in the wrong encoding names
+# a folder that is not there, and is never created.
+cc_existing_win_dir() {
+  local d="${1:-}" name
+  [ -n "$d" ] || return 0
+  while [[ "$d" =~ %([A-Za-z_][A-Za-z0-9_]*)% ]]; do
+    name="${BASH_REMATCH[1]}"
+    d="${d//%${name}%/${!name:-}}"
+  done
+  d="$(cc_path "$d")"
+  if [ -d "$d" ]; then printf '%s' "$d"; fi
 }
 
 # cc_reveal <file> — show the file in the desktop file manager: Finder with the
