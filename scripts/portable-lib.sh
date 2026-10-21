@@ -422,14 +422,20 @@ CC_AGENTS_COLLECTED=2
 # was written after it (ended_at), so that the row holds it.
 CC_AGENT_USAGE_DDL="CREATE TABLE IF NOT EXISTS agent_usage (session_id TEXT NOT NULL, agent_id TEXT NOT NULL, repo TEXT NOT NULL, git_branch TEXT NOT NULL, worktree TEXT NOT NULL DEFAULT '', how TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0, co2_grams REAL DEFAULT 0, last_ts TEXT DEFAULT '', seen_at TEXT, PRIMARY KEY (session_id, agent_id, model));"
 CC_SESSION_MODELS_DDL="CREATE TABLE IF NOT EXISTS session_models (session_id TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cache_creation_1h_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0, co2_grams REAL DEFAULT 0, PRIMARY KEY (session_id, model));"
+# frozen = 1 marks a row nothing rewrites: no rebuild, no recompute, no Stop hook (a
+# resumed session). For figures already published; nothing in the tool sets it. Any value
+# but 0 counts: CC_NOT_FROZEN is the test every writer puts under its write lock.
+# shellcheck disable=SC2034 # read by the scripts that source this file
+CC_NOT_FROZEN="COALESCE(frozen, 0) = 0"
 cc_ensure_schema() {
   local db="$1" probe col
-  probe="$(cc_sql -cmd ".timeout 5000" "$db" "SELECT (SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name IN ('cache_read_tokens','cache_creation_tokens','methodology_version','excluded','git_branch','cache_creation_1h_tokens','output_context_sum','agents_collected')) || '|' || (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('session_models', 'agent_usage'));" 2>/dev/null)" || probe=""
-  [ "$probe" = "8|2" ] && return 0
+  probe="$(cc_sql -cmd ".timeout 5000" "$db" "SELECT (SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name IN ('cache_read_tokens','cache_creation_tokens','methodology_version','excluded','git_branch','cache_creation_1h_tokens','output_context_sum','agents_collected','frozen')) || '|' || (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('session_models', 'agent_usage'));" 2>/dev/null)" || probe=""
+  [ "$probe" = "9|2" ] && return 0
   for col in "cache_read_tokens INTEGER DEFAULT 0" "cache_creation_tokens INTEGER DEFAULT 0" \
              "methodology_version INTEGER DEFAULT 1" "excluded INTEGER DEFAULT 0" \
              "git_branch TEXT DEFAULT ''" "cache_creation_1h_tokens INTEGER DEFAULT 0" \
-             "output_context_sum INTEGER DEFAULT 0" "agents_collected INTEGER DEFAULT 0"; do
+             "output_context_sum INTEGER DEFAULT 0" "agents_collected INTEGER DEFAULT 0" \
+             "frozen INTEGER DEFAULT 0"; do
     sqlite3 -cmd ".timeout 5000" "$db" "ALTER TABLE sessions ADD COLUMN ${col};" >/dev/null 2>&1 || true
   done
   sqlite3 -cmd ".timeout 5000" "$db" "$CC_SESSION_MODELS_DDL $CC_AGENT_USAGE_DDL" >/dev/null 2>&1 || true

@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   source TEXT DEFAULT 'live',
   methodology_version INTEGER DEFAULT 1,
   excluded INTEGER DEFAULT 0,
-  git_branch TEXT DEFAULT ''
+  git_branch TEXT DEFAULT '',
+  frozen INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_year ON sessions(started_at);
 SQL

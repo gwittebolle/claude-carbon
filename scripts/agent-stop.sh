@@ -53,6 +53,8 @@ FACTORS_FILE="${SCRIPT_DIR}/../data/factors.json"
 PRICES_FILE="${SCRIPT_DIR}/../data/prices.json"
 DB_PATH="${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/claude-carbon/carbon.db}"; cc_path_vars DB_PATH
 [ -f "$DB_PATH" ] || exit 0
+# The frozen column below, on a database an update has not migrated yet
+cc_ensure_schema "$DB_PATH"
 
 INPUT="$(cat 2>/dev/null)" || exit 0
 command -v git >/dev/null 2>&1 || exit 0
@@ -237,9 +239,12 @@ EOF
 # about 10 s: the same 5 s timeout as the plugin's other writers, twice. A database busy
 # longer than that (a long read elsewhere) loses the record: the agent then counts with
 # its session.
+# Nothing for a frozen session: a resumed agent would move its share in /carbon-pr.
+FROZEN_SESSION="EXISTS (SELECT 1 FROM sessions WHERE session_id = '${SESSION_ID}' AND NOT (${CC_NOT_FROZEN}))"
+[ "$(sqlite3 -cmd ".timeout 5000" "$DB_PATH" "SELECT ${FROZEN_SESSION};" 2>/dev/null | tr -d '\r')" = "1" ] && exit 0
 SQL="${CC_AGENT_USAGE_DDL}
 BEGIN IMMEDIATE;
-DELETE FROM agent_usage WHERE session_id = '${SESSION_ID}' AND agent_id = '${AGENT_ID}';
+DELETE FROM agent_usage WHERE session_id = '${SESSION_ID}' AND agent_id = '${AGENT_ID}' AND NOT ${FROZEN_SESSION};
 ${ROWS}COMMIT;"
 sqlite3 -bail -cmd ".timeout 5000" "$DB_PATH" "$SQL" >/dev/null 2>&1 \
   || sqlite3 -bail -cmd ".timeout 5000" "$DB_PATH" "$SQL" >/dev/null 2>&1 || true

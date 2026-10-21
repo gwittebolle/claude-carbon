@@ -62,7 +62,10 @@ bash "${SCRIPT_DIR}/configure-settings.sh" 2>&1 | grep -E '^ +(mod:|Restart)' ||
 
 # Refresh the DB schema, then re-price history (CO2-only by default: cheap, idempotent,
 # no mixed-model cost drift).
-CLAUDE_CARBON_INSTALLER=1 bash "${SCRIPT_DIR}/setup.sh" >/dev/null 2>&1 || true
+# Its output stays hidden, but for the sessions rebuilt from the old method: their total
+# drops, and this is where the person updating sees why.
+SETUP_OUT="$(CLAUDE_CARBON_INSTALLER=1 bash "${SCRIPT_DIR}/setup.sh" 2>&1)" || true
+printf '%s\n' "$SETUP_OUT" | grep -E '^ +Rebuilt ' || true
 DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${STATE_DIR}/carbon.db}")"
 if [ -f "$DB_PATH" ]; then
   bash "${SCRIPT_DIR}/recompute.sh" || echo "history not re-priced; see message above."

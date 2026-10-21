@@ -5,7 +5,10 @@
 #   1. the Stop hook folds them into the session (the journal is not read);
 #   2. backfill.sh does the same for a session it records;
 #   3. backfill.sh re-aggregates a v2 row recorded without them, once, and says so;
-#   4. a legacy (v1) row, a frozen series, is never touched;
+#   4. a legacy (v1) row is rebuilt from its transcript, even with fewer tokens, once,
+#      and the gap said; not when an agent transcript is gone, nor said when nil;
+#      a frozen row (v1 or v2) is never touched, by the rescan, recompute.sh or the
+#      Stop hook of a resumed session;
 #   5. a row an older Stop hook rewrites without them after that (a session opened before
 #      the update) is repaired by the next rescan;
 #   6. a write that fails leaves the row unstamped, and the next rescan retries it;
@@ -160,15 +163,77 @@ add_workflow "$S5"
 CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "late agent: counted by the next rescan" "$WITH" "$(tokens "$S5")"
 
-# ---------------------------------------------------------------- 4. frozen rows
+# ---------------------------------------------------------------- 4. legacy rows, frozen rows
+# A session whose assistant message was replayed (a resumed or compacted session writes it
+# again, same message id and request id). The method before 2026-06-05 summed every line:
+# 2000 in, 200 out. Counted once, it is 1000 in, 100 out.
+make_replayed_session() {
+  local line='{"type":"assistant","requestId":"r1","timestamp":"2026-10-15T10:00:01Z","message":{"id":"m1","model":"claude-sonnet-5-5","usage":{"input_tokens":1000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":100}}}'
+  printf '%s\n' '{"type":"user","cwd":"/tmp/wfproj","timestamp":"2026-10-15T10:00:00Z","message":{"role":"user","content":"go"}}' "$line" "$line" > "${PROJ}/$1.jsonl"
+}
+# legacy_row <sid> <in> <out> <co2>: the row as that method stored it
+legacy_row() {
+  q "UPDATE sessions SET methodology_version = 1, input_tokens = $2, output_tokens = $3, cache_read_tokens = 0, cache_creation_tokens = 0, co2_grams = $4, agents_collected = 0, started_at = '2026-05-02T09:00:00Z', source = 'live' WHERE session_id='$1';"
+}
 S4="11111111-aaaa-bbbb-cccc-000000000004"
-make_session "$S4" no
+make_replayed_session "$S4"
 payload "$S4" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
-q "UPDATE sessions SET methodology_version = 1, co2_grams = 42, agents_collected = 0 WHERE session_id='${S4}';"
-add_workflow "$S4"
+legacy_row "$S4" 2000 200 0.2432
+OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
+check "legacy row: rebuilt from its transcript, each message once" "$WITHOUT" "$(tokens "$S4")"
+check "legacy row: now the current method" "2" "$(q "SELECT methodology_version FROM sessions WHERE session_id='${S4}';")"
+check "legacy row: CO2 re-derived" "0.1216" "$(q "SELECT printf('%.4f', co2_grams) FROM sessions WHERE session_id='${S4}';")"
+check "legacy row: start and source kept" "2026-05-02T09:00:00Z|live" "$(q "SELECT started_at||'|'||source FROM sessions WHERE session_id='${S4}';")"
+check "legacy row: child rows written" "1000" "$(q "SELECT SUM(input_tokens) FROM session_models WHERE session_id='${S4}';")"
+check "legacy row: the gap said" "yes" "$(has "Rebuilt 1 session(s) recorded with the method used before June 2026, from their transcripts: 0.2 gCO₂ → 0.1 gCO₂." "$OUT")"
+OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
+check "legacy row: left alone by the next rescan" "no" "$(has "Rebuilt" "$OUT")"
+
+# A subagent transcript gone while the main one is still there: rebuilt from what is left,
+# the figure would miss that agent's work. The row stays as it was stored.
+L2="11111111-aaaa-bbbb-cccc-000000000043"
+make_replayed_session "$L2"
+mkdir -p "${PROJ}/${L2}/subagents"
+printf '%s\n' '{"type":"assistant","isSidechain":true,"requestId":"a1","timestamp":"2026-10-15T10:00:02Z","message":{"id":"ma1","model":"claude-sonnet-5-5","usage":{"input_tokens":500,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":50}}}' > "${PROJ}/${L2}/subagents/agent-a1.jsonl"
+payload "$L2" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+legacy_row "$L2" 2500 250 9
+rm "${PROJ}/${L2}/subagents/agent-a1.jsonl"
+OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
+check "legacy row, an agent transcript gone: kept as stored" "2500|0|250|1" "$(q "SELECT input_tokens||'|'||cache_read_tokens||'|'||output_tokens||'|'||methodology_version FROM sessions WHERE session_id='${L2}';")"
+check "legacy row, an agent transcript gone: nothing said" "no" "$(has "Rebuilt" "$OUT")"
+
+# A legacy row its transcript gives back unchanged: rebuilt, and nothing to say
+L3="11111111-aaaa-bbbb-cccc-000000000044"
+make_session "$L3" no
+payload "$L3" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+legacy_row "$L3" 1000 100 0.1216
+OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
+check "legacy row, no gap: rebuilt" "2" "$(q "SELECT methodology_version FROM sessions WHERE session_id='${L3}';")"
+check "legacy row, no gap: nothing said" "no" "$(has "Rebuilt" "$OUT")"
+
+# Frozen rows: a published figure, v1 or v2, transcript on disk or not
+F1="11111111-aaaa-bbbb-cccc-000000000041"
+F2="11111111-aaaa-bbbb-cccc-000000000042"
+for S in "$F1" "$F2"; do
+  make_session "$S" no
+  payload "$S" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+done
+# Any value but 0 freezes
+q "UPDATE sessions SET frozen = 2, input_tokens = 3000, output_tokens = 300, co2_grams = 42 WHERE session_id='${F1}';"
+q "UPDATE sessions SET frozen = 1, methodology_version = 1, input_tokens = 3000, output_tokens = 300, co2_grams = 42 WHERE session_id='${F2}';"
+add_workflow "$F1"
+frozen_state() { q "SELECT input_tokens||'|'||output_tokens||'|'||co2_grams||'|'||methodology_version FROM sessions WHERE session_id='$1';"; }
 CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
-check "frozen (v1) row: tokens untouched" "$WITHOUT" "$(tokens "$S4")"
-check "frozen (v1) row: CO2 untouched" "42.0" "$(q "SELECT co2_grams FROM sessions WHERE session_id='${S4}';")"
+check "frozen v2 row: the rescan leaves it" "3000|300|42.0|2" "$(frozen_state "$F1")"
+check "frozen v1 row: the rescan leaves it" "3000|300|42.0|1" "$(frozen_state "$F2")"
+CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "${REPO_DIR}/scripts/recompute.sh" >/dev/null 2>&1
+check "frozen v2 row: recompute leaves it" "3000|300|42.0|2" "$(frozen_state "$F1")"
+# The session resumed: its Stop hook runs again
+CHILDREN="$(q "SELECT group_concat(model||':'||input_tokens, ',') FROM session_models WHERE session_id='${F1}';")"
+payload "$F1" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+check "frozen v2 row: a resumed session's Stop hook leaves it" "3000|300|42.0|2" "$(frozen_state "$F1")"
+check "frozen v2 row: its child rows too" "$CHILDREN" "$(q "SELECT group_concat(model||':'||input_tokens, ',') FROM session_models WHERE session_id='${F1}';")"
+check "frozen v2 row: still frozen" "2" "$(q "SELECT frozen FROM sessions WHERE session_id='${F1}';")"
 
 # ---------------------------------------------------------------- 5. an older Stop hook after the pass
 # The session stays open under the older version: its Stop hook rewrites the repaired row
