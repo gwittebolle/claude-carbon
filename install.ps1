@@ -104,11 +104,24 @@ $missing = Find-Missing
 # Both are winget "portable" packages: unpacked under the user's profile, no
 # administrator prompt, so the installer fetches them itself, as install.sh does
 # for jq on a Mac. `--source winget`: see the error message below.
+# Its exit code is kept for the message below; whether the command is now found is
+# what decides, since winget also exits non-zero for a package already installed.
+$wingetExit = @{}
 if ($missing.Count -gt 0 -and (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
     foreach ($dep in $missing) {
         Write-Host "  $($dep.Name): installing $($dep.Package) with winget..."
-        winget install --id $dep.Package --exact --source winget `
-            --accept-package-agreements --accept-source-agreements --disable-interactivity *> $null
+        # Windows PowerShell 5.1 turns each stderr line of a redirected native command
+        # into an error, which 'Stop' would make fatal before the fallback message.
+        $ErrorActionPreference = 'Continue'
+        try {
+            winget install --id $dep.Package --exact --source winget `
+                --accept-package-agreements --accept-source-agreements --disable-interactivity *> $null
+            $wingetExit[$dep.Name] = $LASTEXITCODE
+        } catch {
+            $wingetExit[$dep.Name] = 'error'
+        } finally {
+            $ErrorActionPreference = 'Stop'
+        }
     }
     Merge-RegistryPath
     $missing = Find-Missing
@@ -126,6 +139,9 @@ if ($missing.Count -gt 0) {
     # and when that one is unreachable (a TLS-inspecting proxy, a locked-down
     # Store) it aborts the whole install with exit code 94 instead of falling back.
     foreach ($dep in $missing) {
+        if ($wingetExit.ContainsKey($dep.Name)) {
+            Write-Host "  $($dep.Name) - winget could not install it (exit $($wingetExit[$dep.Name]))."
+        }
         Write-Host "  $($dep.Name) - install with:  winget install $($dep.Package) --source winget"
     }
     Write-Host ''

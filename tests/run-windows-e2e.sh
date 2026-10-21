@@ -215,7 +215,7 @@ esac
 WRITTEN_STOP="${WRITTEN_STOP#\"}"; WRITTEN_STOP="${WRITTEN_STOP%\"}"
 check "Stop hook path is openable"  "yes" "$([ -f "$WRITTEN_STOP" ] && echo yes || echo no)"
 # What Claude Code runs is the quoted string through Git Bash, stdin a pipe: it must work
-# as written. And from a terminal (the Git Bash window case) the hook must not wait.
+# as written. (The terminal-stdin guard is asserted in run-portability-tests.sh.)
 check "quoted Stop hook runs under bash" "0" "$(echo '{}' | bash -c "$(jq -r '.hooks.Stop[0].hooks[0].command' "$SETTINGS")" >/dev/null 2>&1; echo $?)"
 
 # Rerunning must not register a second copy of anything, even though the path was
