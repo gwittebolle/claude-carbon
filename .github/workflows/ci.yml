@@ -164,6 +164,10 @@ jobs:
       - name: Update check
         run: bash tests/run-update-check-tests.sh
 
+      # release.sh refuses to release a commit twice, or a docs-only change without --force
+      - name: Release guards
+        run: bash tests/run-release-tests.sh
+
   macos:
     name: macos (bash 3.2)
     runs-on: macos-latest
@@ -243,6 +247,11 @@ jobs:
       - name: Update check
         if: always()
         run: /bin/bash tests/run-update-check-tests.sh
+
+      # The maintainer releases from a Mac: BSD mktemp and bash 3.2
+      - name: Release guards
+        if: always()
+        run: /bin/bash tests/run-release-tests.sh
 
   ubuntu-2204:
     name: ubuntu 22.04 (jq 1.6, git 2.34)

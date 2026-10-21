@@ -2,6 +2,15 @@
 
 ## 2026-10-21
 
+### chore: release.sh refuses a release that would only bump the version
+
+Run a second time right after a release, `scripts/release.sh` bumped the version again
+over the same code, tagged it and pushed it. It now stops before writing anything when
+HEAD is already the last release's commit, and when no runtime file changed since the
+last tag; that second case goes through with `--force`. The release notes' temp file
+is created with an explicit template, which GNU mktemp needs. `tests/run-release-tests.sh`
+replays these cases on a throwaway repository, on Linux and macOS in CI.
+
 ### fix: first install on Windows from the desktop app
 
 Installing from the Code tab of the desktop app on a Windows machine without Git went
