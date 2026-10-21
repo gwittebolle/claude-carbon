@@ -161,10 +161,15 @@ sqlite3 "$DB2" "UPDATE sessions SET output_tokens = 100, ended_at = strftime('%Y
 CLAUDE_CONFIG_DIR="$CFG2" bash "$BACKFILL" >/dev/null 2>&1
 check "up-to-date row: not re-parsed" "100" "$(out_tokens "$DB2" "$S2")"
 
-# A legacy row (methodology_version 1) is never refreshed, stale or not.
-sqlite3 "$DB2" "UPDATE sessions SET ended_at = '2026-01-01T00:01:00Z', methodology_version = 1 WHERE session_id='${S2}';"
+# A frozen row is never refreshed, stale or not.
+sqlite3 "$DB2" "UPDATE sessions SET ended_at = '2026-01-01T00:01:00Z', frozen = 1 WHERE session_id='${S2}';"
 CLAUDE_CONFIG_DIR="$CFG2" bash "$BACKFILL" >/dev/null 2>&1
-check "legacy row: left untouched" "100" "$(out_tokens "$DB2" "$S2")"
+check "frozen row: left untouched" "100" "$(out_tokens "$DB2" "$S2")"
+
+# A legacy row (methodology_version 1) is rebuilt from its transcript while it is here.
+sqlite3 "$DB2" "UPDATE sessions SET frozen = 0, methodology_version = 1 WHERE session_id='${S2}';"
+CLAUDE_CONFIG_DIR="$CFG2" bash "$BACKFILL" >/dev/null 2>&1
+check "legacy row: rebuilt from its transcript" "2100" "$(out_tokens "$DB2" "$S2")"
 
 # ---------------------------------------------------------------- 4. plugin manifest
 

@@ -2,6 +2,20 @@
 
 ## 2026-10-21
 
+### fix: sessions recorded with the old method are rebuilt from their transcripts
+
+Sessions recorded before 2026-06-05, or by an install that predated that date
+(`methodology_version` 1), counted every replayed message again, about three times the
+tokens, and no cache reads. The 2026-06-05 entry said they would keep their values "until
+a re-backfill", but no rescan ever replaced them, even with the transcript still on disk.
+The daily rescan now rebuilds each of them as a current row from its transcript while it is
+there: the figure becomes exact, and is never raised back by a later rescan. Sessions whose
+transcript Claude Code has purged keep their stored values: nothing exact is left to
+rebuild them from. Reported in #83.
+
+A row marked `frozen` in the database (`UPDATE sessions SET frozen = 1 …`) is never
+rewritten, by the rescan, `recompute.sh`, or the Stop hook of a resumed session.
+
 ### feat: the status line's hints in the desktop app, and one update command
 
 The session entry under the prompt now ends with the two hints the terminal status line

@@ -28,8 +28,9 @@ set -euo pipefail
 # captured once (by the Stop hook, within the 30-day window) and frozen; everything derived
 # from it (cost, CO2) stays regenerable forever. Only rows with methodology_version >= 2
 # carry the full breakdown (regular input, cache_write, cache_read, output); earlier "legacy"
-# rows lack cache_read and are left untouched. install.sh and update.sh run this script for
-# every user, so that gate is what keeps legacy rows from being rewritten.
+# rows lack cache_read and over-count the rest, so nothing exact can be derived from their
+# columns: they are left to backfill.sh, which rebuilds them from their transcripts while
+# those exist. A frozen row is never rewritten.
 #
 # Model resolution (family factors, per-model prices) is cc_model_params in portable-lib.sh,
 # the same one the Stop hook uses.
@@ -60,12 +61,12 @@ done
 EXCLUDE_MODELS="$(cc_exclude_regex "$FACTORS_FILE")"
 
 # Rows recompute may touch: raw-token rows (methodology_version >= 2) not excluded.
-ELIGIBLE="methodology_version >= 2 AND COALESCE(excluded, 0) = 0"
+ELIGIBLE="methodology_version >= 2 AND COALESCE(excluded, 0) = 0 AND COALESCE(frozen, 0) = 0"
 HAS_CHILDREN="EXISTS (SELECT 1 FROM session_models m WHERE m.session_id = sessions.session_id)"
 # An agent's share for /carbon-pr (agent_usage) holds tokens its session's row also holds:
 # re-derived alike, it keeps matching it. Its session may not be recorded yet (still
 # running): the row is re-derived all the same, unless the session is legacy or excluded.
-AGENT_ELIGIBLE="NOT EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = agent_usage.session_id AND NOT (COALESCE(s.methodology_version, 1) >= 2 AND COALESCE(s.excluded, 0) = 0))"
+AGENT_ELIGIBLE="NOT EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = agent_usage.session_id AND NOT (COALESCE(s.methodology_version, 1) >= 2 AND COALESCE(s.excluded, 0) = 0 AND COALESCE(s.frozen, 0) = 0))"
 
 # co2  = (input_tokens * fin + cache_read_tokens * (fin*crf) + output_tokens * fout) / 1e6
 #        (input_tokens already = regular_input + cache_write, both at the input factor)

@@ -40,7 +40,7 @@ CC_USAGE_CACHE_DIR="${CONFIG_DIR}/claude-carbon/usage-cache"
 METHODOLOGY_VERSION=2
 
 # Ensure schema exists and is migrated (idempotent; safe on fresh or pre-existing DBs).
-sqlite3 "$DB_PATH" "CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT DEFAULT 'live', methodology_version INTEGER DEFAULT 1, excluded INTEGER DEFAULT 0, git_branch TEXT DEFAULT '', cache_creation_1h_tokens INTEGER DEFAULT 0, output_context_sum INTEGER DEFAULT 0, agents_collected INTEGER DEFAULT 0); CREATE INDEX IF NOT EXISTS idx_sessions_year ON sessions(started_at);" 2>/dev/null || true
+sqlite3 "$DB_PATH" "CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, project TEXT, model TEXT, input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER DEFAULT 0, cache_creation_tokens INTEGER DEFAULT 0, cost_usd REAL, co2_grams REAL, started_at TEXT, ended_at TEXT, source TEXT DEFAULT 'live', methodology_version INTEGER DEFAULT 1, excluded INTEGER DEFAULT 0, git_branch TEXT DEFAULT '', cache_creation_1h_tokens INTEGER DEFAULT 0, output_context_sum INTEGER DEFAULT 0, agents_collected INTEGER DEFAULT 0, frozen INTEGER DEFAULT 0); CREATE INDEX IF NOT EXISTS idx_sessions_year ON sessions(started_at);" 2>/dev/null || true
 cc_ensure_schema "$DB_PATH"
 
 # User-defined exclusion patterns (grep -E, case-insensitive), joined with |
@@ -52,6 +52,7 @@ REPAIRED=0
 FILLED=0
 REFRESHED=0
 WORKFLOWS=0
+REBUILT=0
 SPLIT=0
 ERRORS=0
 
@@ -124,11 +125,19 @@ while IFS= read -r JSONL_FILE; do
   # any parse: a pass writes only if the row still has both when it writes (every Stop
   # hook sets the end to its own time), so a turn an older Stop hook records meanwhile is
   # never overwritten by a parse that did not see it.
-  ROW_SNAP="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COUNT(*) || '|' || COALESCE(MAX(RTRIM(ended_at, char(13))), '') || '|' || COALESCE(MAX(${TOKENS_SQL}), 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
+  ROW_SNAP="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COUNT(*) || '|' || COALESCE(MAX(frozen), 0) || '|' || COALESCE(MAX(methodology_version), 1) || '|' || COALESCE(MAX(RTRIM(ended_at, char(13))), '') || '|' || COALESCE(MAX(${TOKENS_SQL}), 0) FROM sessions WHERE session_id='${SESSION_ID}';" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
   EXISTS="${ROW_SNAP%%|*}"
-  ROW_END="${ROW_SNAP#*|}"; ROW_END="${ROW_END%|*}"
+  ROW_REST="${ROW_SNAP#*|}"
+  ROW_FROZEN="${ROW_REST%%|*}"; ROW_REST="${ROW_REST#*|}"
+  ROW_VERSION="${ROW_REST%%|*}"; ROW_REST="${ROW_REST#*|}"
+  ROW_END="${ROW_REST%|*}"
   ROW_TOKENS="${ROW_SNAP##*|}"
-  case "$EXISTS$ROW_TOKENS" in ''|*[!0-9]*) ERRORS=$((ERRORS + 1)); continue ;; esac
+  case "$EXISTS$ROW_TOKENS$ROW_FROZEN$ROW_VERSION" in ''|*[!0-9]*) ERRORS=$((ERRORS + 1)); continue ;; esac
+  # A frozen row is left exactly as it is
+  if [ "$ROW_FROZEN" != "0" ]; then
+    SKIPPED=$((SKIPPED + 1))
+    continue
+  fi
   ROW_END="${ROW_END//$CC_SQ/$CC_SQ$CC_SQ}"
   # The end is read and compared without a trailing CR: earlier versions on Windows stored
   # the end of a session they added with one (jq's CRLF), which sqlite3 may print as ^M
@@ -139,7 +148,15 @@ while IFS= read -r JSONL_FILE; do
   # window closed without SessionEnd running). Such a row is re-aggregated below instead of
   # skipped. Keyed on the file's mtime, so an unchanged session costs a stat, not a parse.
   STALE=0
-  if [ "$EXISTS" -gt 0 ]; then
+  # A legacy row (methodology_version 1, before 2026-06-05) counted replayed messages more
+  # than once, about 3 times too many tokens, and no cache reads. While its transcript is
+  # here it is rebuilt from it, as a fresh v2 row, even though that holds fewer tokens.
+  LEGACY=0
+  if [ "$EXISTS" -gt 0 ] && [ "$ROW_VERSION" -lt 2 ]; then
+    LEGACY=1
+    STALE=1
+  fi
+  if [ "$EXISTS" -gt 0 ] && [ "$LEGACY" = "0" ]; then
     MTIME="$(cc_mtime "$JSONL_FILE")"
     STALE="$(cc_sql -cmd ".timeout 5000" "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}' AND COALESCE(methodology_version, 1) >= 2 AND ${MTIME} > COALESCE(CAST(strftime('%s', ended_at) AS INTEGER), 0) + ${REFRESH_SLACK};" 2>/dev/null || echo 0)"
   fi
@@ -150,7 +167,7 @@ while IFS= read -r JSONL_FILE; do
   # by the older Stop hook of a session opened before an update) is parsed, then
   # re-aggregated or, when nothing is missing, stamped. A stamped row is looked at again
   # only when an agent transcript was written after it ended (an agent that finished after
-  # the last Stop). Legacy (v1) rows, a frozen series, are never touched.
+  # the last Stop). A legacy (v1) row is rebuilt whole instead (above), a frozen row skipped.
   USAGE=""
   PARSED=0
   WF_TRIGGER=0
@@ -341,7 +358,7 @@ COMMIT;" 2>/dev/null || echo "")"
     else
       LAST_TS="$CC_U_LAST_TS"
     fi
-    if [ "$ROW_TOKENS" -le "$NEW_TOKENS" ]; then
+    if [ "$LEGACY" = "1" ] || [ "$ROW_TOKENS" -le "$NEW_TOKENS" ]; then
       KEEP="(SELECT COUNT(*) FROM sessions WHERE session_id='${SESSION_ID}' AND ${UNCHANGED}) = 1"
       WROTE="$(cc_sql -bail -cmd ".timeout 5000" "$DB_PATH" "BEGIN IMMEDIATE;
 $(cc_session_models_sql "$SESSION_ID" "$USAGE" "$KEEP")
@@ -352,9 +369,12 @@ COMMIT;" 2>/dev/null)" || { ERRORS=$((ERRORS + 1)); continue; }
       sqlite3 -cmd ".timeout 5000" "$DB_PATH" "UPDATE sessions SET ended_at = MAX(COALESCE(ended_at, ''), '${LAST_TS}') WHERE session_id='${SESSION_ID}' AND ${UNCHANGED};" >/dev/null 2>&1 || { ERRORS=$((ERRORS + 1)); continue; }
       WROTE=0
     fi
-    # Counted once written, under the workflow pass when it was the cause
+    # Counted once written, under the legacy rebuild or the workflow pass when either was
+    # the cause
     if [ "$WROTE" = "1" ]; then
-      if [ "$WF_TRIGGER" = "1" ]; then WORKFLOWS=$((WORKFLOWS + 1)); else REFRESHED=$((REFRESHED + 1)); fi
+      if [ "$LEGACY" = "1" ]; then REBUILT=$((REBUILT + 1))
+      elif [ "$WF_TRIGGER" = "1" ]; then WORKFLOWS=$((WORKFLOWS + 1))
+      else REFRESHED=$((REFRESHED + 1)); fi
     fi
     continue
   fi
@@ -379,6 +399,9 @@ fi
 echo "  Backfill complete: ${ADDED} sessions added, ${SKIPPED} skipped, ${ERRORS} errors."
 if [ "$REFRESHED" -gt 0 ]; then
   echo "  Refreshed ${REFRESHED} session(s) whose transcript grew after they were last recorded."
+fi
+if [ "$REBUILT" -gt 0 ]; then
+  echo "  Rebuilt ${REBUILT} session(s) recorded with the method used before June 2026 from their transcripts."
 fi
 if [ "$WORKFLOWS" -gt 0 ]; then
   echo "  Counted the workflow agents of ${WORKFLOWS} session(s) recorded without them."

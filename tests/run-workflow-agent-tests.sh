@@ -5,7 +5,9 @@
 #   1. the Stop hook folds them into the session (the journal is not read);
 #   2. backfill.sh does the same for a session it records;
 #   3. backfill.sh re-aggregates a v2 row recorded without them, once, and says so;
-#   4. a legacy (v1) row, a frozen series, is never touched;
+#   4. a legacy (v1) row is rebuilt from its transcript, even with fewer tokens, once;
+#      a frozen row (v1 or v2) is never touched, by the rescan, recompute.sh or the
+#      Stop hook of a resumed session;
 #   5. a row an older Stop hook rewrites without them after that (a session opened before
 #      the update) is repaired by the next rescan;
 #   6. a write that fails leaves the row unstamped, and the next rescan retries it;
@@ -160,15 +162,43 @@ add_workflow "$S5"
 CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
 check "late agent: counted by the next rescan" "$WITH" "$(tokens "$S5")"
 
-# ---------------------------------------------------------------- 4. frozen rows
+# ---------------------------------------------------------------- 4. legacy rows, frozen rows
+# A row as the method before 2026-06-05 stored it: every replayed message counted again,
+# three times the tokens, no cache reads. Its transcript is still here.
 S4="11111111-aaaa-bbbb-cccc-000000000004"
 make_session "$S4" no
 payload "$S4" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
-q "UPDATE sessions SET methodology_version = 1, co2_grams = 42, agents_collected = 0 WHERE session_id='${S4}';"
-add_workflow "$S4"
+q "UPDATE sessions SET methodology_version = 1, input_tokens = 3000, output_tokens = 300, co2_grams = 42, agents_collected = 0, started_at = '2026-05-02T09:00:00Z', source = 'live' WHERE session_id='${S4}';"
+OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
+check "legacy row: rebuilt from its transcript, fewer tokens" "$WITHOUT" "$(tokens "$S4")"
+check "legacy row: now the current method" "2" "$(q "SELECT methodology_version FROM sessions WHERE session_id='${S4}';")"
+check "legacy row: CO2 re-derived" "yes" "$(q "SELECT CASE WHEN co2_grams > 0 AND co2_grams < 1 THEN 'yes' ELSE co2_grams END FROM sessions WHERE session_id='${S4}';")"
+check "legacy row: start and source kept" "2026-05-02T09:00:00Z|live" "$(q "SELECT started_at||'|'||source FROM sessions WHERE session_id='${S4}';")"
+check "legacy row: child rows written" "1000" "$(q "SELECT SUM(input_tokens) FROM session_models WHERE session_id='${S4}';")"
+check "legacy row: said" "yes" "$(has "Rebuilt 1 session(s) recorded with the method used before June 2026" "$OUT")"
+OUT="$(CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" 2>&1)"
+check "legacy row: left alone by the next rescan" "no" "$(has "Rebuilt" "$OUT")"
+
+# Frozen rows: a published figure, v1 or v2, transcript on disk or not
+S6="11111111-aaaa-bbbb-cccc-000000000006"
+S7="11111111-aaaa-bbbb-cccc-000000000007"
+for S in "$S6" "$S7"; do
+  make_session "$S" no
+  payload "$S" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+done
+q "UPDATE sessions SET frozen = 1, input_tokens = 3000, output_tokens = 300, co2_grams = 42 WHERE session_id='${S6}';"
+q "UPDATE sessions SET frozen = 1, methodology_version = 1, input_tokens = 3000, output_tokens = 300, co2_grams = 42 WHERE session_id='${S7}';"
+add_workflow "$S6"
+frozen_state() { q "SELECT input_tokens||'|'||output_tokens||'|'||co2_grams||'|'||methodology_version FROM sessions WHERE session_id='$1';"; }
 CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "$BACKFILL" >/dev/null 2>&1
-check "frozen (v1) row: tokens untouched" "$WITHOUT" "$(tokens "$S4")"
-check "frozen (v1) row: CO2 untouched" "42.0" "$(q "SELECT co2_grams FROM sessions WHERE session_id='${S4}';")"
+check "frozen v2 row: the rescan leaves it" "3000|300|42.0|2" "$(frozen_state "$S6")"
+check "frozen v1 row: the rescan leaves it" "3000|300|42.0|1" "$(frozen_state "$S7")"
+CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="$DB" bash "${REPO_DIR}/scripts/recompute.sh" >/dev/null 2>&1
+check "frozen v2 row: recompute leaves it" "3000|300|42.0|2" "$(frozen_state "$S6")"
+# The session resumed: its Stop hook runs again
+payload "$S6" | CLAUDE_CONFIG_DIR="$CFG" bash "$PERSIST"
+check "frozen v2 row: a resumed session's Stop hook leaves it" "3000|300|42.0|2" "$(frozen_state "$S6")"
+check "frozen v2 row: still frozen" "1" "$(q "SELECT frozen FROM sessions WHERE session_id='${S6}';")"
 
 # ---------------------------------------------------------------- 5. an older Stop hook after the pass
 # The session stays open under the older version: its Stop hook rewrites the repaired row
