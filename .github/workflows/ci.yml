@@ -419,6 +419,21 @@ jobs:
         shell: powershell
         run: .\tests\run-install-ps1-tests.ps1
 
+      # npx claude-carbon on Windows goes through install.ps1, not install.sh
+      - name: npx wrapper
+        if: always()
+        shell: powershell
+        run: |
+          $out = node bin/claude-carbon.js --dry-run
+          Write-Host $out
+          if ($out -notmatch 'install\.ps1') { throw "wrapper did not pick install.ps1" }
+          $file = ($out -replace '^Downloaded installer to (.+) \(not run.*$', '$1')
+          $bytes = [System.IO.File]::ReadAllBytes($file)
+          if ($bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) { throw "install.ps1 written without a BOM" }
+          $tokens = $null; $errs = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errs)
+          if ($errs) { throw "downloaded install.ps1 does not parse: $errs" }
+
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
