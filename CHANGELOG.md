@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-10-26
+
+### fix: `npx claude-carbon` on Windows installs jq and sqlite3 like the PowerShell one-liner
+
+On Windows the npm wrapper ran `install.sh` straight through Git Bash, which stops at the
+first of jq or sqlite3 it does not find, with a `winget` command to run by hand. Git for
+Windows ships neither, so a fresh machine never got past that step. The wrapper now runs
+`install.ps1` on Windows, the bootstrap behind `irm ... | iex`: it finds Git Bash, installs
+the two missing commands with winget, then hands over to `install.sh`. The script is saved
+with a BOM, which Windows PowerShell 5.1 needs to read it as UTF-8, and run with
+`-ExecutionPolicy Bypass` for that one process. `CLAUDE_CARBON_INSTALL_PS1_URL` overrides
+its source, as `CLAUDE_CARBON_INSTALL_URL` already does for `install.sh`. macOS and Linux
+are unchanged. The Windows CI job checks that the wrapper picks `install.ps1`, writes the
+BOM and downloads a script that parses.
+
 ## 2026-10-21
 
 ### fix: sessions recorded with the old method are rebuilt from their transcripts
