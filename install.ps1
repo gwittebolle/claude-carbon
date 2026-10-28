@@ -8,12 +8,47 @@
     claude-carbon itself is bash, and stays bash on Windows: Claude Code spawns the
     bash.exe from Git for Windows to run hooks and the status line, so the plugin
     has to speak the same shell its host does. This script only does the part
-    PowerShell is needed for - finding that bash.exe, installing with winget the two
-    commands Git for Windows does not ship when they are missing - and then hands
-    over to install.sh.
+    PowerShell is needed for - finding that bash.exe, checking for the two commands
+    Git for Windows does not ship (and printing the winget commands for the missing
+    ones) - and then hands over to install.sh.
 #>
 
+$CallerErrorAction = $ErrorActionPreference
 $ErrorActionPreference = 'Stop'
+
+# `irm | iex` runs this script inside the user's own PowerShell session, where `exit`
+# closes their window and the message they needed with it. There `break` ends the
+# script and leaves the session open, with its error preference as it found it.
+# Run as a file (the npm wrapper), or by a host started with -Command and no -NoExit
+# (a tool running the one-liner), the host closes after the script anyway and its
+# caller reads the exit code, so `exit` hands it back. VS Code's terminal starts
+# with -NoExit. Never call Exit-Installer inside a loop or a switch: `break` would
+# only leave that.
+function Test-HostClosesAfterCommand {
+    $hostArgs = @([Environment]::GetCommandLineArgs() | Select-Object -Skip 1)
+    if (@($hostArgs | Where-Object { $_ -match '^[-/]noe' }).Count -gt 0) { return $false }
+    for ($i = 0; $i -lt $hostArgs.Count; $i++) {
+        # Parameter names abbreviate: -c and -Com are -Command, -e and -ec -EncodedCommand.
+        $name = ($hostArgs[$i] -replace '^[-/]+', '').ToLower()
+        if ($name -eq $hostArgs[$i].ToLower() -or -not $name) { continue }
+        if ($name -eq 'ec' -or 'encodedcommand'.StartsWith($name)) { return $true }
+        # `-Command -` reads stdin line by line, like a prompt: the session goes on.
+        if ('command'.StartsWith($name)) {
+            return ($i + 1 -lt $hostArgs.Count) -and ($hostArgs[$i + 1] -ne '-')
+        }
+    }
+    return $false
+}
+$KeepSession = ($MyInvocation.MyCommand -isnot [System.Management.Automation.ExternalScriptInfo]) -and
+    -not (Test-HostClosesAfterCommand)
+function Exit-Installer([int]$Code) {
+    if ($KeepSession) {
+        $global:LASTEXITCODE = $Code
+        Set-Variable -Name ErrorActionPreference -Value $CallerErrorAction -Scope 1
+        break
+    }
+    exit $Code
+}
 
 $InstallUrl = if ($env:CLAUDE_CARBON_INSTALL_URL) {
     $env:CLAUDE_CARBON_INSTALL_URL
@@ -54,10 +89,10 @@ if (-not $bash) {
     Write-Host 'ERROR: Git for Windows was not found.' -ForegroundColor Red
     Write-Host '  claude-carbon runs on its bash, and so does Claude Code''s own Bash tool.'
     Write-Host ''
-    Write-Host '  Install it:  winget install Git.Git'
+    Write-Host '  Install it:  winget install Git.Git --source winget'
     Write-Host '  Already installed elsewhere? Point at it and rerun:'
     Write-Host '    $env:CLAUDE_CODE_GIT_BASH_PATH = "D:\Git\bin\bash.exe"'
-    exit 1
+    Exit-Installer 1
 }
 Write-Host "  Git Bash: $bash"
 
@@ -101,52 +136,32 @@ function Find-Missing {
 
 $missing = Find-Missing
 
-# Both are winget "portable" packages: unpacked under the user's profile, no
-# administrator prompt, so the installer fetches them itself, as install.sh does
-# for jq on a Mac. `--source winget`: see the error message below.
-# Its exit code is kept for the message below; whether the command is now found is
-# what decides, since winget also exits non-zero for a package already installed.
-$wingetExit = @{}
-if ($missing.Count -gt 0 -and (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
-    foreach ($dep in $missing) {
-        Write-Host "  $($dep.Name): installing $($dep.Package) with winget..."
-        # Windows PowerShell 5.1 turns each stderr line of a redirected native command
-        # into an error, which 'Stop' would make fatal before the fallback message.
-        $ErrorActionPreference = 'Continue'
-        try {
-            winget install --id $dep.Package --exact --source winget `
-                --accept-package-agreements --accept-source-agreements --disable-interactivity *> $null
-            $wingetExit[$dep.Name] = $LASTEXITCODE
-        } catch {
-            $wingetExit[$dep.Name] = 'error'
-        } finally {
-            $ErrorActionPreference = 'Stop'
-        }
-    }
-    Merge-RegistryPath
-    $missing = Find-Missing
-}
-
 $missingNames = @($missing | ForEach-Object { $_.Name })
 foreach ($dep in $deps) {
     if ($missingNames -notcontains $dep.Name) { Write-Host "  $($dep.Name): OK" }
 }
 
+# The installer prints the winget commands and never runs them. An antivirus's
+# behaviour protection denied winget access (0x80070005), typed by hand as well, and
+# when this script ran it under the npm wrapper, reported install.ps1 itself as the
+# threat. Left to the user, the block stays between winget and the antivirus, and
+# the message below says how to lift it.
 if ($missing.Count -gt 0) {
     Write-Host ''
-    Write-Host 'ERROR: missing dependencies.' -ForegroundColor Red
+    Write-Host "ERROR: missing dependencies: $($missingNames -join ', ')." -ForegroundColor Red
+    Write-Host '  Install with:'
+    Write-Host ''
     # `--source winget`: without it winget also queries the Microsoft Store source,
     # and when that one is unreachable (a TLS-inspecting proxy, a locked-down
     # Store) it aborts the whole install with exit code 94 instead of falling back.
     foreach ($dep in $missing) {
-        if ($wingetExit.ContainsKey($dep.Name)) {
-            Write-Host "  $($dep.Name) - winget could not install it (exit $($wingetExit[$dep.Name]))."
-        }
-        Write-Host "  $($dep.Name) - install with:  winget install $($dep.Package) --source winget"
+        Write-Host "    winget install $($dep.Package) --source winget"
     }
     Write-Host ''
     Write-Host '  Then rerun this installer. The same terminal is fine: PATH is re-read.'
-    exit 1
+    Write-Host '  If winget answers "Access is denied" (0x80070005), security software on'
+    Write-Host '  this PC is blocking it: allow winget there, then run the command again.'
+    Exit-Installer 1
 }
 
 # ── 3. Hand over to install.sh ───────────────────────────────────────────────
@@ -162,7 +177,7 @@ try {
 } catch {
     Write-Host "ERROR: could not download the installer from $InstallUrl" -ForegroundColor Red
     Write-Host "  $($_.Exception.Message)"
-    exit 1
+    Exit-Installer 1
 }
 
 # The download arrives with whatever line endings the server sent. bash treats a
@@ -174,4 +189,4 @@ $content = [System.IO.File]::ReadAllText($scriptPath)
 $code = $LASTEXITCODE
 
 Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-exit $code
+Exit-Installer $code
