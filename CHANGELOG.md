@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-10-28
+
+### fix: the Windows installer prints the winget commands instead of running them, and keeps PowerShell open
+
+`install.ps1` no longer runs winget. When `jq` or `sqlite3` is missing, it prints the
+`winget install` command for each, then asks for a rerun, which the same terminal can do
+since the installer re-reads PATH. On a PC whose antivirus has behaviour protection on,
+winget was denied access (`0x80070005`), and through `npx claude-carbon` the antivirus
+reported the downloaded `install.ps1` itself as a threat. The message now says what that
+error means and how to get past it, and the README lists the two winget commands before
+the installer.
+
+Run with `irm ... | iex`, the script runs inside the user's PowerShell session, and its
+`exit` closed that window, after a success as after a failure, before the message could be
+read. It now ends with `break` there, leaving the session open with `$LASTEXITCODE` set and
+the error preference it found (the script sets `Stop` for itself). Where the host closes
+after the script anyway, it still exits with the installer's code for the caller to read:
+run as a file, as the npm wrapper does, or by `powershell -Command "irm ... | iex"` without
+`-NoExit`, as a tool running the one-liner does. The Windows CI job runs all three. The
+"Git for Windows was not found" message also pins `--source winget` now, like every other
+winget command the installer prints.
+
 ## 2026-10-26
 
 ### fix: `npx claude-carbon` on Windows installs jq and sqlite3 like the PowerShell one-liner

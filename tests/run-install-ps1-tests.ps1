@@ -125,8 +125,8 @@ if ($mergeMatch.Success) {
 }
 
 # -- 3b. Which dependencies are missing ---------------------------------------
-# What the installer hands to winget: only the commands Git Bash cannot find, and
-# always as a list, even of one, so that .Count and the loop over it hold.
+# What the installer prints winget commands for: only the commands Git Bash cannot
+# find, and always as a list, even of one, so that .Count and the loop over it hold.
 Write-Host ""
 Write-Host "missing dependencies"
 
@@ -145,6 +145,17 @@ if ($missingMatch.Success -and $bash) {
     $deps = @(@{ Name = 'bash'; Package = 'none' })
     Assert-Equal "nothing missing: an empty list"  0 (Find-Missing).Count
 }
+
+# An antivirus behaviour shield flagged the script for running winget: the
+# commands are printed for the user, never run from here. Read from the syntax
+# tree, so a comment or a printed command does not count and any call form does.
+$wingetCalls = @([System.Management.Automation.Language.Parser]::ParseFile($InstallPs1, [ref]$tokens, [ref]$errors).FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.CommandAst] -and (
+        $node.GetCommandName() -match '^winget(\.exe)?$' -or
+        ($node.GetCommandName() -eq 'Start-Process' -and $node.Extent.Text -match 'winget'))
+}, $true))
+Assert-Equal "install.ps1 never runs winget itself" 0 $wingetCalls.Count
 
 # -- 4. End to end against a stubbed installer --------------------------------
 Write-Host ""
@@ -234,6 +245,45 @@ try {
     $missOut = & powershell -NoProfile -ExecutionPolicy Bypass -File $InstallPs1 2>&1 | Out-String
     Assert-Contains "reports a download failure"     "could not download"   $missOut
     Assert-Equal    "non-zero exit on download failure" $true               ($LASTEXITCODE -ne 0)
+
+    # `irm | iex` runs the script inside the user's session, where `exit` closed the
+    # window. `-Command -` runs each stdin line as its own command, like a prompt:
+    # the line after the script only prints if the session survived it.
+    # The error preference is printed too: the script sets 'Stop' for itself and must
+    # hand the session back with its default, 'Continue'.
+    function Invoke-AsIex {
+        # A stray stderr line from the child must fail an assertion, not end the suite.
+        $ErrorActionPreference = 'Continue'
+        $lines = @(
+            "iex ([System.IO.File]::ReadAllText('$InstallPs1'))",
+            "'SESSION-OPEN exit=' + `$LASTEXITCODE + ' eap=' + `$ErrorActionPreference"
+        )
+        ($lines -join "`n") + "`n" | & powershell -NoProfile -Command - 2>&1 | Out-String
+    }
+
+    $env:CLAUDE_CARBON_INSTALL_URL = 'http://127.0.0.1:8791/install.sh'
+    $iexOut = Invoke-AsIex
+    Assert-Contains "iex: hands over to the installer"    "STUB_INSTALLER_RAN"       $iexOut
+    Assert-Contains "iex: success leaves the session open" "SESSION-OPEN exit=0 eap=Continue" $iexOut
+
+    $env:CLAUDE_CARBON_INSTALL_URL = 'http://127.0.0.1:8791/failing.sh'
+    $iexOut = Invoke-AsIex
+    Assert-Contains "iex: the installer's code in LASTEXITCODE" "SESSION-OPEN exit=7 eap=Continue" $iexOut
+
+    $env:CLAUDE_CARBON_INSTALL_URL = 'http://127.0.0.1:8791/missing.sh'
+    $iexOut = Invoke-AsIex
+    Assert-Contains "iex: reports a download failure"     "could not download"       $iexOut
+    Assert-Contains "iex: a failure leaves the session open" "SESSION-OPEN exit=1 eap=Continue" $iexOut
+
+    # A tool running the one-liner (`powershell -Command "irm ... | iex"`) gets a host
+    # that closes after the command and reads its exit code: that one must still exit.
+    $env:CLAUDE_CARBON_INSTALL_URL = 'http://127.0.0.1:8791/failing.sh'
+    $ErrorActionPreference = 'Continue'
+    $cmdOut = & powershell -NoProfile -Command "iex ([System.IO.File]::ReadAllText('$InstallPs1'))" 2>&1 | Out-String
+    $cmdCode = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    Assert-Contains "-Command: runs the failing stub"     "STUB_FAILED"              $cmdOut
+    Assert-Equal    "-Command: exits with the installer's code" 7                    $cmdCode
   }
 }
 finally {

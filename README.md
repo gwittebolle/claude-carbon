@@ -58,7 +58,7 @@ Already installed? See [Updating](#updating).
 **If the install stops**
 
 - **macOS opens a window about "command line developer tools".** That is `git`, which the installer needs and a Mac without developer tools does not have yet. Click **Install**, wait until it finishes (a few minutes), then tell Claude: "Run the claude-carbon install again."
-- **"jq is not installed" or "sqlite3 is not installed".** Tell Claude: "Install what is missing, then run the claude-carbon install again." Every Mac has `sqlite3`, and macOS 15 and later also have `jq`; on an older Mac the installer fetches the official `jq` itself, checked against its published checksum. On Windows the installer installs both with `winget` itself, and prints the `winget` commands only when that fails.
+- **"jq is not installed" or "sqlite3 is not installed".** Tell Claude: "Install what is missing, then run the claude-carbon install again." Every Mac has `sqlite3`, and macOS 15 and later also have `jq`; on an older Mac the installer fetches the official `jq` itself, checked against its published checksum. On Windows the installer prints the `winget` command for each one missing. If `winget` answers "Access is denied", security software on the PC is blocking it: allow `winget` there, then ask Claude again.
 - **Windows says Git Bash is missing.** Install [Git for Windows](https://git-scm.com/downloads/win) (Claude Code needs it on Windows anyway), quit the app completely and reopen it, then ask Claude again in a new session. Claude Code looks for Git Bash when a session starts, so a session open during the Git install still runs without it.
 
 The chat and Cowork tabs are not covered: their sessions run on Anthropic's servers, so nothing reaches your machine to count.
@@ -497,11 +497,15 @@ host already spawns.
 winget install Git.Git --source winget
 ```
 
-Then, in the same terminal (the installer adds `jq` and `sqlite3`, the two commands Git for Windows does not ship, with `winget` when they are missing):
+Then, in the same terminal, install `jq` and `sqlite3`, the two commands Git for Windows does not ship, and run the installer:
 
 ```powershell
+winget install jqlang.jq --source winget
+winget install SQLite.SQLite --source winget
 irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
 ```
+
+The installer checks for both and prints the `winget` command for any still missing; it does not run `winget` itself.
 
 Everything else the plugin needs - `bash`, `awk`, `sed`, `grep`, `date`, `curl`,
 `git`, `cygpath` - comes with Git for Windows.
@@ -529,6 +533,9 @@ same as on macOS, once Git for Windows, `jq` and `sqlite3` are present.
 - **Sandboxing is not available** on native Windows (a Claude Code limitation, not
   this plugin's). Use WSL 2 if you need it.
 - **`/carbon-card` additionally needs Node.js**: `winget install OpenJS.NodeJS --source winget`.
+- **`winget` answers "Access is denied" (`0x80070005`)**: security software on the PC is
+  blocking it, an antivirus's behaviour protection for one. Allow `winget` there and run
+  the command again.
 - **Behind a TLS-inspecting proxy or antivirus**, the clone fails with
   `SSL certificate problem: unable to get local issuer certificate`. Git for Windows
   checks certificates against its own bundled CA list, which does not know the root

@@ -12,9 +12,10 @@ const { join } = require("node:path");
 const pkg = require("../package.json");
 
 // macOS and Linux run install.sh through bash. Windows runs install.ps1, the same
-// bootstrap as `irm ... | iex`: it finds Git Bash, installs with winget the jq and
-// sqlite3 that Git for Windows does not ship, then hands over to install.sh. Running
-// install.sh straight from here stopped at the first missing one with a winget hint.
+// bootstrap as `irm ... | iex`: it finds Git Bash, checks for the jq and sqlite3 that
+// Git for Windows does not ship, printing the winget command for each missing one,
+// then hands over to install.sh. Running install.sh straight from here stopped at
+// the first missing one.
 const WINDOWS = process.platform === "win32";
 
 const INSTALL_URL = WINDOWS
