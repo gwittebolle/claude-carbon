@@ -191,25 +191,47 @@ export function cardHint(month: number, grams: number, lang: Lang): string {
 
 export type RateLimit = { kind: string; percentUsed: number; resetsAt?: string };
 
-// The 5-hour window of a subscription as the terminal status line shows it, "Usage 23 %
-// ↻14:00": rounded half to even like its awk printf "%.0f" (22.5 reads 22 on both),
-// capped at 100, the reset in local time. Null off a subscription or before the first
-// response has reported the window.
+const WEEKDAYS_FR = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+const WEEKDAYS_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_MS = 86_400_000;
+
+// A subscription's quota as the terminal status line shows it: the 5-hour window, "Usage
+// 23 % ↻14:00", or without one (a verified Ultra account has none) the weekly window,
+// "Usage 41 % 7j ↻jeu.", its reset as a weekday while more than a day away. Rounded half
+// to even like the status line's awk printf "%.0f" (22.5 reads 22 on both), capped at 100,
+// the reset in local time; a window whose reset has passed is over. Null off a
+// subscription or before the first response has reported a window.
 export function quotaText(
   limits: readonly RateLimit[] | undefined,
   lang: Lang,
+  now: number = Date.now(),
 ): string | null {
-  const fiveHour = limits?.find((limit) => limit.kind === "five_hour");
-  if (fiveHour === undefined || !Number.isFinite(fiveHour.percentUsed)) return null;
-  const used = Math.max(0, fiveHour.percentUsed);
+  const resetOf = (limit: RateLimit) =>
+    limit.resetsAt === undefined ? NaN : Date.parse(limit.resetsAt);
+  // A reset that does not parse leaves the window open: NaN <= now is false
+  const open = (kind: string) =>
+    limits?.find(
+      (limit) =>
+        limit.kind === kind && Number.isFinite(limit.percentUsed) && !(resetOf(limit) <= now),
+    );
+  const fiveHour = open("five_hour");
+  const window = fiveHour ?? open("seven_day");
+  if (window === undefined) return null;
+  const weekly = fiveHour === undefined;
+  const fr = lang === "fr";
+  const used = Math.max(0, window.percentUsed);
   const floor = Math.floor(used);
   const rounded =
     used - floor === 0.5 ? (floor % 2 === 0 ? floor : floor + 1) : Math.round(used);
   const percent = Math.min(100, rounded);
-  const head = lang === "fr" ? `Usage ${percent}${NBSP}%` : `Use ${percent}%`;
-  const reset = fiveHour.resetsAt === undefined ? NaN : Date.parse(fiveHour.resetsAt);
+  const head =
+    (fr ? `Usage ${percent}${NBSP}%` : `Use ${percent}%`) + (weekly ? (fr ? " 7j" : " 7d") : "");
+  const reset = resetOf(window);
   if (Number.isNaN(reset)) return head;
   const d = new Date(reset);
+  if (weekly && reset - now >= DAY_MS) {
+    return `${head} ↻${(fr ? WEEKDAYS_FR : WEEKDAYS_EN)[d.getDay()]}`;
+  }
   const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   return `${head} ↻${time}`;
 }
@@ -583,8 +605,8 @@ export function moneyValue(usd: number, lang: Lang): string {
 // usage, or sessions of several kinds. Which session was billed how is not recorded.
 export function apiValueNote(lang: Lang): string {
   return lang === "fr"
-    ? `Le prix de cet usage facturé à l'API${NBSP}; un abonnement Pro ou Max en couvre tout ou partie.`
-    : "What this usage costs billed through the API; a Pro or Max subscription covers some or all of it.";
+    ? `Le prix de cet usage facturé à l'API${NBSP}; un abonnement Pro, Max ou Ultra en couvre tout ou partie.`
+    : "What this usage costs billed through the API; a Pro, Max or Ultra subscription covers some or all of it.";
 }
 
 // "12,34 $ au prix API", "$12.34 at API prices"

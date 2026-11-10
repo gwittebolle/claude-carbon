@@ -164,6 +164,11 @@ jobs:
       - name: Update check
         run: bash tests/run-update-check-tests.sh
 
+      # The status line's subscription quota: the 5-hour window, else the weekly one; the
+      # usage API only without rate_limits on stdin, at most once a minute. curl is a shim.
+      - name: Subscription quota
+        run: bash tests/run-quota-tests.sh
+
       # release.sh refuses to release a commit twice, or a docs-only change without --force
       - name: Release guards
         run: bash tests/run-release-tests.sh
@@ -247,6 +252,10 @@ jobs:
       - name: Update check
         if: always()
         run: /bin/bash tests/run-update-check-tests.sh
+
+      - name: Subscription quota
+        if: always()
+        run: /bin/bash tests/run-quota-tests.sh
 
       # The maintainer releases from a Mac: BSD mktemp and bash 3.2
       - name: Release guards
@@ -401,6 +410,10 @@ jobs:
       - name: Workflow agents
         if: always()
         run: bash tests/run-workflow-agent-tests.sh
+
+      - name: Subscription quota
+        if: always()
+        run: bash tests/run-quota-tests.sh
 
       # The assertions no other runner can make: a real cygpath, a native path
       # pointing at a real file, and the hook manifests spawned the way Claude Code

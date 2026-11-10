@@ -161,42 +161,56 @@ else
   PCT_DISPLAY="${USED_PCT}%"
 fi
 
-# 5-hour block usage via stdin (preferred) or Anthropic OAuth API (fallback).
-# Canonical source: same data as `/usage` in Claude Code. Replaces ccusage heuristic.
+# Subscription quota: the 5-hour window, or the weekly one when there is no 5-hour window
+# (a verified Ultra account has none since 2026-10-30, and Claude Code drops a window once
+# it has reset). Same data as `/usage` in Claude Code.
 USAGE_SEGMENT=""
 if command -v jq &>/dev/null; then
-  FIVE_PCT=""
-  FIVE_RESET_ISO=""
+  # Priority 1: the rate_limits Claude Code passes on stdin. When they are there, a window
+  # they leave out does not exist, and the API is never asked for it.
+  RL_PRESENT=0; FIVE_PCT=""; FIVE_RESET=""; SEVEN_PCT=""; SEVEN_RESET=""
+  IFS='|' read -r RL_PRESENT FIVE_PCT FIVE_RESET SEVEN_PCT SEVEN_RESET <<EOF
+$(echo "$INPUT" | jq -r '.rate_limits as $r
+  | [ (if ($r | type) == "object" then 1 else 0 end),
+      ($r.five_hour.used_percentage? // ""), ($r.five_hour.resets_at? // ""),
+      ($r.seven_day.used_percentage? // ""), ($r.seven_day.resets_at? // "") ]
+  | map(tostring) | join("|")' 2>/dev/null)
+EOF
 
-  # Priority 1: Claude Code injects rate_limits in the statusline stdin JSON.
-  FIVE_PCT="$(echo "$INPUT" | jq -r '.rate_limits.five_hour.used_percentage // empty')"
-  FIVE_RESET_ISO="$(echo "$INPUT" | jq -r '.rate_limits.five_hour.resets_at // empty')"
-
-  # Priority 2: fallback to GET /api/oauth/usage with 60s cache.
-  if [ -z "$FIVE_PCT" ]; then
+  # Priority 2: no rate_limits on stdin (before the session's first response, or an older
+  # Claude Code): GET /api/oauth/usage, asked at most once a minute, answered or not.
+  if [ "${RL_PRESENT:-0}" != "1" ]; then
     USAGE_CACHE_DIR="${CONFIG_DIR}/claude-carbon"
     USAGE_CACHE_FILE="${USAGE_CACHE_DIR}/oauth-usage.json"
+    # Touched at each call, so a refused one (the endpoint answers 429 at times) does not
+    # put a curl of up to 5 s on every render
+    USAGE_ATTEMPT_FILE="${USAGE_CACHE_DIR}/oauth-usage.attempt"
     USAGE_CACHE_TTL=60
     mkdir -p "$USAGE_CACHE_DIR"
+    # usage_age <file>: seconds since it was written, very large when unknown
+    usage_age() {
+      local m
+      m="$(cc_mtime "$1" 2>/dev/null || true)"
+      case "$m" in ''|*[!0-9]*) echo 999999999 ;; *) echo $(( $(date +%s) - m )) ;; esac
+    }
 
     NEEDS_REFRESH=1
-    if [ -f "$USAGE_CACHE_FILE" ]; then
-      CACHE_MTIME="$(cc_mtime "$USAGE_CACHE_FILE")"
-      CACHE_AGE=$(( $(date +%s) - CACHE_MTIME ))
-      [ "$CACHE_AGE" -lt "$USAGE_CACHE_TTL" ] && NEEDS_REFRESH=0
-    fi
+    for f in "$USAGE_CACHE_FILE" "$USAGE_ATTEMPT_FILE"; do
+      [ -f "$f" ] && [ "$(usage_age "$f")" -lt "$USAGE_CACHE_TTL" ] && NEEDS_REFRESH=0
+    done
 
     if [ "$NEEDS_REFRESH" = "1" ]; then
+      { : > "$USAGE_ATTEMPT_FILE"; } 2>/dev/null || true
       TOKEN=""
       if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
         TOKEN="$CLAUDE_CODE_OAUTH_TOKEN"
       elif [ "$CC_OS" = "darwin" ] && command -v security &>/dev/null; then
         BLOB="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)"
-        [ -n "$BLOB" ] && TOKEN="$(echo "$BLOB" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)"
+        [ -n "$BLOB" ] && TOKEN="$(echo "$BLOB" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null || true)"
       fi
       if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
         CREDS="${CONFIG_DIR}/.credentials.json"
-        [ -f "$CREDS" ] && TOKEN="$(jq -r '.claudeAiOauth.accessToken // empty' "$CREDS" 2>/dev/null)"
+        [ -f "$CREDS" ] && TOKEN="$(jq -r '.claudeAiOauth.accessToken // empty' "$CREDS" 2>/dev/null || true)"
       fi
 
       if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
@@ -207,61 +221,77 @@ if command -v jq &>/dev/null; then
           -H "anthropic-beta: oauth-2025-04-20" \
           -H "User-Agent: claude-code/2.1.34" \
           "https://api.anthropic.com/api/oauth/usage" 2>/dev/null || true)"
-        if [ -n "$RESPONSE" ] && echo "$RESPONSE" | jq -e '.five_hour' >/dev/null 2>&1; then
+        if [ -n "$RESPONSE" ] && echo "$RESPONSE" \
+          | jq -e '(.five_hour | type) == "object" or (.seven_day | type) == "object"' >/dev/null 2>&1; then
           echo "$RESPONSE" > "$USAGE_CACHE_FILE"
         fi
       fi
     fi
 
-    if [ -f "$USAGE_CACHE_FILE" ]; then
-      FIVE_PCT="$(jq -r '.five_hour.utilization // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
-      FIVE_RESET_ISO="$(jq -r '.five_hour.resets_at // empty' "$USAGE_CACHE_FILE" 2>/dev/null)"
+    # A window the API reports without a reset time has not started: it is left out. A
+    # cache older than 15 minutes is not read: every call since may have been refused, and
+    # a weekly window stays open for days on a stale figure.
+    if [ -f "$USAGE_CACHE_FILE" ] && [ "$(usage_age "$USAGE_CACHE_FILE")" -lt 900 ]; then
+      IFS='|' read -r FIVE_PCT FIVE_RESET SEVEN_PCT SEVEN_RESET <<EOF
+$(jq -r 'def w: if (.resets_at? // "") == "" then ["", ""] else [(.utilization // ""), .resets_at] end;
+  [ (.five_hour | w), (.seven_day | w) ] | flatten | map(tostring) | join("|")' "$USAGE_CACHE_FILE" 2>/dev/null)
+EOF
     fi
   fi
 
+  # quota_epoch <resets_at>: Unix seconds, from the epoch Claude Code passes or the ISO-8601
+  # the API returns (2026-04-21T08:00:00.608966+00:00, in UTC); empty when unreadable
+  quota_epoch() {
+    local v="${1%%.*}"
+    [ -n "$v" ] || return 0
+    case "$v" in
+      *[!0-9]*) ;;
+      *) echo "$v"; return 0 ;;
+    esac
+    v="${v%%Z}"; v="${v%%+*}"
+    date -j -u -f "%Y-%m-%dT%H:%M:%S" "$v" "+%s" 2>/dev/null || date -d "$1" "+%s" 2>/dev/null || true
+  }
+  NOW_EPOCH="$(date +%s)"
+  FIVE_END="$(quota_epoch "$FIVE_RESET")"
+  SEVEN_END="$(quota_epoch "$SEVEN_RESET")"
+  # A window whose reset has passed is over: Claude Code drops it, an old cache still has it
+  if [ -n "$FIVE_END" ] && [ "$FIVE_END" -le "$NOW_EPOCH" ]; then FIVE_PCT=""; fi
+  if [ -n "$SEVEN_END" ] && [ "$SEVEN_END" -le "$NOW_EPOCH" ]; then SEVEN_PCT=""; fi
+
+  # The window shown, its length and the 🔥 grace, in seconds
+  Q_PCT=""; Q_END=""; Q_LEN=0; Q_GRACE=0; Q_LABEL=""
   if [ -n "$FIVE_PCT" ]; then
-    USAGE_PCT_INT="$(echo "$FIVE_PCT" | LC_ALL=C awk '{printf "%.0f", $1}')"
+    Q_PCT="$FIVE_PCT"; Q_END="$FIVE_END"; Q_LEN=18000; Q_GRACE=900
+  elif [ -n "$SEVEN_PCT" ]; then
+    Q_PCT="$SEVEN_PCT"; Q_END="$SEVEN_END"; Q_LEN=604800; Q_GRACE=86400; Q_LABEL=" 7d"
+  fi
+
+  if [ -n "$Q_PCT" ]; then
+    USAGE_PCT_INT="$(echo "$Q_PCT" | LC_ALL=C awk '{printf "%.0f", $1}')"
     [ "$USAGE_PCT_INT" -gt 100 ] 2>/dev/null && USAGE_PCT_INT=100
 
-    END_EPOCH=""
+    # The reset in local time; a weekly one more than a day away as its weekday
     RESET_LOCAL=""
-    if [ -n "$FIVE_RESET_ISO" ]; then
-      # Claude Code stdin passes resets_at as epoch (number); API returns ISO-8601 with fractional
-      # seconds + tz offset (e.g. 2026-04-21T08:00:00.608966+00:00). Handle both.
-      if [[ "$FIVE_RESET_ISO" =~ ^[0-9]+$ ]]; then
-        END_EPOCH="$FIVE_RESET_ISO"
-      else
-        ISO_TRIM="${FIVE_RESET_ISO%%.*}"     # strip fractional seconds
-        ISO_TRIM="${ISO_TRIM%%Z}"            # strip trailing Z
-        ISO_TRIM="${ISO_TRIM%%+*}"           # strip +HH:MM offset
-        END_EPOCH="$(date -j -u -f "%Y-%m-%dT%H:%M:%S" "$ISO_TRIM" "+%s" 2>/dev/null \
-          || date -d "$FIVE_RESET_ISO" "+%s" 2>/dev/null || echo "")"
-      fi
-      if [ -n "$END_EPOCH" ]; then
-        RESET_LOCAL="$(date -r "$END_EPOCH" "+%H:%M" 2>/dev/null \
-          || date -d "@$END_EPOCH" "+%H:%M" 2>/dev/null || echo "")"
-      fi
+    if [ -n "$Q_END" ]; then
+      RESET_FMT="+%H:%M"
+      [ "$Q_LEN" -gt 18000 ] && [ $(( Q_END - NOW_EPOCH )) -ge 86400 ] && RESET_FMT="+%a"
+      RESET_LOCAL="$(LC_ALL=C date -r "$Q_END" "$RESET_FMT" 2>/dev/null \
+        || LC_ALL=C date -d "@$Q_END" "$RESET_FMT" 2>/dev/null || echo "")"
     fi
 
-    # 🔥 when sustained burn rate over elapsed time would finish the 5h block
-    # above 100% of the limit. 15 min grace + 15% floor to absorb bursty starts.
-    # Block start derived as end - 5h (18000s).
+    # 🔥 when the burn rate since the window opened (its reset minus its length) would pass
+    # 100% of the limit by its end. From 15% used, after a grace: 15 min of a 5-hour window,
+    # a day of a weekly one, so a week is not judged on one working morning.
     WARN=""
-    if [ -n "$END_EPOCH" ] && [ "$USAGE_PCT_INT" -ge 15 ] 2>/dev/null; then
-      NOW_EPOCH="$(date +%s)"
-      START_EPOCH=$(( END_EPOCH - 18000 ))
-      ELAPSED_SEC=$(( NOW_EPOCH - START_EPOCH ))
-      if [ "$ELAPSED_SEC" -gt 900 ]; then
-        HOT="$(echo "$FIVE_PCT $ELAPSED_SEC" | LC_ALL=C awk '{print (($1 * 18000 / $2) >= 100) ? "1" : "0"}')"
+    if [ -n "$Q_END" ] && [ "$USAGE_PCT_INT" -ge 15 ] 2>/dev/null; then
+      ELAPSED_SEC=$(( NOW_EPOCH - (Q_END - Q_LEN) ))
+      if [ "$ELAPSED_SEC" -gt "$Q_GRACE" ]; then
+        HOT="$(echo "$Q_PCT $ELAPSED_SEC $Q_LEN" | LC_ALL=C awk '{print (($1 * $3 / $2) >= 100) ? "1" : "0"}')"
         [ "$HOT" = "1" ] && WARN="🔥 "
       fi
     fi
 
-    if [ -n "$RESET_LOCAL" ]; then
-      USAGE_SEGMENT=" | ${WARN}Use ${USAGE_PCT_INT}% ↻${RESET_LOCAL}"
-    else
-      USAGE_SEGMENT=" | ${WARN}Use ${USAGE_PCT_INT}%"
-    fi
+    USAGE_SEGMENT=" | ${WARN}Use ${USAGE_PCT_INT}%${Q_LABEL}${RESET_LOCAL:+ ↻${RESET_LOCAL}}"
   fi
 fi
 

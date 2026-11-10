@@ -995,10 +995,12 @@ export const register: Register = (on, options) => {
         total !== undefined &&
         total.grams > 0
       ) {
-        // The 5-hour quota the status line also shows, from the engine's own reading
+        // The quota the status line also shows (the 5-hour window, else the weekly one),
+        // from the engine's own reading
+        const quotaAt = await $.clock.now();
         const quota = await $.session
           .usage()
-          .then((u) => quotaText(u.rateLimits, lang))
+          .then((u) => quotaText(u.rateLimits, lang, quotaAt))
           .catch(() => null);
         // Then the status line's two hints: a newer release, and the month's card
         const newer = await newerReleaseOf($).catch(() => null);
