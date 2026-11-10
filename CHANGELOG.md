@@ -84,6 +84,13 @@ plugin for a repository's collaborators, the one command each of them runs, and 
 person turns it off. `tests/run-plugin-bootstrap-tests.sh` covers the hook on the three CI
 systems.
 
+### docs: the README's "For teams" section matches what exists
+
+- The "AI usage report" link is gone: the page it pointed to no longer exists.
+- The sentence listing where the tool points to tokenclimate.com named two places and
+  left out three: the last line of a `/carbon-pr` comment, the foot of the `/carbon-panel`
+  pane and `CITATION.cff`. It now names the five.
+
 ### fix: the status line's quota falls back to the weekly window when there is no 5-hour one
 
 Since 2026-10-30 a verified Ultra account (the plan formerly called Max 20x) has no 5-hour
