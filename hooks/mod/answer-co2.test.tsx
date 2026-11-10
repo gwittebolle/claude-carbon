@@ -328,6 +328,19 @@ describe("terminal", () => {
     expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $ · Usage 23 % ↻14:05");
   });
 
+  test("without a 5-hour window the status entry ends with the weekly quota", async ($: any, on: any) => {
+    // A verified Ultra account: the engine reports the weekly window only. A local time,
+    // so the reset reads Saturday in any time zone.
+    const resetsAt = new Date(2026, 9, 24, 15, 59).toISOString();
+    const { statuses } = world(on, {
+      rateLimits: [{ kind: "seven_day", percentUsed: 41.2, resetsAt }],
+    });
+    engineSteps(on);
+    await startSession($);
+    await runTurn($, [ORDINARY], 38000);
+    expect(plain(statuses.at(-1))).toBe("Cette session : 4,0 gCO₂ · 0,06 $ · Usage 41 % 7j ↻sam.");
+  });
+
   test("an unusual answer shows its ratio to the median and its subagents", async ($: any, on: any) => {
     world(on, { history: ONE_GRAM_HISTORY });
     engineSteps(on);

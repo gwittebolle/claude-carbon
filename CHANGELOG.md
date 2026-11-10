@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-11-10
+
+### fix: the status line's quota falls back to the weekly window when there is no 5-hour one
+
+Since 2026-10-30 a verified Ultra account (the plan formerly called Max 20x) has no 5-hour
+window, only the weekly one, and Claude Code leaves `five_hour` out of the `rate_limits` it
+passes to the status line. The script took that for a missing value and asked
+`/api/oauth/usage` on every render past its 60-second cache. The endpoint answered with a
+5-hour window at 0% and no reset time, later with a 429, so the cache was never rewritten:
+the status line showed `Use 0%` for good, with a curl of up to 5 seconds on each render.
+
+- When Claude Code passes `rate_limits`, they are the only source. A window they leave out
+  does not exist, and the API is not called.
+- When no 5-hour window is open the weekly one shows, `Use 41% 7d ↻Thu`, its reset as a
+  weekday while more than a day away and as a time after that. That is always the case on
+  a verified Ultra account, and on Pro and Max between a 5-hour window's reset and the
+  next request. 🔥 follows the burn rate over the
+  seven days, with a day of grace instead of 15 minutes.
+- The API fallback, left for a status line with no `rate_limits` on stdin (before the
+  session's first response, or an older Claude Code), is called at most once a minute,
+  answered or not. It leaves out a window without a reset time or whose reset has passed,
+  and a cache over 15 minutes old. A credentials file that does not parse no longer stops
+  the status line.
+
+The desktop app's session entry does the same, `Usage 41 % 7j ↻sam.` in French. The README and the pane's note on the API-price value name
+Ultra next to Pro and Max. `tests/run-quota-tests.sh` covers the status line on the three
+CI systems, with curl replaced by a shim.
+
+### fix: Claude Fable 5.2 and Mythos 5.2 at their own price
+
+Claude Fable 5.2 (`claude-fable-5-2`), released 2026-11-09 and now the model Claude Code's
+`fable` alias resolves to, lists at $8 / $40 per Mtok with cache reads at $0.20 (0.025x).
+With no override it was billed at the Fable family price, $10 / $50 with reads at 0.1x:
+25% over on input and output, 5x on cache reads, which make up most of a Claude Code
+session. `data/prices.json` has overrides for it and for Mythos 5.2, and two golden vectors
+in `tests/methodology-vectors-per-model.json` hold them. CO2 does not change, since
+emission factors stay per family. A row recorded with Fable 5.2 before this fix is
+re-priced by `scripts/recompute.sh --with-cost`.
+
 ## 2026-10-28
 
 ### fix: the Windows installer prints the winget commands instead of running them, and keeps PowerShell open

@@ -498,10 +498,12 @@ const sessionCases = [
   ["session line, quota without cost", [5.4, "fr", null, "Usage 23 %"], "Cette session : 5,4 gCO₂ · Usage 23 %"],
 ];
 
-// The 5-hour window, as the terminal status line shows it. Built from a local time, so the
-// reset reads 14:05 whatever the machine's time zone.
+// The quota, as the terminal status line shows it. Built from local times, so the reset
+// reads 14:05 whatever the machine's time zone; the clock stands on the morning before
+// (Tuesday 20 October 2026, 9:00) unless a check sets its own.
 const resetsAt = new Date(2026, 9, 21, 14, 5).toISOString();
-const q = (limits, lang = "fr") => quotaText(limits, lang)?.replaceAll(NBSP, " ") ?? null;
+const quotaNow = new Date(2026, 9, 20, 9, 0).getTime();
+const q = (limits, lang = "fr", now = quotaNow) => quotaText(limits, lang, now)?.replaceAll(NBSP, " ") ?? null;
 check("quota", q([{ kind: "five_hour", percentUsed: 23.4, resetsAt }]), "Usage 23 % ↻14:05");
 check("quota en", q([{ kind: "five_hour", percentUsed: 23.5, resetsAt }], "en"), "Use 24% ↻14:05");
 // Half to even, as the status line's awk rounds: 22.5 reads 22 there, so here too
@@ -515,7 +517,25 @@ check("quota, the 5-hour window among others", q([
 check("quota capped at 100", q([{ kind: "five_hour", percentUsed: 104.2 }]), "Usage 100 %");
 check("quota, unreadable reset left out", q([{ kind: "five_hour", percentUsed: 7, resetsAt: "soon" }]), "Usage 7 %");
 check("no quota off a subscription", q([]), null);
-check("no quota without the 5-hour window", q([{ kind: "seven_day", percentUsed: 61 }]), null);
+// No 5-hour window (a verified Ultra account has none): the weekly one, its reset a weekday
+// while more than a day away, its time once within a day
+const weeklyReset = new Date(2026, 9, 24, 15, 59).toISOString();
+check("quota, weekly without a 5-hour window", q([{ kind: "seven_day", percentUsed: 41.2, resetsAt: weeklyReset }]), "Usage 41 % 7j ↻sam.");
+check("quota, weekly en", q([{ kind: "seven_day", percentUsed: 41.2, resetsAt: weeklyReset }], "en"), "Use 41% 7d ↻Sat");
+check("quota, weekly within a day", q([{ kind: "seven_day", percentUsed: 61, resetsAt }], "fr", new Date(2026, 9, 21, 8, 0).getTime()), "Usage 61 % 7j ↻14:05");
+check("quota, weekly without a reset", q([{ kind: "seven_day", percentUsed: 61 }]), "Usage 61 % 7j");
+check("quota, an unreadable 5-hour window gives way to the weekly one", q([
+  { kind: "five_hour", percentUsed: NaN },
+  { kind: "seven_day", percentUsed: 61 },
+]), "Usage 61 % 7j");
+check("quota, a 5-hour window already reset gives way to the weekly one", q([
+  { kind: "five_hour", percentUsed: 90, resetsAt: new Date(2026, 9, 20, 8, 0).toISOString() },
+  { kind: "seven_day", percentUsed: 61, resetsAt: weeklyReset },
+]), "Usage 61 % 7j ↻sam.");
+check("no quota once every window has reset", q([
+  { kind: "seven_day", percentUsed: 61, resetsAt: new Date(2026, 9, 19).toISOString() },
+]), null);
+check("no quota from other windows only", q([{ kind: "spend_limit", percentUsed: 90 }]), null);
 check("no quota from an older engine", q(undefined), null);
 check("nbsp before % in French", quotaText([{ kind: "five_hour", percentUsed: 7 }], "fr") === `Usage 7${NBSP}%`, true);
 check(
@@ -541,7 +561,8 @@ for (const lang of ["fr", "en"]) {
   shown.push(view.main, view.sub, answerLine(view));
   shown.push(welcomeText(lang));
   shown.push(sessionLine(52, lang, 0.38), sessionLine(52, lang));
-  shown.push(quotaText([{ kind: "five_hour", percentUsed: 23, resetsAt }], lang));
+  shown.push(quotaText([{ kind: "five_hour", percentUsed: 23, resetsAt }], lang, quotaNow));
+  shown.push(quotaText([{ kind: "seven_day", percentUsed: 41, resetsAt: weeklyReset }], lang, quotaNow));
   shown.push(updateHint("1.18.0"), cardHint(8, 84213, lang), updateText("1.18.0", lang));
   shown.push(formatUsd(0.12, lang), formatUsd(0.001, lang));
   for (const n of [0.02, 4.24, 37.6, 1234]) shown.push(formatGrams(n, lang));
@@ -1112,7 +1133,7 @@ check("session stats en", sessionStatsText(2, 1, null, "en"), "2 answers · 1 su
 check("money value", moneyValue(27608.16, "fr").replaceAll(NBSP, " "), "27 608 $");
 check("money value en", moneyValue(12.3, "en"), "$12.30");
 check("change value", changeValue(-18).replaceAll(NBSP, " "), "-18 %");
-check("api value note", apiValueNote("fr").replaceAll(NBSP, " "), "Le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.");
+check("api value note", apiValueNote("fr").replaceAll(NBSP, " "), "Le prix de cet usage facturé à l'API ; un abonnement Pro, Max ou Ultra en couvre tout ou partie.");
 check("bar median needs 3 full bars", barMedian([{ grams: 1 }, { grams: 0 }, { grams: 3 }]), null);
 check("bar median", barMedian([{ grams: 1 }, { grams: 3 }, { grams: 0 }, { grams: 5 }]), 3);
 // Where midnight is skipped for summer time (Santiago, Sunday 6 Sep 2026), no session

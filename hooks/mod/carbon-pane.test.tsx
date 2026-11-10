@@ -719,7 +719,7 @@ describe("the /carbon-panel pane", () => {
     expect(text).toContain("En voiture\n≈ 2 km");
     // The value never says who paid it: its tile has an (i) button, and a click shows
     // the note under the tiles, a second hides it
-    const API_NOTE = "Le prix de cet usage facturé à l'API ; un abonnement Pro ou Max en couvre tout ou partie.";
+    const API_NOTE = "Le prix de cet usage facturé à l'API ; un abonnement Pro, Max ou Ultra en couvre tout ou partie.";
     expect(text).not.toContain(API_NOTE);
     expect(await ui.find({ key: "note-cost" })).toBeDefined();
     expect(await ui.find({ key: "note-car" })).toBeDefined();
