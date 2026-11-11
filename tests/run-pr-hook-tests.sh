@@ -152,8 +152,8 @@ check "push before any answer: not marked as asked" "$(consent "$KEY")" ""
 OUT="$(hook 'gh pr create --title x --body y' "$ASK/src")"
 check "first gh pr create, after a cd: still asked" "$(hook 'cd src && gh pr create --fill' "$PLAIN")" ""
 check "first gh pr create: one JSON object for Claude" "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.hookEventName')" "PostToolUse"
-check "first gh pr create: each answer's command ends its own line" "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext' | grep -c -- '--consent \(yes\|never\)$')" "2"
-check "first gh pr create: the script's path is quoted for a shell" "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext' | grep -cF "bash '${REPO_DIR}/scripts/generate-pr-report.sh' --consent yes")" "1"
+check "first gh pr create: each answer's command ends its own line" "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext' | tr -d '\r' | grep -c -- '--consent \(yes\|never\)$')" "2"
+check "first gh pr create: the script's path is quoted for a shell" "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext' | tr -d '\r' | grep -cE "^bash '[^']*/scripts/generate-pr-report\.sh' --consent yes\$")" "1"
 check "first gh pr create: marked as asked" "$(consent "$KEY")" "asked"
 check "first gh pr create: nothing pending" "$(pending)" "0"
 check "second gh pr create: not asked again" "$(hook 'gh pr create --fill' "$ASK")" ""
@@ -169,11 +169,12 @@ check "after never: push leaves nothing pending" "$(hook 'git push' "$ASK"; pend
 check "--consent maybe: refused" "$?" "2"
 check "--consent maybe: the answer stays" "$(consent "$KEY")" "never"
 
-# The yes, through the report script: recorded, and the report left for the Stop hook
+# The yes, through the report script: recorded, and the report left for the Stop hook. The
+# folder is written as git gives it (C:/... under Git Bash), which pr-flush.sh reads back.
 (cd "$ASK" && env -u CLAUDE_CARBON_DB CLAUDE_CONFIG_DIR="$CFG" bash "${REPO_DIR}/scripts/generate-pr-report.sh" --consent yes >/dev/null 2>&1)
 check "--consent yes after the question: recorded" "$(consent "$KEY")" "yes"
 check "--consent yes: the report waits for the end of the answer" "$(pending)" "1"
-check "--consent yes: the marker names the folder and the branch" "$(cat "${DATA}/pr-pending/"* | tr '\n' '|')" "$(cd "$ASK" && pwd -P)|feat/x|"
+check "--consent yes: the marker names the folder and the branch" "$(cat "${DATA}/pr-pending/"* | tr '\n' '|')" "$(git -C "$ASK" rev-parse --show-toplevel)|feat/x|"
 rm -rf "${DATA}/pr-pending"
 YES_OUT="$(cd "$ASK" && env -u CLAUDE_CARBON_DB CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_NO_PR_AUTO=1 bash "${REPO_DIR}/scripts/generate-pr-report.sh" --consent yes 2>&1)"
 check "--consent yes with the opt-out set: said, and nothing waits" "$(printf '%s' "$YES_OUT" | grep -c 'CLAUDE_CARBON_NO_PR_AUTO is set')|$(pending)" "1|0"
