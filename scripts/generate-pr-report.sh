@@ -13,8 +13,9 @@
 #   --consent yes|never
 #              this developer's answer for the current repository, when its shared settings
 #              ask for the report on every PR (CLAUDE_CARBON_PR): kept on this machine in
-#              pr-consent.tsv. `yes` then posts the report; `never` posts nothing. `yes` is
-#              only taken in a repository that asks, once the question was put there.
+#              pr-consent.tsv. After a `yes` the Stop hook posts the report when the answer
+#              ends; `never` posts nothing. `yes` is only taken in a repository that asks,
+#              once the question was put there.
 #   --summary [--since YYYY-MM-DD]
 #              read back the reports already posted on this repository's merged PRs
 #              (through gh) and total them per month and per author. Printed here only:
@@ -83,7 +84,6 @@ if [ -n "$CONSENT" ]; then
       echo "Error: no question was asked for this repository yet (it comes with your first 'gh pr create' in Claude Code here); nothing recorded. Run /carbon-pr to post one yourself." >&2
       exit 1
     fi
-    AUTO=1
   fi
   if ! cc_pr_consent_set "$CONSENT_DIR" "$CONSENT_KEY" "$CONSENT"; then
     echo "Error: could not write ${CONSENT_DIR}/pr-consent.tsv." >&2
@@ -93,7 +93,17 @@ if [ -n "$CONSENT" ]; then
     echo "Noted: no carbon report is posted by itself on this repository's pull requests from this machine. /carbon-pr still posts one when you run it."
     exit 0
   fi
-  echo "Noted: the carbon report is posted on your pull requests of this repository and updated when you push. Change your mind with --consent never."
+  # The answer comes in the middle of a turn, before its tokens are recorded: the report
+  # is left for the Stop hook, as after a push (pr-flush.sh), instead of posting a figure
+  # that lacks this turn, or none at all on a branch whose first session is this one.
+  CONSENT_BRANCH="$(cc_git_branch "$CONSENT_TOP")"
+  if [ -n "$CONSENT_BRANCH" ]; then
+    CONSENT_PENDING="$(cc_pr_pending "$CONSENT_DIR" "$CONSENT_TOP" "$CONSENT_BRANCH")"
+    mkdir -p "$(dirname "$CONSENT_PENDING")" 2>/dev/null \
+      && printf '%s\n%s\n' "$CONSENT_TOP" "$CONSENT_BRANCH" >"$CONSENT_PENDING" 2>/dev/null || true
+  fi
+  echo "Noted: the carbon report is posted on this branch's pull request when this answer ends, then updated when you push, on your pull requests of this repository. Change your mind with --consent never."
+  exit 0
 fi
 
 # ── The reports already posted on the repository's merged PRs, totalled ─────

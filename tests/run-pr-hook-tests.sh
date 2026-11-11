@@ -169,10 +169,11 @@ check "after never: push leaves nothing pending" "$(hook 'git push' "$ASK"; pend
 check "--consent maybe: refused" "$?" "2"
 check "--consent maybe: the answer stays" "$(consent "$KEY")" "never"
 
-# The yes, through the report script: recorded, then the run goes on to the figures (and
-# stops there, this database being an empty file)
+# The yes, through the report script: recorded, and the report left for the Stop hook
 (cd "$ASK" && env -u CLAUDE_CARBON_DB CLAUDE_CONFIG_DIR="$CFG" bash "${REPO_DIR}/scripts/generate-pr-report.sh" --consent yes >/dev/null 2>&1)
 check "--consent yes after the question: recorded" "$(consent "$KEY")" "yes"
+check "--consent yes: the report waits for the end of the answer" "$(pending)" "1"
+rm -rf "${DATA}/pr-pending"
 check "one line per repository" "$(grep -c "^${KEY}	" "${DATA}/pr-consent.tsv")" "1"
 check "after yes: gh pr create prints nothing" "$(hook 'gh pr create --fill' "$ASK")" ""
 check "after yes: a report is pending" "$(pending)" "1"
