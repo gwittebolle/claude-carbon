@@ -189,6 +189,11 @@ export function cardHint(month: number, grams: number, lang: Lang): string {
   return `📊 ${name}${fr ? `${NBSP}:` : ":"} ${formatGrams(grams, lang)} · /carbon-card`;
 }
 
+// December's: the year so far
+export function yearCardHint(year: number, grams: number, lang: Lang): string {
+  return `📊 ${year}${lang === "fr" ? `${NBSP}:` : ":"} ${formatGrams(grams, lang)} · /carbon-card`;
+}
+
 export type RateLimit = { kind: string; percentUsed: number; resetsAt?: string };
 
 const WEEKDAYS_FR = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];

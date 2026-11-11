@@ -382,6 +382,9 @@ fi
 # with fewer than 7 days of sessions caches "-" and shows nothing: on a fresh
 # install the nudge would otherwise advertise a near-empty card.
 #
+# In December the figure is the year so far and the nudge stays the whole month: the
+# card covers the calendar year, and that is the month to look back on it.
+#
 # It used to show to the first three sessions of the month and then stop, which
 # on a status line amounted to two or three glances at "📊 /carbon-card" with no
 # hint of what the card would show. Nobody acted on it. "📊 August wrapped" named
@@ -392,11 +395,21 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
   TODAY_DAY="$((10#$(date +%d)))"
   NUDGE_UNTIL="${CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY:-10}"
   CARD_STAMP="$(cat "${CONFIG_DIR}/claude-carbon/last-card-month" 2>/dev/null || true)"
-  if [ "$CARD_STAMP" != "$THIS_MONTH" ] && [ "$TODAY_DAY" -le "$NUDGE_UNTIL" ] 2>/dev/null; then
+  # December: open the whole month, unless the last day is 0 (the opt-out by number)
+  NUDGE_LAST="$NUDGE_UNTIL"
+  if [ "${THIS_MONTH#*-}" = "12" ] && [ "$NUDGE_UNTIL" -gt 0 ] 2>/dev/null; then NUDGE_LAST=31; fi
+  if [ "$CARD_STAMP" != "$THIS_MONTH" ] && [ "$TODAY_DAY" -le "$NUDGE_LAST" ] 2>/dev/null; then
     PREV_Y="${THIS_MONTH%-*}"
     PREV_M="$((10#${THIS_MONTH#*-} - 1))"
     if [ "$PREV_M" -eq 0 ]; then PREV_M=12; PREV_Y="$((PREV_Y - 1))"; fi
     PREV_MONTH="$(printf '%04d-%02d' "$PREV_Y" "$PREV_M")"
+    # What is summed and how it is named: the closed month, or in December the year
+    NUDGE_PERIOD="$PREV_MONTH"
+    NUDGE_NAME="$(cc_prev_month_name "$THIS_MONTH")"
+    if [ "${THIS_MONTH#*-}" = "12" ]; then
+      NUDGE_PERIOD="${THIS_MONTH%-*}"
+      NUDGE_NAME="${THIS_MONTH%-*}"
+    fi
     TOTAL_FILE="${CONFIG_DIR}/claude-carbon/last-month-total"
     printf -v TOTAL_KEY '%s-%02d' "$THIS_MONTH" "$TODAY_DAY"
     PREV_KEY=""; PREV_TOTAL=""
@@ -405,7 +418,7 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
       PREV_TOTAL=""
       if [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>&1; then
         # The card's monthly bar: same grouping on started_at, excluded rows left out.
-        MONTH_ROW="$(sqlite3 -cmd ".timeout 300" -separator ' ' "$DB_PATH" "SELECT COUNT(DISTINCT substr(started_at, 1, 10)), printf('%.0f', COALESCE(SUM(co2_grams), 0)) FROM sessions WHERE COALESCE(excluded, 0) = 0 AND substr(started_at, 1, 7) = '${PREV_MONTH}';" 2>/dev/null || true)"
+        MONTH_ROW="$(sqlite3 -cmd ".timeout 300" -separator ' ' "$DB_PATH" "SELECT COUNT(DISTINCT substr(started_at, 1, 10)), printf('%.0f', COALESCE(SUM(co2_grams), 0)) FROM sessions WHERE COALESCE(excluded, 0) = 0 AND substr(started_at, 1, ${#NUDGE_PERIOD}) = '${NUDGE_PERIOD}';" 2>/dev/null || true)"
         MONTH_DAYS=""; MONTH_G=""
         read -r MONTH_DAYS MONTH_G <<< "$MONTH_ROW" || true
         # Cached only when the query answered: a locked or unreadable DB is retried.
@@ -421,7 +434,7 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
     fi
     case "$PREV_TOTAL" in
       ''|*[!0-9]*) ;;
-      *) CARD_SEGMENT=" | 📊 $(cc_prev_month_name "$THIS_MONTH"): $(co2_display "$PREV_TOTAL") · /carbon-card" ;;
+      *) CARD_SEGMENT=" | 📊 ${NUDGE_NAME}: $(co2_display "$PREV_TOTAL") · /carbon-card" ;;
     esac
   fi
 fi

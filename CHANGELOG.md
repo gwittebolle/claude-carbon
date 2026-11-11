@@ -2,6 +2,15 @@
 
 ## 2026-11-11
 
+### feat: in December the card reminder gives the year so far
+
+From the 1st to the 10th of a month the status line and the desktop app's session entry
+end with the month just closed, `📊 September: 84.2kgCO₂ · /carbon-card`. In December they
+give the year so far, `📊 2026: 1444.4kgCO₂ · /carbon-card`, the whole month: the card
+covers the calendar year. The same rules hold: sessions on 7 days or more, a card made
+during the month clears it, `CLAUDE_CARBON_NO_CARD_NUDGE=1` or a last day of 0 removes it.
+The status line's reminder tests now run on a fixed date.
+
 ### feat: a repository can ask for the carbon report on its pull requests
 
 `"env": {"CLAUDE_CARBON_PR": "1"}` in a repository's committed `.claude/settings.json`

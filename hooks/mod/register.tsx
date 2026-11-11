@@ -104,6 +104,7 @@ import {
   sessionLine,
   updateHint,
   cardHint,
+  yearCardHint,
   showLabel,
   stripesAlt,
   stripesCaption,
@@ -155,6 +156,7 @@ import {
   SETUP_NEEDED_FILE,
   AUTO_SETUP_FILE,
   cardNudge,
+  cardNudgeOpen,
   CARD_STAMP_FILE,
   CARD_NUDGE_UNTIL_DAY,
   isView,
@@ -396,7 +398,7 @@ const cardHintState: {
 async function cardHintOf($: EngineInterface, lang: Lang): Promise<string | null> {
   if (cardHintState.stampFile === null || pane.historyFile === null) return null;
   const now = await $.clock.now();
-  if (new Date(now).getDate() > cardHintState.untilDay) return null;
+  if (!cardNudgeOpen(now, cardHintState.untilDay)) return null;
   const today = new Date(now).toDateString();
   if (cardHintState.day !== today) {
     // Kept for the day once read: a file not there yet, or not readable now, is retried
@@ -417,7 +419,10 @@ async function cardHintOf($: EngineInterface, lang: Lang): Promise<string | null
     stamp = null;
   }
   const nudge = cardNudge(cardHintState.rows, now, stamp, cardHintState.untilDay);
-  return nudge === null ? null : cardHint(nudge.month, nudge.grams, lang);
+  if (nudge === null) return null;
+  return "year" in nudge
+    ? yearCardHint(nudge.year, nudge.grams, lang)
+    : cardHint(nudge.month, nudge.grams, lang);
 }
 
 async function loadPaneHistory($: EngineInterface) {

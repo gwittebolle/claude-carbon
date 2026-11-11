@@ -136,8 +136,10 @@ the total of the month just closed, the bar the card draws for it, in the same f
 session figure. It is read from carbon.db once a day while the nudge shows, and kept in
 `~/.claude/claude-carbon/last-month-total`. A month with fewer than 7 days of sessions gets no
 nudge, so a fresh install is not pushed to share a near-empty card. Generating a card
-clears it for the month; it goes quiet on its own after the 10th. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
-moves the cut-off, `CLAUDE_CARBON_NO_CARD_NUDGE=1` removes the nudge. Nothing is posted anywhere:
+clears it for the month; it goes quiet on its own after the 10th. In December it gives the year
+so far instead, `📊 2026: 1444.4kgCO₂ · /carbon-card`, and stays the whole month, the card covering
+the calendar year. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
+moves the cut-off (0 removes the nudge, December included), `CLAUDE_CARBON_NO_CARD_NUDGE=1` removes the nudge. Nothing is posted anywhere:
 sharing stays a human decision.
 
 <details>

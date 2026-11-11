@@ -104,6 +104,7 @@ import {
   updateText,
   updateHint,
   cardHint,
+  yearCardHint,
   formatTokens,
   formatWh,
   formatShare,
@@ -168,6 +169,7 @@ import {
   statePath,
   parseSetupNeeded,
   cardNudge,
+  cardNudgeOpen,
 } from "../hooks/mod/lib/sessions.ts";
 import { carEquivalence, equivalenceSet } from "../hooks/mod/lib/equiv.ts";
 
@@ -565,7 +567,7 @@ for (const lang of ["fr", "en"]) {
   shown.push(sessionLine(52, lang, 0.38), sessionLine(52, lang));
   shown.push(quotaText([{ kind: "five_hour", percentUsed: 23, resetsAt }], lang, quotaNow));
   shown.push(quotaText([{ kind: "seven_day", percentUsed: 41, resetsAt: weeklyReset }], lang, quotaNow));
-  shown.push(updateHint("1.18.0"), cardHint(8, 84213, lang), updateText("1.18.0", lang));
+  shown.push(updateHint("1.18.0"), cardHint(8, 84213, lang), yearCardHint(2026, 84213, lang), updateText("1.18.0", lang));
   shown.push(formatUsd(0.12, lang), formatUsd(0.001, lang));
   for (const n of [0.02, 4.24, 37.6, 1234]) shown.push(formatGrams(n, lang));
 }
@@ -1002,6 +1004,18 @@ check(
   const lateAugust = { ...day(1, 9000), at: Date.UTC(2026, 7, 31, 23, 30) };
   check("card nudge: the UTC date decides the month", cardNudge([...september, lateAugust], october3, null)?.grams, 7000);
   check("card nudge: no last day, no hint", cardNudge(september, october3, null, 0), null);
+  // December: the year so far, the whole month
+  const dec20 = new Date(2026, 11, 20, 9).getTime();
+  const lastYear = { ...day(1, 9000), at: Date.UTC(2025, 11, 30, 12) };
+  check("card nudge: December gives the year", JSON.stringify(cardNudge([...september, lastYear], dec20, null)), '{"year":2026,"grams":7000}');
+  check("card nudge: December, past the 10th, still open", cardNudgeOpen(dec20), true);
+  check("card nudge: November, past the 10th, closed", cardNudgeOpen(new Date(2026, 10, 20, 9).getTime()), false);
+  check("card nudge: December, six days in the year are not enough", cardNudge(september.slice(1), dec20, null), null);
+  check("card nudge: December, a card made in December", cardNudge(september, dec20, "2026-12"), null);
+  check("card nudge: December, a card made in November", "year" in (cardNudge(september, dec20, "2026-11") ?? {}), true);
+  check("card nudge: December, no last day, no hint", cardNudge(september, dec20, null, 0), null);
+  check("year card hint fr", yearCardHint(2026, 1444400, "fr").replaceAll(NBSP, " "), "📊 2026 : 1444,4 kgCO₂ · /carbon-card");
+  check("year card hint en", yearCardHint(2026, 84213, "en").replaceAll(NBSP, " "), "📊 2026: 84.2 kgCO₂ · /carbon-card");
 }
 check(
   "update text fr",

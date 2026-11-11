@@ -426,15 +426,33 @@ check "drift: CLAUDE_CARBON_NO_DRIFT_CHECK honoured" "no" "$(CLAUDE_CARBON_NO_DR
 # month (last-card-month stamp) clears it, the day threshold ends it, the opt-out
 # silences it. The day is forced through the threshold: 31 means "today qualifies",
 # 0 means "no day does". Every DB here is a throwaway under TMPROOT.
+# Today is a fixed date, through a `date` put first on the PATH that answers only the
+# three formats the nudge asks for: the checks give the same result in any month, and
+# December, when the nudge gives the year so far all month, can be checked in any other.
 if ! command -v sqlite3 >/dev/null 2>&1; then
   echo "SKIP monthly card nudge: sqlite3 not available"
 else
-  THIS_MONTH="$(date +%Y-%m)"
+  FAKE_DATE_DIR="${TMPROOT}/fake-date"
+  mkdir -p "$FAKE_DATE_DIR"
+  REAL_DATE="$(command -v date)"
+  cat >"${FAKE_DATE_DIR}/date" <<FAKEDATE
+#!/usr/bin/env bash
+case "\$*" in
+  "+%Y-%m") echo "\${FAKE_YM}" ;;
+  "+%d") echo "\${FAKE_D}" ;;
+  "+%Y-%m-%d") echo "\${FAKE_YM}-\${FAKE_D}" ;;
+  *) exec "${REAL_DATE}" "\$@" ;;
+esac
+FAKEDATE
+  chmod +x "${FAKE_DATE_DIR}/date"
+  FAKE_YM="2026-10"
+  FAKE_D="05"
+  THIS_MONTH="$FAKE_YM"
   PREV_M="$((10#${THIS_MONTH#*-} - 1))"; PREV_Y="${THIS_MONTH%-*}"
   if [ "$PREV_M" -eq 0 ]; then PREV_M=12; PREV_Y="$((PREV_Y - 1))"; fi
   PREV_MONTH="$(printf '%04d-%02d' "$PREV_Y" "$PREV_M")"
   PREV_NAME="$(cc_prev_month_name "$THIS_MONTH")"
-  TODAY_KEY="$(date +%Y-%m-%d)"
+  TODAY_KEY="${FAKE_YM}-${FAKE_D}"
 
   # nudge_db <cfg> <days>: one 1500 g session on each of the first <days> days of the
   # closed month, plus an excluded 99999 g session on another day and a 50000 g
@@ -450,7 +468,8 @@ else
     sqlite3 "$db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('now', 'p', 'claude-opus-5', 50000.0, '${THIS_MONTH}-01T10:00:00Z');"
   }
   nudge_line() {
-    echo '{}' | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="${CFG}/claude-carbon/carbon.db" \
+    echo '{}' | PATH="${FAKE_DATE_DIR}:$PATH" FAKE_YM="$FAKE_YM" FAKE_D="$FAKE_D" \
+      CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_DB="${CFG}/claude-carbon/carbon.db" \
       CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 CLAUDE_CARBON_NO_DRIFT_CHECK=1 \
       bash "$SL_SCRIPT" 2>/dev/null | grep -o '📊 .*' || true
   }
@@ -469,7 +488,7 @@ else
   printf '%s-01 840\n' "$PREV_MONTH" > "${CFG}/claude-carbon/last-month-total"
   check "nudge: a cache from another day is recomputed" "📊 ${PREV_NAME}: 15.5kgCO₂ · /carbon-card" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
   check "nudge: past the day threshold it is gone"      "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=0 nudge_line)"
-  date +%Y-%m > "${CFG}/claude-carbon/last-card-month"
+  echo "$FAKE_YM" > "${CFG}/claude-carbon/last-card-month"
   check "nudge: a card this month clears it"            "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
   rm -f "${CFG}/claude-carbon/last-card-month"
   check "nudge: CLAUDE_CARBON_NO_CARD_NUDGE honoured"   "" "$(CLAUDE_CARBON_NO_CARD_NUDGE=1 CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
@@ -478,6 +497,25 @@ else
   nudge_db "$CFG" 6
   check "nudge: fewer than 7 days, no nudge"            "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)"
   check "nudge: fewer than 7 days is cached too"        "${TODAY_KEY} -" "$(cat "${CFG}/claude-carbon/last-month-total" 2>/dev/null)"
+
+  # December: the year so far, the whole month. The same seven November days at 1500 g,
+  # plus the 50000 g of December's first day; the excluded row and last year's stay out.
+  FAKE_YM="2026-12"
+  FAKE_D="20"
+  THIS_MONTH="$FAKE_YM"
+  PREV_MONTH="2026-11"
+  CFG="${TMPROOT}/nudge-december"
+  nudge_db "$CFG" 7
+  sqlite3 "${CFG}/claude-carbon/carbon.db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('lastyear', 'p', 'claude-opus-5', 7000.0, '2025-12-30T10:00:00Z');"
+  check "nudge, December: the year so far, past the 10th" "📊 2026: 60.5kgCO₂ · /carbon-card" "$(nudge_line)"
+  check "nudge, December: a last day of 0 still silences it" "" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=0 nudge_line)"
+  echo "2026-11" > "${CFG}/claude-carbon/last-card-month"
+  check "nudge, December: a card made in November does not clear it" "📊 2026: 60.5kgCO₂ · /carbon-card" "$(nudge_line)"
+  echo "2026-12" > "${CFG}/claude-carbon/last-card-month"
+  check "nudge, December: a card made in December clears it" "" "$(nudge_line)"
+  FAKE_YM="2026-11"
+  PREV_MONTH="2026-10"
+  check "nudge, November: past the 10th it is gone" "" "$(nudge_line)"
 
   CFG="${TMPROOT}/nudge-nodb"
   mkdir -p "${CFG}/claude-carbon"
