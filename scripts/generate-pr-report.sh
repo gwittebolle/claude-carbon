@@ -5,11 +5,18 @@
 # Runs on the developer's machine, where carbon.db and the gh auth live; the
 # CI runner never sees this data. Opt-in by nature: nothing is posted unless
 # the developer runs it.
-# Usage: generate-pr-report.sh [--dry-run] [--pr <number>]
+# Usage: generate-pr-report.sh [--dry-run] [--pr <number>] [--consent yes|never] [--auto]
 #   --dry-run  print the comment body and post nothing (no gh needed, except with --pr,
 #              whose branch is read through gh)
 #   --pr N     report PR N: its own branch (read through gh), wherever the command runs
 #              (default: the current branch and its open PR). A PR from a fork is refused.
+#   --consent yes|never
+#              this developer's answer for the current repository, when its shared settings
+#              ask for the report on every PR (CLAUDE_CARBON_PR): kept on this machine in
+#              pr-consent.tsv. `yes` then posts the report; `never` posts nothing. `yes` is
+#              only taken in a repository that asks, once the question was put there.
+#   --auto     the run the Stop hook starts by itself (pr-flush.sh): a PR whose branch
+#              lives in a fork is refused, so nothing lands on another project unasked.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,11 +31,17 @@ MARKER="<!-- claude-carbon-dev-report -->"
 DRY_RUN=0
 PR_GIVEN=0
 PR_NUMBER=""
+CONSENT=""
+AUTO=0
+USAGE_LINE="Usage: generate-pr-report.sh [--dry-run] [--pr <number>] [--consent yes|never] [--auto]"
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
     --pr) PR_GIVEN=1; PR_NUMBER="${2:-}"; shift; [ $# -gt 0 ] && shift ;;
-    *) echo "Unknown option: $1" >&2; echo "Usage: generate-pr-report.sh [--dry-run] [--pr <number>]" >&2; exit 2 ;;
+    --auto) AUTO=1; shift ;;
+    --consent) CONSENT="${2:-}"; shift; [ $# -gt 0 ] && shift
+      case "$CONSENT" in yes|never) ;; *) echo "Error: --consent takes yes or never, not '${CONSENT}'." >&2; exit 2 ;; esac ;;
+    *) echo "Unknown option: $1" >&2; echo "$USAGE_LINE" >&2; exit 2 ;;
   esac
 done
 
@@ -37,6 +50,37 @@ if [ "$PR_GIVEN" = "1" ]; then
   case "$PR_NUMBER" in
     ''|*[!0-9]*) echo "Error: --pr takes a PR number, not '${PR_NUMBER}'." >&2; exit 2 ;;
   esac
+fi
+
+# ── The answer to a repository that asks for the report on every PR ─────────
+if [ -n "$CONSENT" ]; then
+  if ! CONSENT_TOP="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+    echo "Error: not inside a git repository." >&2
+    exit 1
+  fi
+  CONSENT_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
+  CONSENT_KEY="$(cc_repo_key "$CONSENT_TOP")"
+  if [ "$CONSENT" = "yes" ]; then
+    # A yes only answers a question: this repository asks, and it was put to this developer
+    if ! cc_pr_asked_for "$CONSENT_TOP"; then
+      echo "Error: this repository does not ask for the report on its pull requests (no CLAUDE_CARBON_PR in its .claude/settings.json); nothing recorded. Run /carbon-pr to post one yourself." >&2
+      exit 1
+    fi
+    if [ -z "$(cc_pr_consent_get "$CONSENT_DIR" "$CONSENT_KEY")" ]; then
+      echo "Error: no question was asked for this repository yet (it comes with your first 'gh pr create' in Claude Code here); nothing recorded. Run /carbon-pr to post one yourself." >&2
+      exit 1
+    fi
+    AUTO=1
+  fi
+  if ! cc_pr_consent_set "$CONSENT_DIR" "$CONSENT_KEY" "$CONSENT"; then
+    echo "Error: could not write ${CONSENT_DIR}/pr-consent.tsv." >&2
+    exit 1
+  fi
+  if [ "$CONSENT" = "never" ]; then
+    echo "Noted: no carbon report is posted by itself on this repository's pull requests from this machine. /carbon-pr still posts one when you run it."
+    exit 0
+  fi
+  echo "Noted: the carbon report is posted on your pull requests of this repository and updated when you push. Change your mind with --consent never."
 fi
 
 # ── Deps check ──────────────────────────────────────────────
@@ -338,7 +382,17 @@ if ! command -v gh &>/dev/null; then
   exit 1
 fi
 if [ -z "$PR_NUMBER" ]; then
-  PR_NUMBER="$(gh pr view --json number --jq '.number' 2>/dev/null || true)"
+  PR_FOUND="$(gh pr view --json number,isCrossRepository --jq '(.number | tostring) + " " + (.isCrossRepository | tostring)' 2>/dev/null || true)"
+  PR_NUMBER="${PR_FOUND%% *}"
+  # An older gh without isCrossRepository: the number alone, for a run asked by hand
+  if [ -z "$PR_NUMBER" ] && [ "$AUTO" = "0" ]; then
+    PR_NUMBER="$(gh pr view --json number --jq '.number' 2>/dev/null || true)"
+  fi
+  # Posted by itself, the report stays inside the repository that asked for it
+  if [ "$AUTO" = "1" ] && [ -n "$PR_NUMBER" ] && [ "${PR_FOUND#* }" != "false" ]; then
+    echo "Error: PR #${PR_NUMBER} comes from a fork (or its origin could not be read): nothing posted by itself. Run /carbon-pr to post it yourself." >&2
+    exit 1
+  fi
 fi
 if [ -z "$PR_NUMBER" ]; then
   echo "Error: no open PR found for branch '${BRANCH}' (push and open one, or pass --pr <number>)." >&2

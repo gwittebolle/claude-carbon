@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-11-11
+
+### feat: a repository can ask for the carbon report on its pull requests
+
+`"env": {"CLAUDE_CARBON_PR": "1"}` in a repository's committed `.claude/settings.json`
+asks for the `/carbon-pr` comment on its pull requests. Nothing is posted on that alone:
+each developer answers once per repository, and the answer stays on their machine.
+
+- The first `gh pr create` Claude runs there, Claude asks whether to post the report of
+  the developer's own sessions under their own GitHub account. No answer counts as no, and
+  the question does not come back.
+- After a yes, the comment is posted, then updated in place after each `git push` or
+  `gh pr create` Claude runs there, once the answer that pushed is recorded. One comment
+  per PR, and never by itself on a PR whose branch lives in a fork.
+- `scripts/generate-pr-report.sh --consent yes|never` changes the answer. A yes is only
+  taken in a repository that asks, once the question was put there. The answer is kept
+  under the repository's origin URL, credentials left out.
+  `CLAUDE_CARBON_NO_PR_AUTO=1` turns the question and the posting off for a developer.
+- It needs the plugin's hooks: a new PostToolUse hook on `gh pr create` and `git push`
+  (`scripts/pr-hook.sh`), which calls no network; the posting itself runs from the Stop
+  hook (`scripts/pr-flush.sh`), with the developer's `gh` auth, only in such a repository
+  and only after a yes.
+
+The README's example of the comment shows the current table. `tests/run-pr-hook-tests.sh`
+covers the hook, the answer and the posting step, with the report script replaced.
+
 ## 2026-11-10
 
 ### feat: the plugin installed alone records sessions

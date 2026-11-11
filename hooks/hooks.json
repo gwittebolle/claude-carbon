@@ -43,6 +43,23 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(gh pr create *)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/pr-hook.sh\""
+          },
+          {
+            "type": "command",
+            "if": "Bash(git push *)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/pr-hook.sh\""
+          }
+        ]
+      }
     ]
   },
   "modules": [

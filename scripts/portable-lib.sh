@@ -249,6 +249,76 @@ cc_link_or_copy() {
   fi
 }
 
+# ── The PR report a repository asks for ─────────────────────────────────────
+# A repository asks for the /carbon-pr comment on its pull requests with
+# "env": {"CLAUDE_CARBON_PR": "1"} in its committed .claude/settings.json. Each developer
+# then answers once per repository, on their machine: pr-consent.tsv in the data folder,
+# one line per repository, `key<TAB>yes|never|asked<TAB>date`. Nothing is posted without a
+# `yes` (see pr-hook.sh, pr-flush.sh and generate-pr-report.sh --consent).
+
+# cc_repo_key <toplevel>: what names the repository in pr-consent.tsv: origin's URL
+# without its scheme, any credentials and ".git"; the folder when there is no origin.
+# Nothing when the name holds a control character (a tab or a line break would write
+# another repository's line): the callers then leave.
+cc_repo_key() {
+  local url key
+  url="$(git -C "$1" remote get-url origin 2>/dev/null || true)"
+  if [ -n "$url" ]; then
+    key="$(printf '%s' "$url" | sed -E 's#^[A-Za-z][A-Za-z0-9+.-]*://##; s#^[^/@]*@##; s#^([^/:]+):#\1/#; s#\.git$##; s#/$##')"
+  else
+    key="$1"
+  fi
+  case "$key" in
+    ''|*[[:cntrl:]]*) return 0 ;;
+  esac
+  printf '%s' "$key"
+}
+
+# cc_pr_asked_for <toplevel>: true when the repository's shared settings ask for the report
+cc_pr_asked_for() {
+  [ -f "$1/.claude/settings.json" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  jq -e '(.env.CLAUDE_CARBON_PR // "") | tostring | . == "1" or . == "true"' \
+    "$1/.claude/settings.json" >/dev/null 2>&1
+}
+
+# cc_pr_consent_get <data dir> <key>: yes, never, asked, or nothing. Only a line of
+# exactly three fields with one of the three answers counts. The key goes through the
+# environment: awk -v would read its backslashes as escapes.
+cc_pr_consent_get() {
+  [ -n "$2" ] && [ -f "$1/pr-consent.tsv" ] || return 0
+  CC_KEY="$2" LC_ALL=C awk -F '\t' '
+    NF == 3 && $1 == ENVIRON["CC_KEY"] && $2 ~ /^(yes|never|asked)$/ { v = $2 }
+    END { if (v != "") print v }' "$1/pr-consent.tsv" 2>/dev/null
+}
+
+# cc_pr_consent_set <data dir> <key> <value>: the repository's line replaced. Two writers
+# at once can lose one line, never turn one into a yes.
+cc_pr_consent_set() {
+  local file="$1/pr-consent.tsv" tmp
+  [ -n "$2" ] || return 1
+  case "$3" in yes|never|asked) ;; *) return 1 ;; esac
+  mkdir -p "$1" 2>/dev/null || return 1
+  tmp="${file}.$$.tmp"
+  { [ -f "$file" ] && CC_KEY="$2" LC_ALL=C awk -F '\t' '$1 != ENVIRON["CC_KEY"]' "$file"
+    printf '%s\t%s\t%s\n' "$2" "$3" "$(date -u +%F)"
+  } >"$tmp" 2>/dev/null && mv -f "$tmp" "$file" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
+}
+
+# cc_pr_pending <data dir> <toplevel> <branch>: the file that says a report waits for the
+# Stop hook. It holds the folder and the branch, one per line.
+cc_pr_pending() {
+  printf '%s/pr-pending/%s' "$1" "$(printf '%s\n%s' "$2" "$3" | cksum | cut -d ' ' -f 1)"
+}
+
+# cc_git_branch <toplevel>: the branch checked out there, nothing when detached
+cc_git_branch() {
+  local b
+  b="$(git -C "$1" symbolic-ref -q HEAD 2>/dev/null || true)"
+  b="${b%$'\r'}"
+  printf '%s' "${b#refs/heads/}"
+}
+
 # ── Dependencies ────────────────────────────────────────────────────────────
 # cc_install_hint <command> — echoes the install line to show a user who is
 # missing that command, in the package manager their platform actually has.

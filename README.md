@@ -274,8 +274,13 @@ The number reviewers rarely see is what the PR cost to develop: your local Claud
 
 ```
 **Claude Code carbon report** · developing this PR
-124 g CO2e · $3.00 · 180k tokens · 1.5M cache reads · 2 sessions
+
+| CO2e | Cost* | Tokens (in + cache write + out) | Cache reads | Sessions |
+|---|---|---|---|---|
+| **124 g** | $3.00 | 180k | 1.5M | 2 |
 ```
+
+Under the table come the car equivalence, a foldable token detail per model and a one-line footer.
 
 How the sessions are attributed: the Stop hook stores each session's git branch (read from the transcript), and the report selects `project + branch`. Sessions recorded before this column existed carry no branch; `scripts/backfill.sh` repairs them while their transcripts are still on disk (about 30 days). A session whose last folder is a subdirectory of the repo is stored under the subdirectory's name and stays out of the sum. A session that ends on another branch than it started is attributed to where it finished.
 
@@ -290,7 +295,22 @@ The hook needs Claude Code 2.1.69 or later, the first to give `SubagentStop` the
 
 The hook runs synchronously, before the agent's result reaches the session: on a Mac, about 0.1 to 0.3 s for most agents, up to about 1 to 2 s for one whose transcript passes 100 MB, since it reads that transcript whole. Claude Code writes transcripts asynchronously: when the agent's final message is not in it yet, the hook reads it again every 0.2 s, for 1 s at most, then counts what is there. A database kept busy for more than about 10 s (a long read elsewhere) loses the record, and the agent counts with its session.
 
-Turning it off is the default: nothing is posted unless you run it. `--dry-run` previews the comment, `--pr <number>` targets a specific PR of the repository (one opened from a fork is refused: run the command from the fork's clone instead), and deleting the comment on GitHub is the full cleanup. Once agents of the repository are on record, the report counts, from whichever folder it runs, the sessions of the repository's main folder, of the worktree the branch is checked out in and of the worktrees its agents worked in, even removed since. A branch checked out nowhere whose name sessions of other folders also carry is refused: nothing is posted rather than a figure that may lack them.
+#### For every PR of a repository
+
+A repository can ask for the report on its pull requests. Its maintainers commit this in `.claude/settings.json`, a change the team reviews like any other:
+
+```json
+{ "env": { "CLAUDE_CARBON_PR": "1" } }
+```
+
+Nothing is posted on that alone. The first time a developer who has the plugin opens a pull request there with Claude Code (`gh pr create`), Claude asks them once whether to post the report of their own sessions under their own GitHub account. Their answer stays on their machine, per repository (`pr-consent.tsv` in the data folder):
+
+- **yes**: the comment is posted, then updated in place after each `git push` or `gh pr create` Claude runs there, once the answer that pushed is recorded and while the pushed branch is still the one checked out. A push you type yourself in a terminal triggers nothing. One comment per PR, and never by itself on a PR whose branch lives in a fork.
+- **no**, or no answer: nothing is posted and the question does not come back. `/carbon-pr` still works when they run it.
+
+Change your answer from the repository with `scripts/generate-pr-report.sh --consent yes` or `--consent never`; a yes is only taken once the question was put to you there, which also covers a question that never showed because the turn was interrupted. The answer is kept under the repository's `origin` URL (without credentials): rename the remote and the question comes back once. `CLAUDE_CARBON_NO_PR_AUTO=1` in your own environment turns the question and the posting off everywhere. To stop it for the repository, remove the `CLAUDE_CARBON_PR` line. It needs the plugin's hooks (a marketplace install): an installer-only clone is not asked and posts nothing by itself. It is meant for a team's repository; on a public project, contributors from outside would see comments they did not ask for.
+
+Outside such a repository, turning it off is the default: nothing is posted unless you run it. `--dry-run` previews the comment, `--pr <number>` targets a specific PR of the repository (one opened from a fork is refused: run the command from the fork's clone instead), and deleting the comment on GitHub is the full cleanup. Once agents of the repository are on record, the report counts, from whichever folder it runs, the sessions of the repository's main folder, of the worktree the branch is checked out in and of the worktrees its agents worked in, even removed since. A branch checked out nowhere whose name sessions of other folders also carry is refused: nothing is posted rather than a figure that may lack them.
 
 ## How it works
 

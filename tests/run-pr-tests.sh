@@ -198,6 +198,34 @@ check "post: a Windows TMPDIR still posts" "0|yes" "$RC|$(echo "$OUT" | grep -q 
 check "post: the body sent is the report" "yes" \
   "$(jq -r '.body' "$POSTED" 2>/dev/null | grep -qF '<!-- claude-carbon-dev-report -->' && jq -r '.body' "$POSTED" | grep -qF 'sessions on `feat/x`' && echo yes || echo no)"
 
+# The automatic run (--auto, started by the Stop hook) refuses a PR whose branch lives in
+# a fork; asked by hand, the same PR is posted
+AUTO_STUBS="${TMPROOT}/auto-stubs"
+mkdir -p "$AUTO_STUBS"
+cat > "${AUTO_STUBS}/gh" <<'STUB'
+#!/usr/bin/env bash
+for LAST; do :; done
+case "$*" in
+  "pr view --json number,isCrossRepository --jq "*) echo "42 ${GH_STUB_CROSS}" ;;
+  "api repos/{owner}/{repo}/issues/42/comments?per_page=100 --jq "*) ;;
+  "api -X POST repos/{owner}/{repo}/issues/42/comments --input "*) cp "$LAST" "$GH_STUB_POSTED" ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "${AUTO_STUBS}/gh"
+auto_run() { # $1 = isCrossRepository, rest = options
+  local cross="$1"
+  shift
+  rm -f "$POSTED"
+  (cd "$WORKDIR" && git checkout -q feat/x 2>/dev/null; git symbolic-ref HEAD refs/heads/feat/x && PATH="${AUTO_STUBS}:$PATH" GH_STUB_POSTED="$POSTED" GH_STUB_CROSS="$cross" \
+    CLAUDE_CARBON_DB="$DB2" CLAUDE_CARBON_LOCALE=world bash "$PR_SCRIPT" "$@" >/dev/null 2>&1)
+  echo "$?|$([ -f "$POSTED" ] && echo posted || echo nothing)"
+}
+check "auto: a PR of the repository is posted" "0|posted" "$(auto_run false --auto)"
+check "auto: a PR from a fork is refused" "1|nothing" "$(auto_run true --auto)"
+check "auto: an unreadable origin is refused" "1|nothing" "$(auto_run '' --auto)"
+check "by hand: a PR from a fork is posted" "0|posted" "$(auto_run true)"
+
 # ---------------------------------------------------------------- 5. guards
 
 ERR="$(cd "$WORKDIR" && CLAUDE_CARBON_DB="${TMPROOT}/absent.db" bash "$PR_SCRIPT" --dry-run 2>&1)"
