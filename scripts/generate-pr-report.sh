@@ -15,6 +15,10 @@
 #              ask for the report on every PR (CLAUDE_CARBON_PR): kept on this machine in
 #              pr-consent.tsv. `yes` then posts the report; `never` posts nothing. `yes` is
 #              only taken in a repository that asks, once the question was put there.
+#   --summary [--since YYYY-MM-DD]
+#              read back the reports already posted on this repository's merged PRs
+#              (through gh) and total them per month and per author. Printed here only:
+#              nothing is posted, and carbon.db is not read.
 #   --auto     the run the Stop hook starts by itself (pr-flush.sh): a PR whose branch
 #              lives in a fork is refused, so nothing lands on another project unasked.
 set -euo pipefail
@@ -33,12 +37,17 @@ PR_GIVEN=0
 PR_NUMBER=""
 CONSENT=""
 AUTO=0
-USAGE_LINE="Usage: generate-pr-report.sh [--dry-run] [--pr <number>] [--consent yes|never] [--auto]"
+SUMMARY=0
+SINCE=""
+USAGE_LINE="Usage: generate-pr-report.sh [--dry-run] [--pr <number>] [--consent yes|never] [--summary [--since YYYY-MM-DD]]"
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
     --pr) PR_GIVEN=1; PR_NUMBER="${2:-}"; shift; [ $# -gt 0 ] && shift ;;
     --auto) AUTO=1; shift ;;
+    --summary) SUMMARY=1; shift ;;
+    --since) SINCE="${2:-}"; shift; [ $# -gt 0 ] && shift
+      case "$SINCE" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) echo "Error: --since takes a date as YYYY-MM-DD, not '${SINCE}'." >&2; exit 2 ;; esac ;;
     --consent) CONSENT="${2:-}"; shift; [ $# -gt 0 ] && shift
       case "$CONSENT" in yes|never) ;; *) echo "Error: --consent takes yes or never, not '${CONSENT}'." >&2; exit 2 ;; esac ;;
     *) echo "Unknown option: $1" >&2; echo "$USAGE_LINE" >&2; exit 2 ;;
@@ -85,6 +94,94 @@ if [ -n "$CONSENT" ]; then
     exit 0
   fi
   echo "Noted: the carbon report is posted on your pull requests of this repository and updated when you push. Change your mind with --consent never."
+fi
+
+# ── The reports already posted on the repository's merged PRs, totalled ─────
+# Each comment's own first table row is read back: "| **575 g** | $17.26 | … | 1 |". A
+# comment in the older one-line form, or edited by hand, is counted as unread.
+if [ "$SUMMARY" = "1" ]; then
+  for cmd in gh jq awk git; do
+    command -v "$cmd" &>/dev/null || { echo "Error: $cmd is required for --summary." >&2; exit 1; }
+  done
+  if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+    echo "Error: not inside a git repository." >&2
+    exit 1
+  fi
+  TAB="$(printf '\t')"
+  # shellcheck source=scripts/format-lib.sh
+  . "$SCRIPT_DIR/format-lib.sh"
+  SUM_REPO="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
+  if [ -z "$SUM_REPO" ]; then
+    echo "Error: gh could not name this repository (is it on GitHub, and are you logged in?)." >&2
+    exit 1
+  fi
+  SUM_QUERY="repo:${SUM_REPO} is:pr is:merged in:comments \"claude-carbon-dev-report\""
+  [ -n "$SINCE" ] && SUM_QUERY="${SUM_QUERY} merged:>=${SINCE}"
+  if ! SUM_FOUND="$(gh api -X GET search/issues -f q="$SUM_QUERY" -f per_page=100 \
+      --jq '(.total_count | tostring), (.items[] | "\(.number)\t\(.pull_request.merged_at // .closed_at // "")")' 2>/dev/null)"; then
+    echo "Error: the search for merged PRs failed (gh api search/issues)." >&2
+    exit 1
+  fi
+  SUM_TOTAL="$(printf '%s\n' "$SUM_FOUND" | head -1)"
+  SUM_ROWS=""
+  SUM_UNREAD=0
+  while IFS="$TAB" read -r SUM_PR SUM_MERGED; do
+    case "$SUM_PR" in ''|*[!0-9]*) continue ;; esac
+    SUM_LINE="$(gh api "repos/${SUM_REPO}/issues/${SUM_PR}/comments?per_page=100" \
+      --jq '[.[] | select(.body | contains("claude-carbon-dev-report"))][0] | select(. != null) | .user.login + "\t" + ((.body | split("\n") | map(select(startswith("| **"))))[0] // "")' 2>/dev/null || true)"
+    SUM_AUTHOR="${SUM_LINE%%"$TAB"*}"
+    SUM_CELLS="${SUM_LINE#*"$TAB"}"
+    # grams, dollars, sessions out of "| **575 g** | $17.26 | 1.6M | 90.9M | 1 |"
+    SUM_PARSED="$(printf '%s\n' "$SUM_CELLS" | LC_ALL=C awk -F '|' '
+      { co2 = $2; gsub(/[* ]/, "", co2); cost = $3; gsub(/[$ ]/, "", cost); n = $6; gsub(/ /, "", n)
+        g = -1
+        if (co2 ~ /^[0-9.]+kg$/) { sub(/kg$/, "", co2); g = co2 * 1000 }
+        else if (co2 ~ /^[0-9.]+g$/) { sub(/g$/, "", co2); g = co2 + 0 }
+        else if (co2 ~ /^[0-9.]+t$/) { sub(/t$/, "", co2); g = co2 * 1000000 }
+        if (g >= 0 && cost ~ /^[0-9.]+$/ && n ~ /^[0-9]+$/) printf "%.0f\t%.2f\t%d", g, cost, n }')"
+    # A login is letters, digits and hyphens: anything else is not printed
+    case "$SUM_AUTHOR" in ''|*[!A-Za-z0-9-]*) SUM_AUTHOR="" ;; esac
+    if [ -z "$SUM_AUTHOR" ] || [ -z "$SUM_PARSED" ]; then
+      SUM_UNREAD=$((SUM_UNREAD + 1))
+      continue
+    fi
+    SUM_ROWS="${SUM_ROWS}${SUM_MERGED%%T*}${TAB}${SUM_AUTHOR}${TAB}${SUM_PARSED}
+"
+  done <<SUMMARY_LIST
+$(printf '%s\n' "$SUM_FOUND" | tail -n +2)
+SUMMARY_LIST
+
+  if [ -z "$SUM_ROWS" ]; then
+    echo "No carbon report found on the merged pull requests of ${SUM_REPO}${SINCE:+ since ${SINCE}}."
+    [ "$SUM_UNREAD" -gt 0 ] && echo "${SUM_UNREAD} comment(s) could not be read (an older format, or edited)."
+    exit 0
+  fi
+  echo "Carbon reports on the merged pull requests of ${SUM_REPO}${SINCE:+ since ${SINCE}}"
+  echo "Each figure is what its author posted: their local Claude Code sessions on the PR's branch."
+  echo ""
+  sum_table() { # $1 = what to group by (1 the month merged, 2 the author), $2 = heading
+    printf '%-22s %5s %9s %10s %10s\n' "$2" "PRs" "Sessions" "CO2e" "Cost"
+    printf '%s' "$SUM_ROWS" | LC_ALL=C awk -F '\t' -v f="$1" '
+      { k = (f == 1) ? substr($1, 1, 7) : $2; prs[k]++; g[k] += $3; c[k] += $4; s[k] += $5 }
+      END { for (k in prs) printf "%s\t%d\t%d\t%.0f\t%.2f\n", k, prs[k], s[k], g[k], c[k] }' \
+      | LC_ALL=C sort | while IFS="$TAB" read -r K P S G C; do
+        printf '%-22s %5s %9s %10s %10s\n' "$K" "$P" "$S" "$(format_co2 "$G")" "\$${C}"
+      done
+  }
+  sum_table 1 "Month merged"
+  echo ""
+  sum_table 2 "Author"
+  echo ""
+  printf '%s' "$SUM_ROWS" | LC_ALL=C awk -F '\t' '{ g += $3; c += $4; s += $5 } END { printf "%d\t%d\t%.0f\t%.2f\n", NR, s, g, c }' \
+    | while IFS="$TAB" read -r P S G C; do
+        echo "Total: ${P} PRs, ${S} sessions, $(format_co2 "$G") CO2e, \$${C} at API list price."
+      done
+  [ "$SUM_UNREAD" -gt 0 ] && echo "${SUM_UNREAD} comment(s) could not be read (an older format, or edited) and are left out."
+  case "$SUM_TOTAL" in
+    ''|*[!0-9]*) ;;
+    *) [ "$SUM_TOTAL" -gt 100 ] && echo "Only the first 100 of ${SUM_TOTAL} pull requests were read: narrow it with --since." ;;
+  esac
+  exit 0
 fi
 
 # ── Deps check ──────────────────────────────────────────────

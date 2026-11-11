@@ -232,6 +232,42 @@ check "auto: a repository gh cannot name is refused" "1|nothing" "$(GH_STUB_URL=
 check "auto: GH_REPO from the environment is dropped" "0|posted" "$(GH_REPO=victim/other auto_run false --auto)"
 git -C "$WORKDIR" config --unset remote.origin.url
 
+# ---------------------------------------------------------------- 4d. --summary
+# The reports already posted on merged PRs, read back through a stub gh: three PRs by two
+# authors over two months, one comment in the older one-line form (unread), one PR whose
+# comment is someone's hand-written text with the marker and an odd login.
+SUM_STUBS="${TMPROOT}/sum-stubs"
+mkdir -p "$SUM_STUBS"
+cat > "${SUM_STUBS}/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  "repo view --json nameWithOwner --jq "*) echo "acme/app" ;;
+  "api -X GET search/issues -f q=repo:acme/app is:pr is:merged in:comments \"claude-carbon-dev-report\""*)
+    case "$*" in *"merged:>=2026-10-01"*) printf '2\n12\t2026-10-03T09:00:00Z\n13\t2026-10-20T09:00:00Z\n' ;;
+      *) printf '5\n10\t2026-09-12T09:00:00Z\n11\t2026-09-30T23:00:00Z\n12\t2026-10-03T09:00:00Z\n13\t2026-10-20T09:00:00Z\n14\t2026-10-21T09:00:00Z\n' ;;
+    esac ;;
+  "api repos/acme/app/issues/10/comments?per_page=100 --jq "*) printf 'alice\t| **575 g** | $17.26 | 1.6M | 90.9M | 1 |\n' ;;
+  "api repos/acme/app/issues/11/comments?per_page=100 --jq "*) printf 'bob-dev\t| **1.2 kg** | $40.00 | 3.0M | 200M | 3 |\n' ;;
+  "api repos/acme/app/issues/12/comments?per_page=100 --jq "*) printf 'alice\t| **69 g** | $1.92 | 184k | 9.3M | 1 |\n' ;;
+  "api repos/acme/app/issues/13/comments?per_page=100 --jq "*) printf 'alice\t\n' ;;
+  "api repos/acme/app/issues/14/comments?per_page=100 --jq "*) printf 'mal$(id)\t| **5 g** | $0.10 | 1k | 1k | 1 |\n' ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "${SUM_STUBS}/gh"
+SUM="$(cd "$WORKDIR" && PATH="${SUM_STUBS}:$PATH" CLAUDE_CARBON_DB="${TMPROOT}/absent.db" bash "$PR_SCRIPT" --summary 2>&1)"
+check "summary: exit 0 without a database" "0" "$?"
+check "summary: September, two PRs"   "2026-09 2 4 1.8 kg \$57.26" "$(echo "$SUM" | awk '$1 == "2026-09" { print $1, $2, $3, $4, $5, $6 }')"
+check "summary: October, one PR read" "2026-10 1 1 69 g \$1.92"    "$(echo "$SUM" | awk '$1 == "2026-10" { print $1, $2, $3, $4, $5, $6 }')"
+check "summary: per author"           "alice 2 2 644 g \$19.18"    "$(echo "$SUM" | awk '$1 == "alice" { print $1, $2, $3, $4, $5, $6 }')"
+check "summary: the total"            "Total: 3 PRs, 5 sessions, 1.8 kg CO2e, \$59.18 at API list price." "$(echo "$SUM" | grep '^Total:')"
+check "summary: unread comments are counted, not guessed" "2 comment(s) could not be read (an older format, or edited) and are left out." "$(echo "$SUM" | grep 'could not be read')"
+check "summary: an odd login is not printed" "0" "$(echo "$SUM" | grep -c 'mal')"
+SUM="$(cd "$WORKDIR" && PATH="${SUM_STUBS}:$PATH" bash "$PR_SCRIPT" --summary --since 2026-10-01 2>&1)"
+check "summary --since: only what was merged from then on" "Total: 1 PRs, 1 sessions, 69 g CO2e, \$1.92 at API list price." "$(echo "$SUM" | grep '^Total:')"
+(cd "$WORKDIR" && PATH="${SUM_STUBS}:$PATH" bash "$PR_SCRIPT" --summary --since yesterday >/dev/null 2>&1)
+check "summary --since: a date only" "2" "$?"
+
 # ---------------------------------------------------------------- 5. guards
 
 ERR="$(cd "$WORKDIR" && CLAUDE_CARBON_DB="${TMPROOT}/absent.db" bash "$PR_SCRIPT" --dry-run 2>&1)"

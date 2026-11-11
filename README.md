@@ -312,6 +312,24 @@ Nothing is posted on that alone. The first time a developer who has the plugin o
 
 Change your answer from the repository with `scripts/generate-pr-report.sh --consent yes` or `--consent never`; a yes is only taken once the question was put to you there, which also covers a question that never showed because the turn was interrupted. The answer is kept under the repository's `origin` URL (without credentials): rename the remote and the question comes back once. A repository cannot answer for you: the answers are never read from a config folder or a database placed inside the repository, and posted by itself the comment only goes to the repository `origin` names, whatever `GH_REPO` says. `CLAUDE_CARBON_NO_PR_AUTO=1` in your own environment turns the question and the posting off everywhere. To stop it for the repository, remove the `CLAUDE_CARBON_PR` line. It needs the plugin's hooks (a marketplace install): an installer-only clone is not asked and posts nothing by itself. It is meant for a team's repository; on a public project, contributors from outside would see comments they did not ask for.
 
+#### The repository's total
+
+`scripts/generate-pr-report.sh --summary` reads back, through `gh`, the reports already posted on the repository's merged pull requests and totals them per month merged and per author. `--since 2026-10-01` narrows it. It prints in your terminal only, posts nothing and does not read your database: the figures are the ones each author posted.
+
+```
+Month merged             PRs  Sessions       CO2e       Cost
+2026-09                    2         4     1.8 kg     $57.26
+2026-10                    1         1       69 g      $1.92
+
+Author                   PRs  Sessions       CO2e       Cost
+alice                      2         2      644 g     $19.18
+bob-dev                    1         3     1.2 kg     $40.00
+
+Total: 3 PRs, 5 sessions, 1.8 kg CO2e, $59.18 at API list price.
+```
+
+A comment in the older one-line form, or edited by hand, is counted as unread and left out. It covers the pull requests that carry a report, not the repository's whole footprint, and reads at most 100 of them at a time.
+
 Outside such a repository, turning it off is the default: nothing is posted unless you run it. `--dry-run` previews the comment, `--pr <number>` targets a specific PR of the repository (one opened from a fork is refused: run the command from the fork's clone instead), and deleting the comment on GitHub is the full cleanup. Once agents of the repository are on record, the report counts, from whichever folder it runs, the sessions of the repository's main folder, of the worktree the branch is checked out in and of the worktrees its agents worked in, even removed since. A branch checked out nowhere whose name sessions of other folders also carry is refused: nothing is posted rather than a figure that may lack them.
 
 ## How it works

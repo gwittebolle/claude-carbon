@@ -2,6 +2,15 @@
 
 ## 2026-11-11
 
+### feat: `/carbon-pr --summary` totals the reports posted on a repository's merged PRs
+
+`scripts/generate-pr-report.sh --summary` reads back, through `gh`, the report comments
+on the repository's merged pull requests and prints their total per month merged and per
+author; `--since YYYY-MM-DD` narrows it. Nothing is posted and the local database is not
+read: each figure is the one its author posted. A comment in the older one-line form, or
+edited by hand, is counted as unread and left out. At most 100 pull requests are read at
+a time.
+
 ### feat: in December the card reminder gives the year so far
 
 From the 1st to the 10th of a month the status line and the desktop app's session entry
