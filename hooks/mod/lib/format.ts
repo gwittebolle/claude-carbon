@@ -307,10 +307,25 @@ export function colorNote(pastSessions: number, lang: Lang): string {
     : `Provisional colour: it adjusts to your habits after 10 sessions (${pastSessions} so far).`;
 }
 
-export function noHistoryText(lang: Lang): string {
+// No history file. `missing` names the tools the SessionStart hook found absent (jq,
+// sqlite3): without them no database is created.
+export function noHistoryText(lang: Lang, missing: string[] | null = null): string {
+  if (missing !== null && missing.length > 0) {
+    const tools = missing.join(lang === "fr" ? " et " : " and ");
+    return lang === "fr"
+      ? `Pour enregistrer vos sessions, installez ${tools} puis relancez Claude Code (voir le README).`
+      : `To record your sessions, install ${tools} and restart Claude Code (see the README).`;
+  }
   return lang === "fr"
-    ? "L'historique de vos sessions vient avec l'installation complète (voir le README)."
-    : "The history of your sessions comes with the full install (see the README).";
+    ? "Aucun historique pour l'instant (voir le README)."
+    : "No history yet (see the README).";
+}
+
+// Shown once, to someone whose database the SessionStart hook created by itself
+export function autoSetupText(lang: Lang): string {
+  return lang === "fr"
+    ? "Vos sessions sont maintenant enregistrées sur cette machine, y compris celles déjà sur le disque. Rien n'est envoyé."
+    : "Your sessions are now recorded on this machine, including those already on disk. Nothing is sent anywhere.";
 }
 
 export function emptyRangeText(lang: Lang): string {

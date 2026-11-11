@@ -54,6 +54,10 @@ type World = {
   sessionId?: () => string;
   welcomed?: boolean;
   hinted?: boolean;
+  // What the SessionStart hook left: the tools it misses (setup-needed), and the mark
+  // that it created the database by itself (auto-setup)
+  setupNeeded?: string;
+  autoSetup?: boolean;
   // Another extension already took /carbon-panel
   commandTaken?: boolean;
   // What the prompt box holds
@@ -140,6 +144,13 @@ function world(on: any, options: World = {}) {
         ? { deny: "not found" }
         : { value: options.update };
     }
+    // The SessionStart hook's two files, absent unless a test says otherwise
+    if (path.endsWith("/claude-carbon/setup-needed"))
+      return options.setupNeeded === undefined
+        ? { deny: "not found" }
+        : { value: options.setupNeeded };
+    if (path.endsWith("/claude-carbon/auto-setup"))
+      return options.autoSetup === true ? { value: "1\n" } : { deny: "not found" };
     if (path.endsWith("/.claude-plugin/plugin.json"))
       return { value: JSON.stringify({ name: PLUGIN, version: "1.12.5" }) };
     if (path.endsWith("/data/prices.json")) return { deny: "not found" };
@@ -658,7 +669,7 @@ describe("the /carbon-panel pane", () => {
     const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
     const text = await drawn(ui);
     expect(text).toContain(
-      "L'historique de vos sessions vient avec l'installation complète",
+      "Aucun historique pour l'instant (voir le README).",
     );
     expect(text).toContain(
       "Couleur provisoire : elle s'ajustera à vos habitudes après 10 sessions (0 pour l'instant).",
@@ -667,7 +678,7 @@ describe("the /carbon-panel pane", () => {
     // The terminal says there is no history, not a count of none
     const term = await $.ui.mount({ ...PANE, surface: "terminal" });
     const told = await drawn(term);
-    expect(told).toContain("L'historique de vos sessions vient avec l'installation complète");
+    expect(told).toContain("Aucun historique pour l'instant (voir le README).");
     expect(told).not.toContain("(0 pour l'instant)");
     await term.unmount();
   });
@@ -887,6 +898,42 @@ describe("the /carbon-panel pane", () => {
     expect(toasts.map((t) => t.replaceAll(NBSP, " "))).toEqual([
       "Tapez /carbon-panel pour voir votre molécule et l'historique de vos sessions.",
     ]);
+  });
+
+  test("a missing tool is named where the history would be", async ($: any, on: any) => {
+    world(on, { history: null, setupNeeded: "jq sqlite3\n" });
+    await startSession($);
+    await openPane($);
+    const ui = await $.ui.mount({ ...PANE, surface: "desktop" });
+    expect(await drawn(ui)).toContain(
+      "Pour enregistrer vos sessions, installez jq et sqlite3 puis relancez Claude Code",
+    );
+    await ui.unmount();
+  });
+
+  test("a database the hook created by itself is said once", async ($: any, on: any) => {
+    const { toasts } = world(on, { autoSetup: true });
+    await startSession($);
+    await startSession($);
+    expect(toasts.map((t) => t.replaceAll(NBSP, " "))).toEqual([
+      "Vos sessions sont maintenant enregistrées sur cette machine, y compris celles déjà sur le disque. Rien n'est envoyé.",
+    ]);
+  });
+
+  test("the /carbon-panel hint comes alone: the word on the database waits for the next session", async ($: any, on: any) => {
+    const { toasts } = world(on, { hinted: false, autoSetup: true });
+    await startSession($);
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]).toContain("/carbon-panel");
+    await startSession($);
+    expect(toasts).toHaveLength(2);
+    expect(toasts[1]).toContain("enregistrées sur cette machine");
+  });
+
+  test("a creation that left no history is not announced", async ($: any, on: any) => {
+    const { toasts } = world(on, { autoSetup: true, history: null });
+    await startSession($);
+    expect(toasts).toEqual([]);
   });
 
   test("no hint for a /carbon-panel that is someone else's", async ($: any, on: any) => {

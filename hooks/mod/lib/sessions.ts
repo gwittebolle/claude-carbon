@@ -113,6 +113,17 @@ export const CLONE_UPDATE_FILE = "update-check.json";
 // When the last card was made, "YYYY-MM", written by the card's script
 export const CARD_STAMP_FILE = "last-card-month";
 
+// Written by the SessionStart hook (safety-rescan.sh) when there is no database: the tools
+// it found missing, and the mark that it created the database by itself, once
+export const SETUP_NEEDED_FILE = "setup-needed";
+export const AUTO_SETUP_FILE = "auto-setup";
+
+// The missing tools the hook named, null for anything else than its own two words
+export function parseSetupNeeded(text: string): string[] | null {
+  const line = text.trim();
+  return /^(jq|sqlite3|jq sqlite3)$/.test(line) ? line.split(" ") : null;
+}
+
 type StateEnv = { configDir?: string; home?: string; userProfile?: string };
 
 // A file in that folder, null when nothing names it

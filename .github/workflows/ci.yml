@@ -119,6 +119,11 @@ jobs:
       - name: Assert the session history export
         run: bash tests/run-export-tests.sh
 
+      # No database yet (the plugin installed alone): the SessionStart hook creates it
+      # once. Throwaway CLAUDE_CONFIG_DIR.
+      - name: Assert the plugin-only database creation
+        run: bash tests/run-plugin-bootstrap-tests.sh
+
   per-model:
     name: per-model split
     runs-on: ubuntu-latest
@@ -236,6 +241,10 @@ jobs:
       - name: Session end capture
         if: always()
         run: /bin/bash tests/run-session-end-tests.sh
+
+      - name: Plugin-only database creation
+        if: always()
+        run: /bin/bash tests/run-plugin-bootstrap-tests.sh
 
       # Workflow agents' transcripts (subagents/workflows/wf_*/agent-*.jsonl) count
       - name: Workflow agents
@@ -405,6 +414,10 @@ jobs:
       - name: Session end capture
         if: always()
         run: bash tests/run-session-end-tests.sh
+
+      - name: Plugin-only database creation
+        if: always()
+        run: bash tests/run-plugin-bootstrap-tests.sh
 
       # Workflow agents' transcripts (subagents/workflows/wf_*/agent-*.jsonl) count
       - name: Workflow agents

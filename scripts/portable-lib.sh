@@ -392,8 +392,9 @@ cc_system_locale() {
 # ── Database schema ─────────────────────────────────────────────────────────
 # cc_ensure_schema <db>: bring an existing carbon.db up to the current schema:
 # the columns added to `sessions` over time, and the `session_models` and `agent_usage` tables. The
-# `sessions` table itself is created by setup.sh and backfill.sh, not here, so a hook
-# never creates a DB the user has not set up. Idempotent. One probe decides whether
+# `sessions` table itself is created by setup.sh and backfill.sh, not here, so the Stop
+# and SessionEnd hooks never create a DB (the SessionStart hook does it once, for a plugin
+# installed alone: see safety-rescan.sh). Idempotent. One probe decides whether
 # anything needs doing, so the Stop hook pays a single sqlite3 call once migrated.
 #
 # session_models holds one row per (session, model): the session's tokens split by the

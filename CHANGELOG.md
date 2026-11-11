@@ -2,6 +2,31 @@
 
 ## 2026-11-10
 
+### feat: the plugin installed alone records sessions
+
+Installed from the marketplace without the installer, the plugin had no database and
+recorded nothing. Its SessionStart hook now creates the database once, in
+`~/.claude/claude-carbon/`, with the sessions whose transcripts are still on disk, and the
+Stop hook records from then on. The terminal status line still needs the installer.
+
+- A one-time message says that sessions are now recorded on the machine, once the
+  history is there.
+- `jq` or `sqlite3` missing: nothing is created, `/carbon-panel` names the missing tool,
+  and the next session start tries again.
+- It happens once per config folder: a database deleted afterwards is not brought back,
+  unless the `auto-setup` file beside it is deleted too.
+- A database path set with `CLAUDE_CARBON_DB` is never created by the hook, since a missing
+  file there can be a synced folder not downloaded yet. `CLAUDE_CARBON_NO_AUTOSETUP=1`
+  turns the creation off.
+- An existing database is not touched by this path.
+- With a database, a plugin-only install now also gets the daily background check for a
+  newer release, as the installer does (`CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1` opts out).
+
+The README gains "In a team repository": the `.claude/settings.json` keys that enable the
+plugin for a repository's collaborators, the one command each of them runs, and how one
+person turns it off. `tests/run-plugin-bootstrap-tests.sh` covers the hook on the three CI
+systems.
+
 ### fix: the status line's quota falls back to the weekly window when there is no 5-hour one
 
 Since 2026-10-30 a verified Ultra account (the plan formerly called Max 20x) has no 5-hour

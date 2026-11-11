@@ -63,6 +63,7 @@ import {
   carValue,
   showLabel,
   noHistoryText,
+  autoSetupText,
   otherProjectsLine,
   paneHint,
   paneTitle,
@@ -165,6 +166,7 @@ import {
   updateFlagPath,
   updateFlagPaths,
   statePath,
+  parseSetupNeeded,
   cardNudge,
 } from "../hooks/mod/lib/sessions.ts";
 import { carEquivalence, equivalenceSet } from "../hooks/mod/lib/equiv.ts";
@@ -953,6 +955,22 @@ check(
 );
 check("no update flags", updateFlagPaths({}).length, 0);
 check("card stamp path", statePath({ configDir: "/cfg" }, "last-card-month"), "/cfg/claude-carbon/last-card-month");
+
+// What the SessionStart hook writes when it creates no database: only its own words count
+check("setup needed: one tool", parseSetupNeeded("sqlite3\n")?.join(" "), "sqlite3");
+check("setup needed: both tools", parseSetupNeeded("jq sqlite3\n")?.join(" "), "jq sqlite3");
+check("setup needed: anything else", parseSetupNeeded("curl; rm -rf x\n"), null);
+check("setup needed: empty", parseSetupNeeded(""), null);
+check(
+  "no history en, tools missing",
+  noHistoryText("en", ["jq", "sqlite3"]),
+  "To record your sessions, install jq and sqlite3 and restart Claude Code (see the README).",
+);
+check(
+  "no history en",
+  noHistoryText("en"),
+  "No history yet (see the README).",
+);
 check("update hint, as the status line", updateHint("1.18.0"), "⬆ 1.18.0 /carbon-update");
 check("card hint fr", cardHint(8, 84213, "fr").replaceAll(NBSP, " "), "📊 Septembre : 84,2 kgCO₂ · /carbon-card");
 check("card hint en", cardHint(8, 84213, "en").replaceAll(NBSP, " "), "📊 September: 84.2 kgCO₂ · /carbon-card");
@@ -1190,7 +1208,7 @@ for (const lang of ["fr", "en"]) {
   // The tab title is the plugin's name on purpose (asked for), so it is checked apart
   pane.push(commandDescription(lang), paneHint(lang), paneUnplaced(lang));
   pane.push(currentLine(52, 140, lang), currentLine(800, 140, lang), currentLine(52, null, lang));
-  pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang));
+  pane.push(colorNote(4, lang), noHistoryText(lang), noHistoryText(lang, ["jq", "sqlite3"]), autoSetupText(lang), emptyRangeText(lang));
   pane.push(mascotAlt(lang), stripesAlt(lang));
   pane.push(cardButtonLabel(2026, lang), cardDraftBusy(lang), cardReadyText(lang), cardFillFailed(lang));
   pane.push(compareText(120, 100, "30d", lang), compareText(80, 100, "1y", lang), costText(12.3, lang), showLabel(lang));
