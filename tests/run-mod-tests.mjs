@@ -170,6 +170,7 @@ import {
   parseSetupNeeded,
   cardNudge,
   cardNudgeOpen,
+  cardYear,
 } from "../hooks/mod/lib/sessions.ts";
 import { carEquivalence, equivalenceSet } from "../hooks/mod/lib/equiv.ts";
 
@@ -998,7 +999,7 @@ check(
   check("card nudge: on the 10th", cardNudge(september, new Date(2026, 9, 10, 23).getTime(), null)?.month, 8);
   check("card nudge: a later last day", cardNudge(september, new Date(2026, 9, 14, 9).getTime(), null, 15)?.month, 8);
   const december = [1, 2, 3, 4, 5, 6, 7].map((d) => ({ ...day(d, 100), at: Date.UTC(2025, 11, d, 12) }));
-  check("card nudge: January closes December", cardNudge(december, new Date(2026, 0, 2, 9).getTime(), null)?.month, 11);
+  check("card nudge: early January gives the year just ended, not December", JSON.stringify(cardNudge(december, new Date(2026, 0, 2, 9).getTime(), null)), JSON.stringify({ year: 2025, grams: december.reduce((sum, row) => sum + row.grams, 0) }));
   // A session begun at 23:30 UTC on the 31st is in August, as the card counts it, wherever
   // the machine is
   const lateAugust = { ...day(1, 9000), at: Date.UTC(2026, 7, 31, 23, 30) };
@@ -1014,6 +1015,17 @@ check(
   check("card nudge: December, a card made in December", cardNudge(september, dec20, "2026-12"), null);
   check("card nudge: December, a card made in November", "year" in (cardNudge(september, dec20, "2026-11") ?? {}), true);
   check("card nudge: December, no last day, no hint", cardNudge(september, dec20, null, 0), null);
+  // January: the year just ended, over the usual first days
+  const jan5 = new Date(2027, 0, 5, 9).getTime();
+  const thisYear = { ...day(1, 400), at: Date.UTC(2027, 0, 2, 12) };
+  check("card nudge: January gives the year just ended", JSON.stringify(cardNudge([...september, lastYear, thisYear], jan5, null)), '{"year":2026,"grams":7000}');
+  check("card nudge: January, after the 10th", cardNudge(september, new Date(2027, 0, 11, 9).getTime(), null), null);
+  check("card nudge: January, a card made in January", cardNudge(september, jan5, "2027-01"), null);
+  check("card year: early January, the year just ended", cardYear(jan5), 2026);
+  check("card year: January 11th, the new year", cardYear(new Date(2027, 0, 11, 9).getTime()), 2027);
+  check("card year: December, the year", cardYear(dec20), 2026);
+  check("card year: a last day of 0 counts as the 10th", cardYear(jan5, 0), 2026);
+  check("card year: a later last day", cardYear(new Date(2027, 0, 14, 9).getTime(), 15), 2026);
   check("year card hint fr", yearCardHint(2026, 1444400, "fr").replaceAll(NBSP, " "), "📊 2026 : 1444,4 kgCO₂ · /carbon-card");
   check("year card hint en", yearCardHint(2026, 84213, "en").replaceAll(NBSP, " "), "📊 2026: 84.2 kgCO₂ · /carbon-card");
 }

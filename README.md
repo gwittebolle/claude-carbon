@@ -138,7 +138,8 @@ session figure. It is read from carbon.db once a day while the nudge shows, and 
 nudge, so a fresh install is not pushed to share a near-empty card. Generating a card
 clears it for the month; it goes quiet on its own after the 10th. In December it gives the year
 so far instead, `📊 2026: 1444.4kgCO₂ · /carbon-card`, and stays the whole month, the card covering
-the calendar year. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
+the calendar year. From the 1st to the 10th of January it gives the year just ended, and over those
+days `/carbon-card` covers that year, whole, unless you pass a period. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
 moves the cut-off (0 removes the nudge, December included), `CLAUDE_CARBON_NO_CARD_NUDGE=1` removes the nudge. Nothing is posted anywhere:
 sharing stays a human decision.
 

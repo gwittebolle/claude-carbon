@@ -204,12 +204,24 @@ const CARD_NUDGE_MIN_DAYS = 7;
 // Like the card, months and days are those of the sessions' UTC start; a month with
 // sessions on fewer than 7 days shows nothing, which keeps a near-empty card unadvertised.
 // In December it is the year so far instead, and it stays the whole month: the card
-// covers the calendar year, and that is the month to look back on it. A last day of 0
-// (the opt-out) still shows nothing.
+// covers the calendar year, and that is the month to look back on it. In January, over
+// the usual first days, it is the year just ended, which the card then covers by
+// default (see cardYear). A last day of 0 (the opt-out) still shows nothing.
 export function cardNudgeOpen(nowMs: number, untilDay: number = CARD_NUDGE_UNTIL_DAY): boolean {
   const now = new Date(nowMs);
   if (!(untilDay > 0)) return false;
   return now.getMonth() === 11 || now.getDate() <= untilDay;
+}
+
+// The year the card made now covers: the calendar year, and over the first days of
+// January the one just ended, as generate-report.sh picks it (a last day of 0 or less
+// counts as the 10th there too).
+export function cardYear(nowMs: number, untilDay: number = CARD_NUDGE_UNTIL_DAY): number {
+  const now = new Date(nowMs);
+  const last = untilDay > 0 ? untilDay : CARD_NUDGE_UNTIL_DAY;
+  return now.getMonth() === 0 && now.getDate() <= last
+    ? now.getFullYear() - 1
+    : now.getFullYear();
 }
 
 export function cardNudge(
@@ -222,8 +234,9 @@ export function cardNudge(
   const pad = (n: number) => String(n).padStart(2, "0");
   if (!cardNudgeOpen(nowMs, untilDay)) return null;
   if (stamp?.trim() === `${now.getFullYear()}-${pad(now.getMonth() + 1)}`) return null;
-  if (now.getMonth() === 11) {
-    const year = String(now.getFullYear());
+  if (now.getMonth() === 11 || now.getMonth() === 0) {
+    const yearNumber = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const year = String(yearNumber);
     const yearDays = new Set<string>();
     let yearGrams = 0;
     for (const row of rows) {
@@ -233,7 +246,7 @@ export function cardNudge(
       yearGrams += row.grams;
     }
     if (yearDays.size < CARD_NUDGE_MIN_DAYS || !(yearGrams > 0)) return null;
-    return { year: now.getFullYear(), grams: yearGrams };
+    return { year: yearNumber, grams: yearGrams };
   }
   const closed = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const key = `${closed.getFullYear()}-${pad(closed.getMonth() + 1)}`;

@@ -484,6 +484,52 @@ if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && comm
     bash "${REPO_DIR}/scripts/generate-report.sh" 2>&1
     echo "rc=$?"
   )
+  # The card's default period over the first days of January: the year just ended, whole.
+  # Today is fixed through a `date` put first on the PATH for the two formats the script
+  # reads the day from.
+  JAN_DB="${FAKE_HOME}/january.db"
+  cp "$CARD_DB" "$JAN_DB"
+  sqlite3 "$JAN_DB" "DELETE FROM sessions; INSERT INTO sessions (session_id, project, model, input_tokens, output_tokens, cost_usd, co2_grams, started_at) VALUES ('y1', 'p', 'claude-opus-5', 1000, 100, 1.0, 3000.0, '2026-03-05T10:00:00Z'), ('y2', 'p', 'claude-opus-5', 1000, 100, 1.0, 4000.0, '2026-12-31T22:00:00Z'), ('new', 'p', 'claude-opus-5', 1000, 100, 1.0, 50000.0, '2027-01-02T10:00:00Z'), ('old', 'p', 'claude-opus-5', 1000, 100, 1.0, 9000.0, '2025-12-30T10:00:00Z');"
+  mkdir -p "${FAKE_HOME}/jan-date"
+  REAL_DATE_BIN="$(command -v date)"
+  cat > "${FAKE_HOME}/jan-date/date" <<JANDATE
+#!/usr/bin/env bash
+case "\$*" in
+  "+%Y-%m-%d") echo "\${FAKE_TODAY}" ;;
+  "+%Y") echo "\${FAKE_TODAY%%-*}" ;;
+  *) exec "${REAL_DATE_BIN}" "\$@" ;;
+esac
+JANDATE
+  chmod +x "${FAKE_HOME}/jan-date/date"
+  january_card() ( # january_card <today> [options]
+    export FAKE_TODAY="$1"
+    shift
+    PATH="${FAKE_HOME}/jan-date:${FAKE_HOME}/card-bin:${FAKE_BIN}:${PATH}"
+    cd "$FAKE_HOME" || exit 1
+    export HOME="$FAKE_HOME" TMPDIR="${FAKE_HOME}/tmp" DISPLAY=:0 CI="" \
+      CLAUDE_CONFIG_DIR="${FAKE_HOME}/cfg-january" CLAUDE_CARBON_DB="$JAN_DB" \
+      CLAUDE_CARBON_EXPORT_DIR="${FAKE_HOME}/out-january" CLAUDE_CARBON_LOCALE=en_GB \
+      NODE_PATH="$BROKEN_PW" CLAUDE_CARBON_NO_OPEN=1 CLAUDE_CARBON_BROWSER=none
+    bash "${REPO_DIR}/scripts/generate-report.sh" "$@" 2>&1 | grep -E '^(Totals since|Period:)' | sed -E 's/ · \$.*· / · /'
+  )
+  JAN_OUT="$(january_card 2027-01-05)"
+  if echo "$JAN_OUT" | grep -q '^Totals since March 2026, up to December 31, 2026: 7.0 kg CO2e · 2 sessions$' && echo "$JAN_OUT" | grep -q '^Period: the year 2026, whole'; then
+    ok "early January: the card covers the year just ended"
+  else
+    bad "early January: the card covers the year just ended" "$JAN_OUT"
+  fi
+  JAN_OUT="$(january_card 2027-01-11)"
+  if [ "$JAN_OUT" = 'Totals since January 2027: 50.0 kg CO2e · 1 sessions' ]; then
+    ok "January 11th: the card covers the new year"
+  else
+    bad "January 11th: the card covers the new year" "$JAN_OUT"
+  fi
+  JAN_OUT="$(january_card 2027-01-05 --since 2027-01-01)"
+  case "$JAN_OUT" in
+    'Totals since 2027-01-01: 50.0 kg CO2e · 1 sessions') ok "early January: a period asked for is kept" ;;
+    *) bad "early January: a period asked for is kept" "$JAN_OUT" ;;
+  esac
+
   # The lookup's two paths no test can fake.
   HOMEBREW_PW=""
   for d in /opt/homebrew/lib/node_modules/playwright-core /opt/homebrew/lib/node_modules/playwright/node_modules/playwright-core; do

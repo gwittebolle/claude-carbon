@@ -383,7 +383,9 @@ fi
 # install the nudge would otherwise advertise a near-empty card.
 #
 # In December the figure is the year so far and the nudge stays the whole month: the
-# card covers the calendar year, and that is the month to look back on it.
+# card covers the calendar year, and that is the month to look back on it. In January,
+# over the usual first days, it is the year just ended, which the card then covers by
+# default (generate-report.sh).
 #
 # It used to show to the first three sessions of the month and then stop, which
 # on a status line amounted to two or three glances at "📊 /carbon-card" with no
@@ -409,6 +411,9 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
     if [ "${THIS_MONTH#*-}" = "12" ]; then
       NUDGE_PERIOD="${THIS_MONTH%-*}"
       NUDGE_NAME="${THIS_MONTH%-*}"
+    elif [ "${THIS_MONTH#*-}" = "01" ]; then
+      NUDGE_PERIOD="$PREV_Y"
+      NUDGE_NAME="$PREV_Y"
     fi
     TOTAL_FILE="${CONFIG_DIR}/claude-carbon/last-month-total"
     printf -v TOTAL_KEY '%s-%02d' "$THIS_MONTH" "$TODAY_DAY"

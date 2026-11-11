@@ -157,6 +157,7 @@ import {
   AUTO_SETUP_FILE,
   cardNudge,
   cardNudgeOpen,
+  cardYear,
   CARD_STAMP_FILE,
   CARD_NUDGE_UNTIL_DAY,
   isView,
@@ -1351,7 +1352,7 @@ export const register: Register = (on, options) => {
       const cardButton = (
         <Button
           key="card"
-          label={cardButtonLabel(new Date(now).getFullYear(), lang)}
+          label={cardButtonLabel(cardYear(now, cardHintState.untilDay), lang)}
           variant="primary"
           onPress={prepareCard}
         />

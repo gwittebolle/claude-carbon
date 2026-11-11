@@ -517,6 +517,19 @@ FAKEDATE
   PREV_MONTH="2026-10"
   check "nudge, November: past the 10th it is gone" "" "$(nudge_line)"
 
+  # January, the first days: the year just ended, whole (seven December days at 1500 g and
+  # one session of the year before; the 50000 g of January's first day stay out)
+  FAKE_YM="2027-01"
+  FAKE_D="05"
+  THIS_MONTH="$FAKE_YM"
+  PREV_MONTH="2026-12"
+  CFG="${TMPROOT}/nudge-january"
+  nudge_db "$CFG" 7
+  sqlite3 "${CFG}/claude-carbon/carbon.db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('march', 'p', 'claude-opus-5', 4000.0, '2026-03-10T10:00:00Z'), ('older', 'p', 'claude-opus-5', 9000.0, '2025-06-10T10:00:00Z');"
+  check "nudge, January: the year just ended" "📊 2026: 14.5kgCO₂ · /carbon-card" "$(nudge_line)"
+  FAKE_D="11"
+  check "nudge, January: past the 10th it is gone" "" "$(nudge_line)"
+
   CFG="${TMPROOT}/nudge-nodb"
   mkdir -p "${CFG}/claude-carbon"
   check "nudge: no DB, no nudge and no cache"           "|no cache" "$(CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY=31 nudge_line)|$([ -f "${CFG}/claude-carbon/last-month-total" ] && echo cache || echo no cache)"

@@ -2,6 +2,15 @@
 
 ## 2026-11-11
 
+### feat: early January, the card and its reminder cover the year just ended
+
+From the 1st to the 10th of January the reminder gives the year just ended,
+`📊 2026: 1444.4kgCO₂ · /carbon-card`, where it gave December. Over the same days
+`/carbon-card` with no period covers that year, whole, and says so on a `Period:` line; the
+pane's button is named after it. `--since`, `--until` and `--all` are taken as before, and
+from the 11th the card is the new year's again. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY` moves
+the last day for the reminder and the card together.
+
 ### feat: `/carbon-pr --summary` totals the reports posted on a repository's merged PRs
 
 `scripts/generate-pr-report.sh --summary` reads back, through `gh`, the report comments
