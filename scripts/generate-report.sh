@@ -81,7 +81,7 @@ RECAP_YEAR=""
 RECAP_ROWS=0
 if [ "$PERIOD_GIVEN" = "0" ] && [ "${TODAY:5:2}" = "01" ] && [ "$((10#${TODAY:8:2}))" -le "$RECAP_LAST" ] \
   && [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>&1; then
-  RECAP_ROWS="$(sqlite3 -cmd '.timeout 2000' "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE started_at >= '$((YEAR - 1))-01-01' AND started_at < '${YEAR}-01-01';" 2>/dev/null || echo 0)"
+  RECAP_ROWS="$(cc_sql -cmd '.timeout 2000' "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE COALESCE(excluded, 0) = 0 AND started_at >= '$((YEAR - 1))-01-01' AND started_at < '${YEAR}-01-01';" 2>/dev/null || echo 0)"
 fi
 case "$RECAP_ROWS" in ''|*[!0-9]*) RECAP_ROWS=0 ;; esac
 if [ "$RECAP_ROWS" -gt 0 ]; then

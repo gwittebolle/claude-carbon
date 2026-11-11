@@ -374,8 +374,9 @@ fi
 # quiet by itself after the Nth. Passive and short: a user who ignores it is not
 # asked again before next month. Local-only; opt-out via CLAUDE_CARBON_NO_CARD_NUDGE.
 #
-# The total is read once a day and cached in last-month-total ("YYYY-MM-DD grams",
-# the key being the day it was read), never on every refresh. Daily rather than
+# The total is read once a day and cached in last-month-total ("YYYY-MM-DD/<period>
+# grams", the key being the day it was read and what it sums: a month, or a year in
+# December and early January), never on every refresh. Daily rather than
 # monthly: the Stop hook keeps adding to a session under its start date, so a
 # session begun before midnight on the last day still grows the closed month after
 # the 1st, and the card would show more than a figure frozen on the 1st. A month
