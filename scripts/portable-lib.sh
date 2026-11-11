@@ -258,13 +258,20 @@ cc_link_or_copy() {
 
 # cc_repo_key <toplevel>: what names the repository in pr-consent.tsv: origin's URL
 # without its scheme, any credentials and ".git"; the folder when there is no origin.
+# Credentials are what stands before an @ in a URL with a scheme, or a bare user name
+# before the host in the scp form (git@host:path): nothing else is dropped, so
+# "evil.example:x@github.com/o/r" does not come out as github.com/o/r.
 # Nothing when the name holds a control character (a tab or a line break would write
 # another repository's line): the callers then leave.
 cc_repo_key() {
   local url key
   url="$(git -C "$1" remote get-url origin 2>/dev/null || true)"
   if [ -n "$url" ]; then
-    key="$(printf '%s' "$url" | sed -E 's#^[A-Za-z][A-Za-z0-9+.-]*://##; s#^[^/@]*@##; s#^([^/:]+):#\1/#; s#\.git$##; s#/$##')"
+    case "$url" in
+      [A-Za-z]*://*) key="$(printf '%s' "$url" | sed -E 's#^[A-Za-z][A-Za-z0-9+.-]*://##; s#^[^/@]*@##')" ;;
+      *) key="$(printf '%s' "$url" | sed -E 's#^[^/@:]*@##')" ;;
+    esac
+    key="$(printf '%s' "$key" | sed -E 's#^([^/:]+):#\1/#; s#\.git$##; s#/$##')"
   else
     key="$1"
   fi
@@ -272,6 +279,27 @@ cc_repo_key() {
     ''|*[[:cntrl:]]*) return 0 ;;
   esac
   printf '%s' "$key"
+}
+
+# cc_pr_data_dir <toplevel>: the data folder the answers and markers live in, or nothing
+# when it cannot be trusted for this repository. A repository's own settings can set
+# CLAUDE_CONFIG_DIR (and CLAUDE_CARBON_DB) for the sessions run in it: a config folder
+# that is relative, or inside the repository, would let it ship its own "yes".
+cc_pr_data_dir() {
+  local cfg top db
+  cfg="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")"
+  case "$cfg" in /*) ;; *) return 0 ;; esac
+  [ -d "$cfg" ] && cfg="$(cd "$cfg" 2>/dev/null && pwd -P)"
+  top="$(cd "$1" 2>/dev/null && pwd -P)"
+  [ -n "$cfg" ] && [ -n "$top" ] || return 0
+  case "${cfg}/" in "${top}/"*) return 0 ;; esac
+  if [ -n "${CLAUDE_CARBON_DB:-}" ]; then
+    db="$(cc_path "$CLAUDE_CARBON_DB")"
+    case "$db" in /*) ;; *) return 0 ;; esac
+    [ -d "$(dirname "$db")" ] && db="$(cd "$(dirname "$db")" 2>/dev/null && pwd -P)/$(basename "$db")"
+    case "$db" in "${top}/"*) return 0 ;; esac
+  fi
+  printf '%s/claude-carbon' "$cfg"
 }
 
 # cc_pr_asked_for <toplevel>: true when the repository's shared settings ask for the report

@@ -206,6 +206,7 @@ cat > "${AUTO_STUBS}/gh" <<'STUB'
 #!/usr/bin/env bash
 for LAST; do :; done
 case "$*" in
+  "repo view --json url --jq "*) [ -z "${GH_REPO:-}" ] || exit 1; echo "${GH_STUB_URL}" ;;
   "pr view --json number,isCrossRepository --jq "*) echo "42 ${GH_STUB_CROSS}" ;;
   "api repos/{owner}/{repo}/issues/42/comments?per_page=100 --jq "*) ;;
   "api -X POST repos/{owner}/{repo}/issues/42/comments --input "*) cp "$LAST" "$GH_STUB_POSTED" ;;
@@ -217,7 +218,8 @@ auto_run() { # $1 = isCrossRepository, rest = options
   local cross="$1"
   shift
   rm -f "$POSTED"
-  (cd "$WORKDIR" && git checkout -q feat/x 2>/dev/null; git symbolic-ref HEAD refs/heads/feat/x && PATH="${AUTO_STUBS}:$PATH" GH_STUB_POSTED="$POSTED" GH_STUB_CROSS="$cross" \
+  (cd "$WORKDIR" && git checkout -q feat/x 2>/dev/null; git symbolic-ref HEAD refs/heads/feat/x &&
+    git config remote.origin.url "git@github.com:Acme/MyProj.git" && PATH="${AUTO_STUBS}:$PATH" GH_STUB_POSTED="$POSTED" GH_STUB_CROSS="$cross" GH_STUB_URL="${GH_STUB_URL-https://github.com/acme/myproj}" \
     CLAUDE_CARBON_DB="$DB2" CLAUDE_CARBON_LOCALE=world bash "$PR_SCRIPT" "$@" >/dev/null 2>&1)
   echo "$?|$([ -f "$POSTED" ] && echo posted || echo nothing)"
 }
@@ -225,6 +227,10 @@ check "auto: a PR of the repository is posted" "0|posted" "$(auto_run false --au
 check "auto: a PR from a fork is refused" "1|nothing" "$(auto_run true --auto)"
 check "auto: an unreadable origin is refused" "1|nothing" "$(auto_run '' --auto)"
 check "by hand: a PR from a fork is posted" "0|posted" "$(auto_run true)"
+check "auto: gh aiming at another repository is refused" "1|nothing" "$(GH_STUB_URL=https://github.com/victim/other auto_run false --auto)"
+check "auto: a repository gh cannot name is refused" "1|nothing" "$(GH_STUB_URL= auto_run false --auto)"
+check "auto: GH_REPO from the environment is dropped" "0|posted" "$(GH_REPO=victim/other auto_run false --auto)"
+git -C "$WORKDIR" config --unset remote.origin.url
 
 # ---------------------------------------------------------------- 5. guards
 

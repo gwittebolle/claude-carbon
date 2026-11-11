@@ -18,6 +18,9 @@ each developer answers once per repository, and the answer stays on their machin
   taken in a repository that asks, once the question was put there. The answer is kept
   under the repository's origin URL, credentials left out.
   `CLAUDE_CARBON_NO_PR_AUTO=1` turns the question and the posting off for a developer.
+- A repository cannot answer for its developers: answers are not read from a config folder
+  or a database inside the repository, and posted by itself the comment only goes to the
+  repository `origin` names (`GH_REPO` and `GH_HOST` are dropped).
 - It needs the plugin's hooks: a new PostToolUse hook on `gh pr create` and `git push`
   (`scripts/pr-hook.sh`), which calls no network; the posting itself runs from the Stop
   hook (`scripts/pr-flush.sh`), with the developer's `gh` auth, only in such a repository

@@ -14,6 +14,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -z "${CLAUDE_CARBON_NO_PR_AUTO:-}" ] || exit 0
 command -v git >/dev/null 2>&1 || exit 0
 
+# gh must aim at the repository it is run in, whatever a repository's settings exported
+unset GH_REPO GH_HOST
 DATA_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
 PENDING_DIR="${DATA_DIR}/pr-pending"
 [ -d "$PENDING_DIR" ] || exit 0
@@ -33,9 +35,12 @@ for MARKER in "$PENDING_DIR"/*; do
   rm -f "$CLAIM" 2>/dev/null
   [ "$AGE" -le 3600 ] 2>/dev/null || continue
   [ -n "$TOPLEVEL" ] && [ -n "$BRANCH" ] && [ -d "$TOPLEVEL" ] || continue
+  # The answers were read from a folder this repository does not hold
+  TRUSTED_DIR="$(cc_pr_data_dir "$TOPLEVEL")"
+  [ -n "$TRUSTED_DIR" ] || continue
   # Asked for and agreed to, still, and the same branch: each can have changed since the push
   cc_pr_asked_for "$TOPLEVEL" || continue
-  [ "$(cc_pr_consent_get "$DATA_DIR" "$(cc_repo_key "$TOPLEVEL")")" = "yes" ] || continue
+  [ "$(cc_pr_consent_get "$TRUSTED_DIR" "$(cc_repo_key "$TOPLEVEL")")" = "yes" ] || continue
   [ "$(cc_git_branch "$TOPLEVEL")" = "$BRANCH" ] || continue
   ( cd "$TOPLEVEL" 2>/dev/null && bash "${SCRIPT_DIR}/generate-pr-report.sh" --auto ) >/dev/null 2>&1
 done

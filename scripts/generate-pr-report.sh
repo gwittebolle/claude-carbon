@@ -58,7 +58,11 @@ if [ -n "$CONSENT" ]; then
     echo "Error: not inside a git repository." >&2
     exit 1
   fi
-  CONSENT_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
+  CONSENT_DIR="$(cc_pr_data_dir "$CONSENT_TOP")"
+  if [ -z "$CONSENT_DIR" ]; then
+    echo "Error: the Claude config folder (CLAUDE_CONFIG_DIR) or the database (CLAUDE_CARBON_DB) is inside this repository or relative: an answer is not kept there. Nothing recorded." >&2
+    exit 1
+  fi
   CONSENT_KEY="$(cc_repo_key "$CONSENT_TOP")"
   if [ "$CONSENT" = "yes" ]; then
     # A yes only answers a question: this repository asks, and it was put to this developer
@@ -380,6 +384,20 @@ fi
 if ! command -v gh &>/dev/null; then
   echo "Error: gh is required to post (or use --dry-run to preview)." >&2
   exit 1
+fi
+# Posted by itself, the report goes to the repository the answer was given for: gh is not
+# told another one, the answers and the database are not the repository's own files, and
+# the repository gh aims at is the one named by origin.
+if [ "$AUTO" = "1" ]; then
+  unset GH_REPO GH_HOST
+  AUTO_KEY="$(cc_repo_key "$TOPLEVEL")"
+  AUTO_URL="$(gh repo view --json url --jq '.url' 2>/dev/null || true)"
+  AUTO_TARGET="$(printf '%s' "$AUTO_URL" | sed -E 's#^[A-Za-z][A-Za-z0-9+.-]*://##; s#\.git$##; s#/$##' | tr '[:upper:]' '[:lower:]')"
+  if [ -z "$(cc_pr_data_dir "$TOPLEVEL")" ] || [ -z "$AUTO_KEY" ] || [ -z "$AUTO_TARGET" ] \
+    || [ "$AUTO_TARGET" != "$(printf '%s' "$AUTO_KEY" | tr '[:upper:]' '[:lower:]')" ]; then
+    echo "Error: the repository gh would post to is not the one this folder's origin names (or it could not be read): nothing posted by itself. Run /carbon-pr to post it yourself." >&2
+    exit 1
+  fi
 fi
 if [ -z "$PR_NUMBER" ]; then
   PR_FOUND="$(gh pr view --json number,isCrossRepository --jq '(.number | tostring) + " " + (.isCrossRepository | tostring)' 2>/dev/null || true)"

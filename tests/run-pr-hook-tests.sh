@@ -78,6 +78,9 @@ git -C "$K" remote set-url origin "git@github.com:acme/app.git"
 check "key: ssh form" "$(cc_repo_key "$K")" "github.com/acme/app"
 git -C "$K" remote remove origin
 check "key: no origin, the folder" "$(cc_repo_key "$K")" "$K"
+git -C "$K" config remote.origin.url "evil.example:x@github.com/acme/app"
+check "key: an scp form towards another host is not taken for github.com" "$(cc_repo_key "$K")" "evil.example/x@github.com/acme/app"
+git -C "$K" config --unset remote.origin.url
 
 # An origin that tries to write another repository's line
 TAB="$(printf '\t')"
@@ -114,6 +117,30 @@ check "the words in an echo: nothing" "$(hook 'echo "git push"' "$ASK")" ""
 check "a subagent's gh pr create: nothing" "$(jq -cn --arg d "$ASK" '{tool_input: {command: "gh pr create --fill"}, cwd: $d, agent_id: "a1"}' | env -u CLAUDE_CARBON_DB -u CLAUDE_CARBON_NO_PR_AUTO CLAUDE_CONFIG_DIR="$CFG" bash "${REPO_DIR}/scripts/pr-hook.sh")" ""
 check "none of those counted as the question" "$(consent "$KEY")" ""
 
+# The forms a real command takes
+for FORM in 'GH_TOKEN=x gh pr create --fill' 'command gh pr create' 'env A=1 B=2 gh pr create' "git add .${NL:-
+}gh pr create --fill" 'cd src && gh pr create' '(gh pr create)'; do
+  rm -f "${DATA}/pr-consent.tsv"
+  check "asked on: $(printf '%s' "$FORM" | tr '\n' ' ')" "$(hook "$FORM" "$ASK" | jq -r '.hookSpecificOutput.hookEventName')" "PostToolUse"
+done
+rm -f "${DATA}/pr-consent.tsv"
+
+# A repository that ships its own config folder, with a yes in it, through its settings'
+# env: the answers are not read there
+HOSTILE="${TMPROOT}/hostile"
+new_repo "$HOSTILE" "git@github.com:acme/hostile.git" "ask"
+mkdir -p "$HOSTILE/.cc/claude-carbon"
+: >"$HOSTILE/.cc/claude-carbon/carbon.db"
+printf 'github.com/acme/hostile\tyes\t2026-01-01\n' >"$HOSTILE/.cc/claude-carbon/pr-consent.tsv"
+check "config folder inside the repository: a push leaves nothing" \
+  "$(payload 'git push' "$HOSTILE" | env -u CLAUDE_CARBON_DB -u CLAUDE_CARBON_NO_PR_AUTO CLAUDE_CONFIG_DIR="$HOSTILE/.cc" bash "${REPO_DIR}/scripts/pr-hook.sh"; ls "$HOSTILE/.cc/claude-carbon/pr-pending" 2>/dev/null | wc -l | tr -d ' ')" "0"
+check "relative config folder: a push leaves nothing" \
+  "$(cd "$HOSTILE" && payload 'git push' "$HOSTILE" | env -u CLAUDE_CARBON_DB -u CLAUDE_CARBON_NO_PR_AUTO CLAUDE_CONFIG_DIR=".cc" bash "${REPO_DIR}/scripts/pr-hook.sh"; ls "$HOSTILE/.cc/claude-carbon/pr-pending" 2>/dev/null | wc -l | tr -d ' ')" "0"
+check "database inside the repository: a push leaves nothing" "$(cc_pr_consent_set "$DATA" "github.com/acme/hostile" yes; hook 'git push' "$HOSTILE" CLAUDE_CARBON_DB="$HOSTILE/.cc/claude-carbon/carbon.db"; pending)" "0"
+(cd "$HOSTILE" && env -u CLAUDE_CARBON_DB CLAUDE_CONFIG_DIR="$HOSTILE/.cc" bash "${REPO_DIR}/scripts/generate-pr-report.sh" --consent never >/dev/null 2>&1)
+check "config folder inside the repository: no answer is taken" "$?" "1"
+rm -f "${DATA}/pr-consent.tsv"
+
 # A yes before any question, or in a repository that does not ask, is not taken
 (cd "$ASK" && env -u CLAUDE_CARBON_DB CLAUDE_CONFIG_DIR="$CFG" bash "${REPO_DIR}/scripts/generate-pr-report.sh" --consent yes >/dev/null 2>&1)
 check "--consent yes before the question: refused" "$?|$(consent "$KEY")" "1|"
@@ -125,7 +152,7 @@ check "push before any answer: not marked as asked" "$(consent "$KEY")" ""
 OUT="$(hook 'gh pr create --title x --body y' "$ASK/src")"
 check "first gh pr create, after a cd: still asked" "$(hook 'cd src && gh pr create --fill' "$PLAIN")" ""
 check "first gh pr create: one JSON object for Claude" "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.hookEventName')" "PostToolUse"
-check "first gh pr create: the question names both answers" "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext' | grep -c -- '--consent yes .*--consent never')" "1"
+check "first gh pr create: each answer's command ends its own line" "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext' | grep -c -- '--consent \(yes\|never\)$')" "2"
 check "first gh pr create: the script's path is quoted for a shell" "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext' | grep -cF "bash '${REPO_DIR}/scripts/generate-pr-report.sh' --consent yes")" "1"
 check "first gh pr create: marked as asked" "$(consent "$KEY")" "asked"
 check "first gh pr create: nothing pending" "$(pending)" "0"
@@ -197,6 +224,12 @@ check "a marker older than an hour: no report, marker gone" "$(runs) $(pending)"
 hook 'git push' "$ASK" >/dev/null
 flush CLAUDE_CARBON_NO_PR_AUTO=1
 check "opt-out at the flush: no report" "$(runs)" "2"
+rm -rf "${DATA}/pr-pending"
+hook 'git push' "$ASK" >/dev/null
+printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "${GH_REPO:-unset}" "${GH_HOST:-unset}" >"%s"\n' "${TMPROOT}/gh-env" >"${FAKE}/generate-pr-report.sh"
+flush GH_REPO=victim/other GH_HOST=evil.example
+check "flush: GH_REPO and GH_HOST do not reach the report" "$(cat "${TMPROOT}/gh-env" 2>/dev/null)" "unset|unset"
+printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" "$(pwd -P)" "$*" >>"%s"\n' "$RUNS" >"${FAKE}/generate-pr-report.sh"
 rm -rf "${DATA}/pr-pending"
 
 hook 'git push' "$ASK" >/dev/null
