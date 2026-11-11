@@ -228,7 +228,7 @@ check "auto: a PR from a fork is refused" "1|nothing" "$(auto_run true --auto)"
 check "auto: an unreadable origin is refused" "1|nothing" "$(auto_run '' --auto)"
 check "by hand: a PR from a fork is posted" "0|posted" "$(auto_run true)"
 check "auto: gh aiming at another repository is refused" "1|nothing" "$(GH_STUB_URL=https://github.com/victim/other auto_run false --auto)"
-check "auto: a repository gh cannot name is refused" "1|nothing" "$(GH_STUB_URL= auto_run false --auto)"
+check "auto: a repository gh cannot name is refused" "1|nothing" "$(GH_STUB_URL='' auto_run false --auto)"
 check "auto: GH_REPO from the environment is dropped" "0|posted" "$(GH_REPO=victim/other auto_run false --auto)"
 git -C "$WORKDIR" config --unset remote.origin.url
 
