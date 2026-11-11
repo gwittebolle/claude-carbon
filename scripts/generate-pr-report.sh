@@ -62,6 +62,15 @@ if [ "$PR_GIVEN" = "1" ]; then
   esac
 fi
 
+if [ -n "$CONSENT" ] && [ "$PR_GIVEN" = "1" ]; then
+  echo "Error: --consent records an answer for the repository and takes no --pr." >&2
+  exit 2
+fi
+if [ -n "$SINCE" ] && [ "$SUMMARY" = "0" ]; then
+  echo "Error: --since goes with --summary." >&2
+  exit 2
+fi
+
 # ── The answer to a repository that asks for the report on every PR ─────────
 if [ -n "$CONSENT" ]; then
   if ! CONSENT_TOP="$(git rev-parse --show-toplevel 2>/dev/null)"; then
@@ -97,12 +106,21 @@ if [ -n "$CONSENT" ]; then
   # is left for the Stop hook, as after a push (pr-flush.sh), instead of posting a figure
   # that lacks this turn, or none at all on a branch whose first session is this one.
   CONSENT_BRANCH="$(cc_git_branch "$CONSENT_TOP")"
-  if [ -n "$CONSENT_BRANCH" ]; then
+  CONSENT_WAITS=0
+  if [ -n "$CONSENT_BRANCH" ] && [ -z "${CLAUDE_CARBON_NO_PR_AUTO:-}" ]; then
     CONSENT_PENDING="$(cc_pr_pending "$CONSENT_DIR" "$CONSENT_TOP" "$CONSENT_BRANCH")"
-    mkdir -p "$(dirname "$CONSENT_PENDING")" 2>/dev/null \
-      && printf '%s\n%s\n' "$CONSENT_TOP" "$CONSENT_BRANCH" >"$CONSENT_PENDING" 2>/dev/null || true
+    if mkdir -p "$(dirname "$CONSENT_PENDING")" 2>/dev/null \
+      && printf '%s\n%s\n' "$CONSENT_TOP" "$CONSENT_BRANCH" >"$CONSENT_PENDING" 2>/dev/null; then
+      CONSENT_WAITS=1
+    fi
   fi
-  echo "Noted: the carbon report is posted on this branch's pull request when this answer ends, then updated when you push, on your pull requests of this repository. Change your mind with --consent never."
+  if [ -n "${CLAUDE_CARBON_NO_PR_AUTO:-}" ]; then
+    echo "Noted, but CLAUDE_CARBON_NO_PR_AUTO is set in your environment: nothing is posted by itself until you unset it. /carbon-pr posts one report when you run it."
+  elif [ "$CONSENT_WAITS" = "1" ]; then
+    echo "Noted. If this branch has an open pull request, its report is posted when the Claude Code answer in progress ends (within the hour); from then on it is posted and updated after each 'git push' or 'gh pr create' Claude Code runs in this repository. Change your mind with --consent never."
+  else
+    echo "Noted. From now on the report is posted and updated after each 'git push' or 'gh pr create' Claude Code runs in this repository. Change your mind with --consent never."
+  fi
   exit 0
 fi
 
@@ -127,7 +145,7 @@ if [ "$SUMMARY" = "1" ]; then
   fi
   SUM_QUERY="repo:${SUM_REPO} is:pr is:merged in:comments \"claude-carbon-dev-report\""
   [ -n "$SINCE" ] && SUM_QUERY="${SUM_QUERY} merged:>=${SINCE}"
-  if ! SUM_FOUND="$(gh api -X GET search/issues -f q="$SUM_QUERY" -f per_page=100 \
+  if ! SUM_FOUND="$(gh api -X GET search/issues -f q="$SUM_QUERY" -f sort=updated -f order=desc -f per_page=100 \
       --jq '(.total_count | tostring), (.items[] | "\(.number)\t\(.pull_request.merged_at // .closed_at // "")")' 2>/dev/null)"; then
     echo "Error: the search for merged PRs failed (gh api search/issues)." >&2
     exit 1
@@ -135,10 +153,15 @@ if [ "$SUMMARY" = "1" ]; then
   SUM_TOTAL="$(printf '%s\n' "$SUM_FOUND" | head -1)"
   SUM_ROWS=""
   SUM_UNREAD=0
+  SUM_FAILED=0
   while IFS="$TAB" read -r SUM_PR SUM_MERGED; do
     case "$SUM_PR" in ''|*[!0-9]*) continue ;; esac
-    SUM_LINE="$(gh api "repos/${SUM_REPO}/issues/${SUM_PR}/comments?per_page=100" \
-      --jq '[.[] | select(.body | contains("claude-carbon-dev-report"))][0] | select(. != null) | .user.login + "\t" + ((.body | split("\n") | map(select(startswith("| **"))))[0] // "")' 2>/dev/null || true)"
+    # The report itself: a comment that opens with the marker, not one that quotes it
+    if ! SUM_LINE="$(gh api "repos/${SUM_REPO}/issues/${SUM_PR}/comments?per_page=100" \
+      --jq '[.[] | select(.body | startswith("<!-- claude-carbon-dev-report -->"))][0] | select(. != null) | .user.login + "\t" + ((.body | split("\n") | map(sub("\r$"; "") | select(startswith("| **"))))[0] // "")' 2>/dev/null)"; then
+      SUM_FAILED=$((SUM_FAILED + 1))
+      continue
+    fi
     SUM_AUTHOR="${SUM_LINE%%"$TAB"*}"
     SUM_CELLS="${SUM_LINE#*"$TAB"}"
     # grams, dollars, sessions out of "| **575 g** | $17.26 | 1.6M | 90.9M | 1 |"
@@ -149,8 +172,9 @@ if [ "$SUMMARY" = "1" ]; then
         else if (co2 ~ /^[0-9.]+g$/) { sub(/g$/, "", co2); g = co2 + 0 }
         else if (co2 ~ /^[0-9.]+t$/) { sub(/t$/, "", co2); g = co2 * 1000000 }
         if (g >= 0 && cost ~ /^[0-9.]+$/ && n ~ /^[0-9]+$/) printf "%.0f\t%.2f\t%d", g, cost, n }')"
-    # A login is letters, digits and hyphens: anything else is not printed
-    case "$SUM_AUTHOR" in ''|*[!A-Za-z0-9-]*) SUM_AUTHOR="" ;; esac
+    # A login is letters, digits, hyphens, and an underscore on a managed account:
+    # anything else (a bot's brackets) is not printed
+    case "$SUM_AUTHOR" in ''|*[!A-Za-z0-9_-]*) SUM_AUTHOR="" ;; esac
     if [ -z "$SUM_AUTHOR" ] || [ -z "$SUM_PARSED" ]; then
       SUM_UNREAD=$((SUM_UNREAD + 1))
       continue
@@ -163,7 +187,8 @@ SUMMARY_LIST
 
   if [ -z "$SUM_ROWS" ]; then
     echo "No carbon report found on the merged pull requests of ${SUM_REPO}${SINCE:+ since ${SINCE}}."
-    [ "$SUM_UNREAD" -gt 0 ] && echo "${SUM_UNREAD} comment(s) could not be read (an older format, or edited)."
+    [ "$SUM_UNREAD" -gt 0 ] && echo "${SUM_UNREAD} comment(s) could not be read (an older format, edited, or posted by a bot)."
+    [ "$SUM_FAILED" -gt 0 ] && echo "${SUM_FAILED} pull request(s) could not be fetched (gh api failed): run it again."
     exit 0
   fi
   echo "Carbon reports on the merged pull requests of ${SUM_REPO}${SINCE:+ since ${SINCE}}"
@@ -186,7 +211,8 @@ SUMMARY_LIST
     | while IFS="$TAB" read -r P S G C; do
         echo "Total: ${P} PRs, ${S} sessions, $(format_co2 "$G") CO2e, \$${C} at API list price."
       done
-  [ "$SUM_UNREAD" -gt 0 ] && echo "${SUM_UNREAD} comment(s) could not be read (an older format, or edited) and are left out."
+  [ "$SUM_UNREAD" -gt 0 ] && echo "${SUM_UNREAD} comment(s) could not be read (an older format, edited, or posted by a bot) and are left out."
+  [ "$SUM_FAILED" -gt 0 ] && echo "${SUM_FAILED} pull request(s) could not be fetched (gh api failed) and are left out: the totals are partial, run it again."
   case "$SUM_TOTAL" in
     ''|*[!0-9]*) ;;
     *) [ "$SUM_TOTAL" -gt 100 ] && echo "Only the first 100 of ${SUM_TOTAL} pull requests were read: narrow it with --since." ;;
@@ -430,7 +456,7 @@ EOF
 
 # ── Format ──────────────────────────────────────────────────
 CO2_DISPLAY="$(format_co2 "$TOTAL_CO2")"
-COST_DISPLAY="\$$(echo "$TOTAL_COST" | awk '{printf "%.2f", $1}')"
+COST_DISPLAY="\$$(echo "$TOTAL_COST" | LC_ALL=C awk '{printf "%.2f", $1}')"
 TOKENS_DISPLAY="$(format_tokens "$TOTAL_TOKENS")"
 CACHE_READ_DISPLAY="$(format_tokens "$TOTAL_CACHE_READ")"
 

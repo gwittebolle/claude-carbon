@@ -6,7 +6,8 @@
 
 From the 1st to the 10th of January the reminder gives the year just ended,
 `📊 2026: 1444.4kgCO₂ · /carbon-card`, where it gave December. Over the same days
-`/carbon-card` with no period covers that year, whole, and says so on a `Period:` line; the
+`/carbon-card` with no period covers that year, whole, when it has sessions, and says so on a
+`Period:` line; the
 pane's button is named after it. `--since`, `--until` and `--all` are taken as before, and
 from the 11th the card is the new year's again. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY` moves
 the last day for the reminder and the card together.
@@ -17,8 +18,8 @@ the last day for the reminder and the card together.
 on the repository's merged pull requests and prints their total per month merged and per
 author; `--since YYYY-MM-DD` narrows it. Nothing is posted and the local database is not
 read: each figure is the one its author posted. A comment in the older one-line form, or
-edited by hand, is counted as unread and left out. At most 100 pull requests are read at
-a time.
+edited by hand, is counted as unread and left out, and a pull request `gh` could not fetch
+is said apart. At most 100 pull requests are read at a time, the most recently updated first.
 
 ### feat: in December the card reminder gives the year so far
 

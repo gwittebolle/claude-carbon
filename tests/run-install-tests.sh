@@ -452,7 +452,7 @@ FAKEDATE
   if [ "$PREV_M" -eq 0 ]; then PREV_M=12; PREV_Y="$((PREV_Y - 1))"; fi
   PREV_MONTH="$(printf '%04d-%02d' "$PREV_Y" "$PREV_M")"
   PREV_NAME="$(cc_prev_month_name "$THIS_MONTH")"
-  TODAY_KEY="${FAKE_YM}-${FAKE_D}"
+  TODAY_KEY="${FAKE_YM}-${FAKE_D}/${PREV_MONTH}"
 
   # nudge_db <cfg> <days>: one 1500 g session on each of the first <days> days of the
   # closed month, plus an excluded 99999 g session on another day and a 50000 g
@@ -527,6 +527,9 @@ FAKEDATE
   nudge_db "$CFG" 7
   sqlite3 "${CFG}/claude-carbon/carbon.db" "INSERT INTO sessions (session_id, project, model, co2_grams, started_at) VALUES ('march', 'p', 'claude-opus-5', 4000.0, '2026-03-10T10:00:00Z'), ('older', 'p', 'claude-opus-5', 9000.0, '2025-06-10T10:00:00Z');"
   check "nudge, January: the year just ended" "📊 2026: 14.5kgCO₂ · /carbon-card" "$(nudge_line)"
+  check "nudge, January: cached as the year's figure" "2027-01-05/2026 14500" "$(cat "${CFG}/claude-carbon/last-month-total" 2>/dev/null)"
+  FAKE_D="10"
+  check "nudge, January: on the 10th still" "📊 2026: 14.5kgCO₂ · /carbon-card" "$(nudge_line)"
   FAKE_D="11"
   check "nudge, January: past the 10th it is gone" "" "$(nudge_line)"
 

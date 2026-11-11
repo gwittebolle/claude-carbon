@@ -139,7 +139,8 @@ nudge, so a fresh install is not pushed to share a near-empty card. Generating a
 clears it for the month; it goes quiet on its own after the 10th. In December it gives the year
 so far instead, `📊 2026: 1444.4kgCO₂ · /carbon-card`, and stays the whole month, the card covering
 the calendar year. From the 1st to the 10th of January it gives the year just ended, and over those
-days `/carbon-card` covers that year, whole, unless you pass a period. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
+days `/carbon-card` covers that year, whole, unless you pass a period or that year has no session (the
+card keeps those ten days even when the reminder is turned off). `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
 moves the cut-off (0 removes the nudge, December included), `CLAUDE_CARBON_NO_CARD_NUDGE=1` removes the nudge. Nothing is posted anywhere:
 sharing stays a human decision.
 
@@ -311,7 +312,7 @@ Nothing is posted on that alone. The first time a developer who has the plugin o
 - **yes**: the comment is posted when that answer ends, then updated in place after each `git push` or `gh pr create` Claude runs there, once the answer that pushed is recorded and while the pushed branch is still the one checked out. A push you type yourself in a terminal triggers nothing. One comment per PR, and never by itself on a PR whose branch lives in a fork.
 - **no**, or no answer: nothing is posted and the question does not come back. `/carbon-pr` still works when they run it.
 
-Change your answer from the repository with `scripts/generate-pr-report.sh --consent yes` or `--consent never`; a yes is only taken once the question was put to you there, which also covers a question that never showed because the turn was interrupted. The answer is kept under the repository's `origin` URL (without credentials): rename the remote and the question comes back once. A repository cannot answer for you: the answers are never read from a config folder or a database placed inside the repository, and posted by itself the comment only goes to the repository `origin` names, whatever `GH_REPO` says. `CLAUDE_CARBON_NO_PR_AUTO=1` in your own environment turns the question and the posting off everywhere. To stop it for the repository, remove the `CLAUDE_CARBON_PR` line. It needs the plugin's hooks (a marketplace install): an installer-only clone is not asked and posts nothing by itself. It is meant for a team's repository; on a public project, contributors from outside would see comments they did not ask for.
+Change your answer from the repository with `scripts/generate-pr-report.sh --consent yes` or `--consent never` (after a yes typed in a terminal, the first comment comes with your next push or `gh pr create` in Claude Code); a yes is only taken once the question was put to you there, which also covers a question that never showed because the turn was interrupted. The answer is kept under the repository's `origin` URL (without credentials): rename the remote and the question comes back once. A repository cannot answer for you: the answers are never read from a config folder or a database placed inside the repository, and posted by itself the comment only goes to the repository `origin` names, whatever `GH_REPO` says. `CLAUDE_CARBON_NO_PR_AUTO=1` in your own environment turns the question and the posting off everywhere. To stop it for the repository, remove the `CLAUDE_CARBON_PR` line. It needs the plugin's hooks (a marketplace install): an installer-only clone is not asked and posts nothing by itself. It is meant for a team's repository; on a public project, contributors from outside would see comments they did not ask for.
 
 #### The repository's total
 

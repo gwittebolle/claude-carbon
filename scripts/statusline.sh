@@ -416,7 +416,8 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
       NUDGE_NAME="$PREV_Y"
     fi
     TOTAL_FILE="${CONFIG_DIR}/claude-carbon/last-month-total"
-    printf -v TOTAL_KEY '%s-%02d' "$THIS_MONTH" "$TODAY_DAY"
+    # The day and what is summed: a figure cached for a month is never shown as a year's
+    printf -v TOTAL_KEY '%s-%02d/%s' "$THIS_MONTH" "$TODAY_DAY" "$NUDGE_PERIOD"
     PREV_KEY=""; PREV_TOTAL=""
     { read -r PREV_KEY PREV_TOTAL < "$TOTAL_FILE"; } 2>/dev/null || true
     if [ "$PREV_KEY" != "$TOTAL_KEY" ]; then

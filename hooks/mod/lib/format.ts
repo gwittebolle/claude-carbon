@@ -793,7 +793,8 @@ export function showLabel(lang: Lang): string {
 
 
 // The button that puts /carbon-card in the prompt, for the person to send. The card
-// covers the calendar year so far, whatever range the pane shows: the label says which.
+// covers the calendar year so far (the one just ended, over the first days of January),
+// whatever range the pane shows: the label says which.
 export function cardButtonLabel(year: number, lang: Lang): string {
   return lang === "fr" ? `Obtenir ma carte ${year}` : `Get my ${year} card`;
 }

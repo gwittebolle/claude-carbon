@@ -524,6 +524,19 @@ JANDATE
   else
     bad "January 11th: the card covers the new year" "$JAN_OUT"
   fi
+  JAN_OUT="$(january_card 2027-01-10)"
+  case "$JAN_OUT" in
+    *'up to December 31, 2026: 7.0 kg CO2e · 2 sessions'*) ok "January 10th: still the year just ended" ;;
+    *) bad "January 10th: still the year just ended" "$JAN_OUT" ;;
+  esac
+  # Installed in January: nothing in the year just ended, so the card is the new year's
+  sqlite3 "$JAN_DB" "DELETE FROM sessions WHERE started_at < '2027-01-01';"
+  JAN_OUT="$(january_card 2027-01-05)"
+  if [ "$JAN_OUT" = 'Totals since January 2027: 50.0 kg CO2e · 1 sessions' ]; then
+    ok "early January, no session last year: the card covers the new year"
+  else
+    bad "early January, no session last year: the card covers the new year" "$JAN_OUT"
+  fi
   JAN_OUT="$(january_card 2027-01-05 --since 2027-01-01)"
   case "$JAN_OUT" in
     'Totals since 2027-01-01: 50.0 kg CO2e · 1 sessions') ok "early January: a period asked for is kept" ;;

@@ -21,7 +21,7 @@ CC_TMP="$(cc_tmpdir)"
 SERVER_PID=""
 BROWSER_PROFILE=""
 TODAY="$(date +%Y-%m-%d)"
-YEAR="$(date +%Y)"
+YEAR="${TODAY%%-*}"
 
 # ── Parse args ──────────────────────────────────────────────
 SINCE="${YEAR}-01-01"
@@ -73,11 +73,18 @@ done
 # The first days of January, with no period asked for: the year just ended, whole. The
 # new year holds a few days at most, and this is when its card is looked for (the status
 # line and the pane recall it over the same days: CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY, 10
-# by default, and 10 here too when it is set to 0 to silence them).
+# by default, and 10 here too when it is set to 0 to silence them). Only when that year
+# has sessions: someone who installed in January gets the card of what they have.
 RECAP_LAST="${CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY:-10}"
 case "$RECAP_LAST" in ''|*[!0-9]*|0) RECAP_LAST=10 ;; esac
 RECAP_YEAR=""
-if [ "$PERIOD_GIVEN" = "0" ] && [ "${TODAY:5:2}" = "01" ] && [ "$((10#${TODAY:8:2}))" -le "$RECAP_LAST" ]; then
+RECAP_ROWS=0
+if [ "$PERIOD_GIVEN" = "0" ] && [ "${TODAY:5:2}" = "01" ] && [ "$((10#${TODAY:8:2}))" -le "$RECAP_LAST" ] \
+  && [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>&1; then
+  RECAP_ROWS="$(sqlite3 -cmd '.timeout 2000' "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE started_at >= '$((YEAR - 1))-01-01' AND started_at < '${YEAR}-01-01';" 2>/dev/null || echo 0)"
+fi
+case "$RECAP_ROWS" in ''|*[!0-9]*) RECAP_ROWS=0 ;; esac
+if [ "$RECAP_ROWS" -gt 0 ]; then
   RECAP_YEAR="$((YEAR - 1))"
   SINCE="${RECAP_YEAR}-01-01"
   UNTIL="${YEAR}-01-01"
