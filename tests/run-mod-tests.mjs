@@ -63,6 +63,7 @@ import {
   carValue,
   showLabel,
   noHistoryText,
+  autoSetupText,
   otherProjectsLine,
   paneHint,
   paneTitle,
@@ -103,6 +104,7 @@ import {
   updateText,
   updateHint,
   cardHint,
+  yearCardHint,
   formatTokens,
   formatWh,
   formatShare,
@@ -165,7 +167,10 @@ import {
   updateFlagPath,
   updateFlagPaths,
   statePath,
+  parseSetupNeeded,
   cardNudge,
+  cardNudgeOpen,
+  cardYear,
 } from "../hooks/mod/lib/sessions.ts";
 import { carEquivalence, equivalenceSet } from "../hooks/mod/lib/equiv.ts";
 
@@ -563,7 +568,7 @@ for (const lang of ["fr", "en"]) {
   shown.push(sessionLine(52, lang, 0.38), sessionLine(52, lang));
   shown.push(quotaText([{ kind: "five_hour", percentUsed: 23, resetsAt }], lang, quotaNow));
   shown.push(quotaText([{ kind: "seven_day", percentUsed: 41, resetsAt: weeklyReset }], lang, quotaNow));
-  shown.push(updateHint("1.18.0"), cardHint(8, 84213, lang), updateText("1.18.0", lang));
+  shown.push(updateHint("1.18.0"), cardHint(8, 84213, lang), yearCardHint(2026, 84213, lang), updateText("1.18.0", lang));
   shown.push(formatUsd(0.12, lang), formatUsd(0.001, lang));
   for (const n of [0.02, 4.24, 37.6, 1234]) shown.push(formatGrams(n, lang));
 }
@@ -953,6 +958,22 @@ check(
 );
 check("no update flags", updateFlagPaths({}).length, 0);
 check("card stamp path", statePath({ configDir: "/cfg" }, "last-card-month"), "/cfg/claude-carbon/last-card-month");
+
+// What the SessionStart hook writes when it creates no database: only its own words count
+check("setup needed: one tool", parseSetupNeeded("sqlite3\n")?.join(" "), "sqlite3");
+check("setup needed: both tools", parseSetupNeeded("jq sqlite3\n")?.join(" "), "jq sqlite3");
+check("setup needed: anything else", parseSetupNeeded("curl; rm -rf x\n"), null);
+check("setup needed: empty", parseSetupNeeded(""), null);
+check(
+  "no history en, tools missing",
+  noHistoryText("en", ["jq", "sqlite3"]),
+  "To record your sessions, install jq and sqlite3 and restart Claude Code (see the README).",
+);
+check(
+  "no history en",
+  noHistoryText("en"),
+  "No history yet (see the README).",
+);
 check("update hint, as the status line", updateHint("1.18.0"), "⬆ 1.18.0 /carbon-update");
 check("card hint fr", cardHint(8, 84213, "fr").replaceAll(NBSP, " "), "📊 Septembre : 84,2 kgCO₂ · /carbon-card");
 check("card hint en", cardHint(8, 84213, "en").replaceAll(NBSP, " "), "📊 September: 84.2 kgCO₂ · /carbon-card");
@@ -978,12 +999,35 @@ check(
   check("card nudge: on the 10th", cardNudge(september, new Date(2026, 9, 10, 23).getTime(), null)?.month, 8);
   check("card nudge: a later last day", cardNudge(september, new Date(2026, 9, 14, 9).getTime(), null, 15)?.month, 8);
   const december = [1, 2, 3, 4, 5, 6, 7].map((d) => ({ ...day(d, 100), at: Date.UTC(2025, 11, d, 12) }));
-  check("card nudge: January closes December", cardNudge(december, new Date(2026, 0, 2, 9).getTime(), null)?.month, 11);
+  check("card nudge: early January gives the year just ended, not December", JSON.stringify(cardNudge(december, new Date(2026, 0, 2, 9).getTime(), null)), JSON.stringify({ year: 2025, grams: december.reduce((sum, row) => sum + row.grams, 0) }));
   // A session begun at 23:30 UTC on the 31st is in August, as the card counts it, wherever
   // the machine is
   const lateAugust = { ...day(1, 9000), at: Date.UTC(2026, 7, 31, 23, 30) };
   check("card nudge: the UTC date decides the month", cardNudge([...september, lateAugust], october3, null)?.grams, 7000);
   check("card nudge: no last day, no hint", cardNudge(september, october3, null, 0), null);
+  // December: the year so far, the whole month
+  const dec20 = new Date(2026, 11, 20, 9).getTime();
+  const lastYear = { ...day(1, 9000), at: Date.UTC(2025, 11, 30, 12) };
+  check("card nudge: December gives the year", JSON.stringify(cardNudge([...september, lastYear], dec20, null)), '{"year":2026,"grams":7000}');
+  check("card nudge: December, past the 10th, still open", cardNudgeOpen(dec20), true);
+  check("card nudge: November, past the 10th, closed", cardNudgeOpen(new Date(2026, 10, 20, 9).getTime()), false);
+  check("card nudge: December, six days in the year are not enough", cardNudge(september.slice(1), dec20, null), null);
+  check("card nudge: December, a card made in December", cardNudge(september, dec20, "2026-12"), null);
+  check("card nudge: December, a card made in November", "year" in (cardNudge(september, dec20, "2026-11") ?? {}), true);
+  check("card nudge: December, no last day, no hint", cardNudge(september, dec20, null, 0), null);
+  // January: the year just ended, over the usual first days
+  const jan5 = new Date(2027, 0, 5, 9).getTime();
+  const thisYear = { ...day(1, 400), at: Date.UTC(2027, 0, 2, 12) };
+  check("card nudge: January gives the year just ended", JSON.stringify(cardNudge([...september, lastYear, thisYear], jan5, null)), '{"year":2026,"grams":7000}');
+  check("card nudge: January, after the 10th", cardNudge(september, new Date(2027, 0, 11, 9).getTime(), null), null);
+  check("card nudge: January, a card made in January", cardNudge(september, jan5, "2027-01"), null);
+  check("card year: early January, the year just ended", cardYear(jan5), 2026);
+  check("card year: January 11th, the new year", cardYear(new Date(2027, 0, 11, 9).getTime()), 2027);
+  check("card year: December, the year", cardYear(dec20), 2026);
+  check("card year: a last day of 0 counts as the 10th", cardYear(jan5, 0), 2026);
+  check("card year: a later last day", cardYear(new Date(2027, 0, 14, 9).getTime(), 15), 2026);
+  check("year card hint fr", yearCardHint(2026, 1444400, "fr").replaceAll(NBSP, " "), "📊 2026 : 1444,4 kgCO₂ · /carbon-card");
+  check("year card hint en", yearCardHint(2026, 84213, "en").replaceAll(NBSP, " "), "📊 2026: 84.2 kgCO₂ · /carbon-card");
 }
 check(
   "update text fr",
@@ -1190,7 +1234,7 @@ for (const lang of ["fr", "en"]) {
   // The tab title is the plugin's name on purpose (asked for), so it is checked apart
   pane.push(commandDescription(lang), paneHint(lang), paneUnplaced(lang));
   pane.push(currentLine(52, 140, lang), currentLine(800, 140, lang), currentLine(52, null, lang));
-  pane.push(colorNote(4, lang), noHistoryText(lang), emptyRangeText(lang));
+  pane.push(colorNote(4, lang), noHistoryText(lang), noHistoryText(lang, ["jq", "sqlite3"]), autoSetupText(lang), emptyRangeText(lang));
   pane.push(mascotAlt(lang), stripesAlt(lang));
   pane.push(cardButtonLabel(2026, lang), cardDraftBusy(lang), cardReadyText(lang), cardFillFailed(lang));
   pane.push(compareText(120, 100, "30d", lang), compareText(80, 100, "1y", lang), costText(12.3, lang), showLabel(lang));

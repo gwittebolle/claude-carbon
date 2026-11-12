@@ -136,8 +136,12 @@ the total of the month just closed, the bar the card draws for it, in the same f
 session figure. It is read from carbon.db once a day while the nudge shows, and kept in
 `~/.claude/claude-carbon/last-month-total`. A month with fewer than 7 days of sessions gets no
 nudge, so a fresh install is not pushed to share a near-empty card. Generating a card
-clears it for the month; it goes quiet on its own after the 10th. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
-moves the cut-off, `CLAUDE_CARBON_NO_CARD_NUDGE=1` removes the nudge. Nothing is posted anywhere:
+clears it for the month; it goes quiet on its own after the 10th. In December it gives the year
+so far instead, `📊 2026: 1444.4kgCO₂ · /carbon-card`, and stays the whole month, the card covering
+the calendar year. From the 1st to the 10th of January it gives the year just ended, and over those
+days `/carbon-card` covers that year, whole, unless you pass a period or that year has no session (the
+card keeps those ten days even when the reminder is turned off). `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY`
+moves the cut-off (0 removes the nudge, December included), `CLAUDE_CARBON_NO_CARD_NUDGE=1` removes the nudge. Nothing is posted anywhere:
 sharing stays a human decision.
 
 <details>
@@ -263,10 +267,9 @@ Restart Claude Code.
 claude-carbon measures one developer's sessions, locally. If the question comes from your CTO, a client RFP or a CSR committee, the same methodology exists as a hosted layer:
 
 - [Free calculator](https://tokenclimate.com/en/calculator?ref=github) and [per-model factor sheets](https://tokenclimate.com/en/models?ref=github) - the exact versioned factors of this repo, browsable.
-- [AI usage report](https://tokenclimate.com/bilan/en?ref=github) - a self-serve, shareable report of your organisation's real Claude usage (cost, CO2e, water, energy), generated in minutes from an Anthropic admin key. The key is never stored; the methodology annex is citation-ready.
 - [TokenClimate](https://tokenclimate.com/en?ref=github) - hosted team dashboards. Both sides share this repo's golden vectors, verified weekly in CI.
 
-The only places the OSS points there are a one-line footer in `/carbon-report` and a small credit on the `/carbon-card` PNGs. No status-line promo, no email capture: nothing leaves your machine.
+The OSS points there from five places: a one-line footer in `/carbon-report`, a small credit on the `/carbon-card` PNGs, the last line of a `/carbon-pr` comment, the foot of the `/carbon-panel` pane and the `url` field of `CITATION.cff`. No status-line promo, no email capture: nothing leaves your machine.
 
 ### PR dev footprint (/carbon-pr)
 
@@ -274,8 +277,13 @@ The number reviewers rarely see is what the PR cost to develop: your local Claud
 
 ```
 **Claude Code carbon report** · developing this PR
-124 g CO2e · $3.00 · 180k tokens · 1.5M cache reads · 2 sessions
+
+| CO2e | Cost* | Tokens (in + cache write + out) | Cache reads | Sessions |
+|---|---|---|---|---|
+| **124 g** | $3.00 | 180k | 1.5M | 2 |
 ```
+
+Under the table come the car equivalence, a foldable token detail per model and a one-line footer.
 
 How the sessions are attributed: the Stop hook stores each session's git branch (read from the transcript), and the report selects `project + branch`. Sessions recorded before this column existed carry no branch; `scripts/backfill.sh` repairs them while their transcripts are still on disk (about 30 days). A session whose last folder is a subdirectory of the repo is stored under the subdirectory's name and stays out of the sum. A session that ends on another branch than it started is attributed to where it finished.
 
@@ -290,7 +298,40 @@ The hook needs Claude Code 2.1.69 or later, the first to give `SubagentStop` the
 
 The hook runs synchronously, before the agent's result reaches the session: on a Mac, about 0.1 to 0.3 s for most agents, up to about 1 to 2 s for one whose transcript passes 100 MB, since it reads that transcript whole. Claude Code writes transcripts asynchronously: when the agent's final message is not in it yet, the hook reads it again every 0.2 s, for 1 s at most, then counts what is there. A database kept busy for more than about 10 s (a long read elsewhere) loses the record, and the agent counts with its session.
 
-Turning it off is the default: nothing is posted unless you run it. `--dry-run` previews the comment, `--pr <number>` targets a specific PR of the repository (one opened from a fork is refused: run the command from the fork's clone instead), and deleting the comment on GitHub is the full cleanup. Once agents of the repository are on record, the report counts, from whichever folder it runs, the sessions of the repository's main folder, of the worktree the branch is checked out in and of the worktrees its agents worked in, even removed since. A branch checked out nowhere whose name sessions of other folders also carry is refused: nothing is posted rather than a figure that may lack them.
+#### For every PR of a repository
+
+A repository can ask for the report on its pull requests. Its maintainers commit this in `.claude/settings.json`, a change the team reviews like any other:
+
+```json
+{ "env": { "CLAUDE_CARBON_PR": "1" } }
+```
+
+Nothing is posted on that alone. The first time a developer who has the plugin opens a pull request there with Claude Code (`gh pr create`), Claude asks them once whether to post the report of their own sessions under their own GitHub account. Their answer stays on their machine, per repository (`pr-consent.tsv` in the data folder):
+
+- **yes**: the comment is posted when that answer ends, then updated in place after each `git push` or `gh pr create` Claude runs there, once the answer that pushed is recorded and while the pushed branch is still the one checked out. A push you type yourself in a terminal triggers nothing. One comment per PR, and never by itself on a PR whose branch lives in a fork.
+- **no**, or no answer: nothing is posted and the question does not come back. `/carbon-pr` still works when they run it.
+
+Change your answer from the repository with `scripts/generate-pr-report.sh --consent yes` or `--consent never` (after a yes typed in a terminal, the first comment comes with your next push or `gh pr create` in Claude Code); a yes is only taken once the question was put to you there, which also covers a question that never showed because the turn was interrupted. The answer is kept under the repository's `origin` URL (without credentials): rename the remote and the question comes back once. A repository cannot answer for you: the answers are never read from a config folder or a database placed inside the repository, and posted by itself the comment only goes to the repository `origin` names, whatever `GH_REPO` says. `CLAUDE_CARBON_NO_PR_AUTO=1` in your own environment turns the question and the posting off everywhere. To stop it for the repository, remove the `CLAUDE_CARBON_PR` line. It needs the plugin's hooks (a marketplace install): an installer-only clone is not asked and posts nothing by itself. It is meant for a team's repository; on a public project, contributors from outside would see comments they did not ask for.
+
+#### The repository's total
+
+`scripts/generate-pr-report.sh --summary` reads back, through `gh`, the reports already posted on the repository's merged pull requests and totals them per month merged and per author. `--since 2026-10-01` narrows it. It prints in your terminal only, posts nothing and does not read your database: the figures are the ones each author posted.
+
+```
+Month merged             PRs  Sessions       CO2e       Cost
+2026-09                    2         4     1.8 kg     $57.26
+2026-10                    1         1       69 g      $1.92
+
+Author                   PRs  Sessions       CO2e       Cost
+alice                      2         2      644 g     $19.18
+bob-dev                    1         3     1.2 kg     $40.00
+
+Total: 3 PRs, 5 sessions, 1.8 kg CO2e, $59.18 at API list price.
+```
+
+A comment in the older one-line form, or edited by hand, is counted as unread and left out. It covers the pull requests that carry a report, not the repository's whole footprint, and reads at most 100 of them at a time.
+
+Outside such a repository, turning it off is the default: nothing is posted unless you run it. `--dry-run` previews the comment, `--pr <number>` targets a specific PR of the repository (one opened from a fork is refused: run the command from the fork's clone instead), and deleting the comment on GitHub is the full cleanup. Once agents of the repository are on record, the report counts, from whichever folder it runs, the sessions of the repository's main folder, of the worktree the branch is checked out in and of the worktrees its agents worked in, even removed since. A branch checked out nowhere whose name sessions of other folders also carry is refused: nothing is posted rather than a figure that may lack them.
 
 ## How it works
 
@@ -386,23 +427,40 @@ The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/
   - **In the desktop app** the pane opens on the right, its tab titled "claude-carbon", in two blocks. Under the molecule, the colour scale, the eight colours from blue to red, with a marker under this session's. *This session*: its CO2, answers, subagents and model, its context window's fill and API-price value, and a small molecule per subagent, coloured by its own CO2. *My usage*: the period you pick (the last 7 or 30 days, 12 months, everything, or two dates you type, `01/05/2026`), its figures as tiles (CO2 as the reports sum it, change against the same length of time before, sessions, API-price value, car equivalence), then warming stripes of that period, a day, a week or a month a stripe after its length, each coloured against the median of the periods shown. The stripe under the pointer lights up and its date, total and sessions show under the stripes. A tile with an (i) shows its note when you click the (i), and hides it at a second click: the API-price value is what this usage costs billed through the API, and a Pro, Max or Ultra subscription covers some or all of it (which session was billed how is not recorded, so the pane never says what you paid). A gear beside "My usage" turns the change, the API-price value, the car, the split by project (off until you turn it on, each folder with its share and kgCO2) and the detail on or off; the pane keeps your choices for the next session. The detail (off until you turn it on) splits the period by kind of token, uncached input, cache writes, cache reads and output: two coloured bars give each kind's share of the tokens and of the CO2 (the part under the pointer lights up and its figures show under the bar), then a line per kind its tokens, energy and CO2 with their shares. The CO2 of each session is the one stored, split with the weights the factors give each kind (cache reads 0.08 of an input token, output about 21 times one), so the parts add up to what was stored; a session stored with older factors (before July 2026), whose CO2 no longer matches its tokens, is left out and the block says over how many sessions it splits; the energy is the one the factors start from (energy per token, PUE included, converted to CO2 with the AWS us-east grid at 287 gCO2/kWh), found back by dividing that CO2 by the same intensity. It needs the tokens by kind in `sessions-history.tsv`, which the hooks write from this version on: after an update, the detail shows from the next answer. A "Get my 2026 card" button puts `/carbon-card` in an empty prompt for you to send (the card covers the calendar year so far, whatever range the pane shows); it never sends it and leaves a draft you have started alone. A few short lines at the foot link to this repository, the author's LinkedIn profile and TokenClimate, the business version.
   - **In the terminal** `/carbon-panel` typed at the prompt shows this session in the band right above it, in the classic and the fullscreen rendering alike (sent from the desktop app or a phone to a session running in a terminal, through Remote Control, it opens the side pane there instead): a small molecule of 13 columns by 4 rows in half blocks, and beside it the session's CO2, answers, subagents (a dot each, in its colour), model, context window and API-price value. The period and the stripes live in the desktop app.
   - Run `/carbon-panel` again to close the pane or clear the band. The command is also a skill of the plugin, so the desktop app lists it; where the mod does not run (the VS Code chat panel, a cloud session) it only says where the pane opens.
-- **The stripes' history** is `sessions-history.tsv`, which the Stop hook writes next to `carbon.db` after each answer, read-only on the database. Every recorded session is in it, older rows as they were stored (they keep the factors of their time and are never recomputed), so the stripes, the median and the totals count what `/carbon-report` counts. Another session running at the same time counts with its total so far. The plugin installed alone has no database: the pane then shows the molecule and says where the history comes from.
+- **The stripes' history** is `sessions-history.tsv`, which the Stop hook writes next to `carbon.db` after each answer, read-only on the database. Every recorded session is in it, older rows as they were stored (they keep the factors of their time and are never recomputed), so the stripes, the median and the totals count what `/carbon-report` counts. Another session running at the same time counts with its total so far. With no database yet (before the first session start of a plugin installed alone, or with `jq` or `sqlite3` missing), the pane shows the molecule and says what the history waits for.
 
 Claude Code draws mods in the terminal and in the desktop app's Code tab only: nothing appears in the VS Code extension's chat panel, in cloud sessions or with `claude -p`. Mods need Claude Code 2.1.287 or later (2.1.286 in the desktop app).
 
 The mod comes with the plugin. Already installed from the marketplace: run `/plugin marketplace update claude-carbon` and `/plugin update claude-carbon@claude-carbon`, then restart Claude Code.
 
-The plugin alone is not a full install. This command gives the mod and the slash commands, but no status line and no database, so no session is recorded:
+The plugin alone records your sessions too, without the terminal status line (a plugin cannot set one; the installer does):
 
 ```
 /plugin install claude-carbon --marketplace gwittebolle/claude-carbon
 ```
 
+At the first session start after the install, the plugin creates its database in `~/.claude/claude-carbon/` and fills it with the sessions whose transcripts are still on disk (about the last 30 days, every project), then records each session as it goes. A one-time message says so at one of the next session starts. It needs `jq` and `sqlite3`: when one is missing nothing is created, and `/carbon-panel` names it. This happens once: a database you delete is not brought back (delete the `auto-setup` file beside it to ask for a new one), a database path set with `CLAUDE_CARBON_DB` is never created for you, and `CLAUDE_CARBON_NO_AUTOSETUP=1` turns it off. From then on the daily background check for a newer release runs as it does for the installer (`CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1` to opt out).
+
+#### In a team repository
+
+To offer the plugin to everyone who works in a repository, commit this in its `.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "claude-carbon": { "source": { "source": "github", "repo": "gwittebolle/claude-carbon" } }
+  },
+  "enabledPlugins": { "claude-carbon@claude-carbon": true }
+}
+```
+
+Enabling it in the repository does not download it to anyone's machine, since the plugin comes from a remote marketplace: each collaborator runs `claude plugin install claude-carbon@claude-carbon --scope project` once in their clone, after trusting the folder. Anyone who does not want it sets `"claude-carbon@claude-carbon": false` under `enabledPlugins` in their own `.claude/settings.local.json`. Each person's figures stay on their machine.
+
 The curl, PowerShell and npm installers set up the status line, the database and the hooks, and copy the mod alone to `~/.claude/skills/claude-carbon/`, which Claude Code loads as `claude-carbon@skills-dir`. `/carbon-update` keeps that copy up to date. The copy holds no hook, so nothing runs twice. Restart Claude Code after the install; the mod loads once the folder you open is trusted. Its median starts from zero: answers recorded by another install of the mod do not carry over. With this copy the mod shows in the terminal, in the editor's integrated terminal and in the desktop app's Code tab.
 
 To turn it off, run `claude plugin disable claude-carbon@skills-dir`. To remove it, run the installer with `CLAUDE_CARBON_NO_MOD=1` on the `bash` side (`curl … | CLAUDE_CARBON_NO_MOD=1 bash`); keep the variable set, in your shell or in the `env` block of `settings.json`, or the next `/carbon-update` puts it back. The installer leaves alone a `skills/claude-carbon/` folder it did not make, and skips the copy while the claude-carbon plugin is enabled. Pick one of the two: the plugin added on top of an installer runs the hooks twice.
 
-Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, starts no process, makes no network call and never changes what Claude does; besides its own data files, it reads only `sessions-history.tsv`, the two release flags of the daily check (`plugin-update-check.json`, `update-check.json`) and `last-card-month`. Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then French.
+Turn the per-answer figure off with the `showPerTurn` option in `/config`. The mod writes no database, starts no process, makes no network call and never changes what Claude does; besides its own data files, it reads only `sessions-history.tsv`, the two release flags of the daily check (`plugin-update-check.json`, `update-check.json`), `last-card-month`, and the two files the SessionStart hook leaves when it finds no database (`setup-needed`, `auto-setup`). Text is in French when the first of `CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES` and `LANG` that is set starts with `fr`, and in English otherwise. When none is set, as in the desktop app and often on Windows, the `language` setting decides (`Français`, `English`), then French.
 
 The mod's own tests run with `bash tests/run-mod-kit.sh`, under `claude plugin test`, which mocks the engine: no login needed. CI runs them on every push with Claude Code 2.1.296.
 

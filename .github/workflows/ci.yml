@@ -93,6 +93,10 @@ jobs:
       - name: Assert branch capture and the dev PR report
         run: bash tests/run-pr-tests.sh
 
+      - name: PR report a repository asks for
+        if: always()
+        run: bash tests/run-pr-hook-tests.sh
+
       # The SubagentStop hook in a scratch repository with worktrees: an agent's branch,
       # recorded as it ends, and the report that counts it there
       - name: Agents counted for the branch they worked on
@@ -118,6 +122,11 @@ jobs:
       # an atomic write. Throwaway DB under a temp root.
       - name: Assert the session history export
         run: bash tests/run-export-tests.sh
+
+      # No database yet (the plugin installed alone): the SessionStart hook creates it
+      # once. Throwaway CLAUDE_CONFIG_DIR.
+      - name: Assert the plugin-only database creation
+        run: bash tests/run-plugin-bootstrap-tests.sh
 
   per-model:
     name: per-model split
@@ -217,6 +226,10 @@ jobs:
         if: always()
         run: /bin/bash tests/run-pr-tests.sh
 
+      - name: PR report a repository asks for
+        if: always()
+        run: /bin/bash tests/run-pr-hook-tests.sh
+
       - name: carbon-pr agents
         if: always()
         run: /bin/bash tests/run-agent-branch-tests.sh
@@ -236,6 +249,10 @@ jobs:
       - name: Session end capture
         if: always()
         run: /bin/bash tests/run-session-end-tests.sh
+
+      - name: Plugin-only database creation
+        if: always()
+        run: /bin/bash tests/run-plugin-bootstrap-tests.sh
 
       # Workflow agents' transcripts (subagents/workflows/wf_*/agent-*.jsonl) count
       - name: Workflow agents
@@ -301,6 +318,10 @@ jobs:
       - name: carbon-pr pipeline
         if: always()
         run: bash tests/run-pr-tests.sh
+
+      - name: PR report a repository asks for
+        if: always()
+        run: bash tests/run-pr-hook-tests.sh
 
       - name: Install and update wiring
         if: always()
@@ -385,6 +406,10 @@ jobs:
         if: always()
         run: bash tests/run-pr-tests.sh
 
+      - name: PR report a repository asks for
+        if: always()
+        run: bash tests/run-pr-hook-tests.sh
+
       - name: carbon-pr agents
         if: always()
         run: bash tests/run-agent-branch-tests.sh
@@ -405,6 +430,10 @@ jobs:
       - name: Session end capture
         if: always()
         run: bash tests/run-session-end-tests.sh
+
+      - name: Plugin-only database creation
+        if: always()
+        run: bash tests/run-plugin-bootstrap-tests.sh
 
       # Workflow agents' transcripts (subagents/workflows/wf_*/agent-*.jsonl) count
       - name: Workflow agents

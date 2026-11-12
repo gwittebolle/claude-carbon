@@ -198,6 +198,86 @@ check "post: a Windows TMPDIR still posts" "0|yes" "$RC|$(echo "$OUT" | grep -q 
 check "post: the body sent is the report" "yes" \
   "$(jq -r '.body' "$POSTED" 2>/dev/null | grep -qF '<!-- claude-carbon-dev-report -->' && jq -r '.body' "$POSTED" | grep -qF 'sessions on `feat/x`' && echo yes || echo no)"
 
+# The automatic run (--auto, started by the Stop hook) refuses a PR whose branch lives in
+# a fork; asked by hand, the same PR is posted
+AUTO_STUBS="${TMPROOT}/auto-stubs"
+mkdir -p "$AUTO_STUBS"
+cat > "${AUTO_STUBS}/gh" <<'STUB'
+#!/usr/bin/env bash
+for LAST; do :; done
+case "$*" in
+  "repo view --json url --jq "*) [ -z "${GH_REPO:-}" ] || exit 1; echo "${GH_STUB_URL}" ;;
+  "pr view --json number,isCrossRepository --jq "*) echo "42 ${GH_STUB_CROSS}" ;;
+  "api repos/{owner}/{repo}/issues/42/comments?per_page=100 --jq "*) ;;
+  "api -X POST repos/{owner}/{repo}/issues/42/comments --input "*) cp "$LAST" "$GH_STUB_POSTED" ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "${AUTO_STUBS}/gh"
+auto_run() { # $1 = isCrossRepository, rest = options
+  local cross="$1"
+  shift
+  rm -f "$POSTED"
+  (cd "$WORKDIR" && git checkout -q feat/x 2>/dev/null; git symbolic-ref HEAD refs/heads/feat/x &&
+    git config remote.origin.url "git@github.com:Acme/MyProj.git" && PATH="${AUTO_STUBS}:$PATH" GH_STUB_POSTED="$POSTED" GH_STUB_CROSS="$cross" GH_STUB_URL="${GH_STUB_URL-https://github.com/acme/myproj}" \
+    CLAUDE_CARBON_DB="$DB2" CLAUDE_CARBON_LOCALE=world bash "$PR_SCRIPT" "$@" >/dev/null 2>&1)
+  echo "$?|$([ -f "$POSTED" ] && echo posted || echo nothing)"
+}
+check "auto: a PR of the repository is posted" "0|posted" "$(auto_run false --auto)"
+check "auto: a PR from a fork is refused" "1|nothing" "$(auto_run true --auto)"
+check "auto: an unreadable origin is refused" "1|nothing" "$(auto_run '' --auto)"
+check "by hand: a PR from a fork is posted" "0|posted" "$(auto_run true)"
+check "auto: gh aiming at another repository is refused" "1|nothing" "$(GH_STUB_URL=https://github.com/victim/other auto_run false --auto)"
+check "auto: a repository gh cannot name is refused" "1|nothing" "$(GH_STUB_URL='' auto_run false --auto)"
+check "auto: GH_REPO from the environment is dropped" "0|posted" "$(GH_REPO=victim/other auto_run false --auto)"
+git -C "$WORKDIR" config --unset remote.origin.url
+
+# ---------------------------------------------------------------- 4d. --summary
+# The reports already posted on merged PRs, read back through a stub gh: three PRs by two
+# authors over two months, one comment in the older one-line form (unread), one PR whose
+# comment is someone's hand-written text with the marker and an odd login.
+SUM_STUBS="${TMPROOT}/sum-stubs"
+mkdir -p "$SUM_STUBS"
+cat > "${SUM_STUBS}/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  "repo view --json nameWithOwner --jq "*) echo "acme/app" ;;
+  "api -X GET search/issues -f q=repo:acme/app is:pr is:merged in:comments \"claude-carbon-dev-report\""*)
+    case "$*" in *"merged:>=2026-10-01"*) printf '2\n12\t2026-10-03T09:00:00Z\n13\t2026-10-20T09:00:00Z\n' ;;
+      *"merged:>=2026-11-01"*) printf '2\n15\t2026-11-02T09:00:00Z\n16\t2026-11-03T09:00:00Z\n' ;;
+      *) printf '5\n10\t2026-09-12T09:00:00Z\n11\t2026-09-30T23:00:00Z\n12\t2026-10-03T09:00:00Z\n13\t2026-10-20T09:00:00Z\n14\t2026-10-21T09:00:00Z\n' ;;
+    esac ;;
+  "api repos/acme/app/issues/10/comments?per_page=100 --jq "*) printf 'alice\t| **575 g** | $17.26 | 1.6M | 90.9M | 1 |\n' ;;
+  "api repos/acme/app/issues/11/comments?per_page=100 --jq "*) printf 'bob-dev\t| **1.2 kg** | $40.00 | 3.0M | 200M | 3 |\n' ;;
+  "api repos/acme/app/issues/12/comments?per_page=100 --jq "*) printf 'alice\t| **69 g** | $1.92 | 184k | 9.3M | 1 |\n' ;;
+  "api repos/acme/app/issues/13/comments?per_page=100 --jq "*) printf 'alice\t\n' ;;
+  "api repos/acme/app/issues/14/comments?per_page=100 --jq "*) printf 'mal$(id)\t| **5 g** | $0.10 | 1k | 1k | 1 |\n' ;;
+  "api repos/acme/app/issues/15/comments?per_page=100 --jq "*) printf 'carol_acme\t| **31 g** | $1.00 | 1k | 1k | 2 |\n' ;;
+  "api repos/acme/app/issues/16/comments?per_page=100 --jq "*) echo "HTTP 502" >&2; exit 1 ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "${SUM_STUBS}/gh"
+SUM="$(cd "$WORKDIR" && PATH="${SUM_STUBS}:$PATH" CLAUDE_CARBON_DB="${TMPROOT}/absent.db" bash "$PR_SCRIPT" --summary 2>&1)"
+check "summary: exit 0 without a database" "0" "$?"
+check "summary: September, two PRs"   "2026-09 2 4 1.8 kg \$57.26" "$(echo "$SUM" | awk '$1 == "2026-09" { print $1, $2, $3, $4, $5, $6 }')"
+check "summary: October, one PR read" "2026-10 1 1 69 g \$1.92"    "$(echo "$SUM" | awk '$1 == "2026-10" { print $1, $2, $3, $4, $5, $6 }')"
+check "summary: per author"           "alice 2 2 644 g \$19.18"    "$(echo "$SUM" | awk '$1 == "alice" { print $1, $2, $3, $4, $5, $6 }')"
+check "summary: the total"            "Total: 3 PRs, 5 sessions, 1.8 kg CO2e, \$59.18 at API list price." "$(echo "$SUM" | grep '^Total:')"
+check "summary: unread comments are counted, not guessed" "2 comment(s) could not be read (an older format, edited, or posted by a bot) and are left out." "$(echo "$SUM" | grep 'could not be read')"
+check "summary: an odd login is not printed" "0" "$(echo "$SUM" | grep -c 'mal')"
+SUM="$(cd "$WORKDIR" && PATH="${SUM_STUBS}:$PATH" bash "$PR_SCRIPT" --summary --since 2026-10-01 2>&1)"
+check "summary --since: only what was merged from then on" "Total: 1 PRs, 1 sessions, 69 g CO2e, \$1.92 at API list price." "$(echo "$SUM" | grep '^Total:')"
+SUM="$(cd "$WORKDIR" && PATH="${SUM_STUBS}:$PATH" bash "$PR_SCRIPT" --summary --since 2026-11-01 2>&1)"
+check "summary: a login with an underscore is read" "carol_acme 1 2 31 g \$1.00" "$(echo "$SUM" | awk '$1 == "carol_acme" { print $1, $2, $3, $4, $5, $6 }')"
+check "summary: a PR gh could not fetch is said, apart from the unread ones" "1 pull request(s) could not be fetched (gh api failed) and are left out: the totals are partial, run it again." "$(echo "$SUM" | grep 'could not be fetched')"
+(cd "$WORKDIR" && PATH="${SUM_STUBS}:$PATH" bash "$PR_SCRIPT" --since 2026-11-01 >/dev/null 2>&1)
+check "--since without --summary: refused" "2" "$?"
+(cd "$WORKDIR" && PATH="${SUM_STUBS}:$PATH" bash "$PR_SCRIPT" --consent yes --pr 42 >/dev/null 2>&1)
+check "--consent with --pr: refused" "2" "$?"
+(cd "$WORKDIR" && PATH="${SUM_STUBS}:$PATH" bash "$PR_SCRIPT" --summary --since yesterday >/dev/null 2>&1)
+check "summary --since: a date only" "2" "$?"
+
 # ---------------------------------------------------------------- 5. guards
 
 ERR="$(cd "$WORKDIR" && CLAUDE_CARBON_DB="${TMPROOT}/absent.db" bash "$PR_SCRIPT" --dry-run 2>&1)"

@@ -122,4 +122,9 @@ COMMIT;" >/dev/null 2>&1 || true
 # The history the mod's /carbon-panel pane draws, refreshed with this session's new total.
 cc_export_sessions "$DB_PATH"
 
+# A PR report waiting for this answer's tokens (see pr-hook.sh): only when a marker is there
+if [ -n "$(ls -A "${CONFIG_DIR}/claude-carbon/pr-pending" 2>/dev/null)" ]; then
+  cc_detach bash "${SCRIPT_DIR}/pr-flush.sh"
+fi
+
 exit 0

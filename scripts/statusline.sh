@@ -374,13 +374,19 @@ fi
 # quiet by itself after the Nth. Passive and short: a user who ignores it is not
 # asked again before next month. Local-only; opt-out via CLAUDE_CARBON_NO_CARD_NUDGE.
 #
-# The total is read once a day and cached in last-month-total ("YYYY-MM-DD grams",
-# the key being the day it was read), never on every refresh. Daily rather than
+# The total is read once a day and cached in last-month-total ("YYYY-MM-DD/<period>
+# grams", the key being the day it was read and what it sums: a month, or a year in
+# December and early January), never on every refresh. Daily rather than
 # monthly: the Stop hook keeps adding to a session under its start date, so a
 # session begun before midnight on the last day still grows the closed month after
 # the 1st, and the card would show more than a figure frozen on the 1st. A month
 # with fewer than 7 days of sessions caches "-" and shows nothing: on a fresh
 # install the nudge would otherwise advertise a near-empty card.
+#
+# In December the figure is the year so far and the nudge stays the whole month: the
+# card covers the calendar year, and that is the month to look back on it. In January,
+# over the usual first days, it is the year just ended, which the card then covers by
+# default (generate-report.sh).
 #
 # It used to show to the first three sessions of the month and then stop, which
 # on a status line amounted to two or three glances at "📊 /carbon-card" with no
@@ -392,20 +398,34 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
   TODAY_DAY="$((10#$(date +%d)))"
   NUDGE_UNTIL="${CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY:-10}"
   CARD_STAMP="$(cat "${CONFIG_DIR}/claude-carbon/last-card-month" 2>/dev/null || true)"
-  if [ "$CARD_STAMP" != "$THIS_MONTH" ] && [ "$TODAY_DAY" -le "$NUDGE_UNTIL" ] 2>/dev/null; then
+  # December: open the whole month, unless the last day is 0 (the opt-out by number)
+  NUDGE_LAST="$NUDGE_UNTIL"
+  if [ "${THIS_MONTH#*-}" = "12" ] && [ "$NUDGE_UNTIL" -gt 0 ] 2>/dev/null; then NUDGE_LAST=31; fi
+  if [ "$CARD_STAMP" != "$THIS_MONTH" ] && [ "$TODAY_DAY" -le "$NUDGE_LAST" ] 2>/dev/null; then
     PREV_Y="${THIS_MONTH%-*}"
     PREV_M="$((10#${THIS_MONTH#*-} - 1))"
     if [ "$PREV_M" -eq 0 ]; then PREV_M=12; PREV_Y="$((PREV_Y - 1))"; fi
     PREV_MONTH="$(printf '%04d-%02d' "$PREV_Y" "$PREV_M")"
+    # What is summed and how it is named: the closed month, or in December the year
+    NUDGE_PERIOD="$PREV_MONTH"
+    NUDGE_NAME="$(cc_prev_month_name "$THIS_MONTH")"
+    if [ "${THIS_MONTH#*-}" = "12" ]; then
+      NUDGE_PERIOD="${THIS_MONTH%-*}"
+      NUDGE_NAME="${THIS_MONTH%-*}"
+    elif [ "${THIS_MONTH#*-}" = "01" ]; then
+      NUDGE_PERIOD="$PREV_Y"
+      NUDGE_NAME="$PREV_Y"
+    fi
     TOTAL_FILE="${CONFIG_DIR}/claude-carbon/last-month-total"
-    printf -v TOTAL_KEY '%s-%02d' "$THIS_MONTH" "$TODAY_DAY"
+    # The day and what is summed: a figure cached for a month is never shown as a year's
+    printf -v TOTAL_KEY '%s-%02d/%s' "$THIS_MONTH" "$TODAY_DAY" "$NUDGE_PERIOD"
     PREV_KEY=""; PREV_TOTAL=""
     { read -r PREV_KEY PREV_TOTAL < "$TOTAL_FILE"; } 2>/dev/null || true
     if [ "$PREV_KEY" != "$TOTAL_KEY" ]; then
       PREV_TOTAL=""
       if [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>&1; then
         # The card's monthly bar: same grouping on started_at, excluded rows left out.
-        MONTH_ROW="$(sqlite3 -cmd ".timeout 300" -separator ' ' "$DB_PATH" "SELECT COUNT(DISTINCT substr(started_at, 1, 10)), printf('%.0f', COALESCE(SUM(co2_grams), 0)) FROM sessions WHERE COALESCE(excluded, 0) = 0 AND substr(started_at, 1, 7) = '${PREV_MONTH}';" 2>/dev/null || true)"
+        MONTH_ROW="$(sqlite3 -cmd ".timeout 300" -separator ' ' "$DB_PATH" "SELECT COUNT(DISTINCT substr(started_at, 1, 10)), printf('%.0f', COALESCE(SUM(co2_grams), 0)) FROM sessions WHERE COALESCE(excluded, 0) = 0 AND substr(started_at, 1, ${#NUDGE_PERIOD}) = '${NUDGE_PERIOD}';" 2>/dev/null || true)"
         MONTH_DAYS=""; MONTH_G=""
         read -r MONTH_DAYS MONTH_G <<< "$MONTH_ROW" || true
         # Cached only when the query answered: a locked or unreadable DB is retried.
@@ -421,7 +441,7 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
     fi
     case "$PREV_TOTAL" in
       ''|*[!0-9]*) ;;
-      *) CARD_SEGMENT=" | 📊 $(cc_prev_month_name "$THIS_MONTH"): $(co2_display "$PREV_TOTAL") · /carbon-card" ;;
+      *) CARD_SEGMENT=" | 📊 ${NUDGE_NAME}: $(co2_display "$PREV_TOTAL") · /carbon-card" ;;
     esac
   fi
 fi

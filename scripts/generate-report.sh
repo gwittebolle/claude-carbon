@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # generate-report.sh — Generate Claude Carbon Report PNGs from DB stats.
 # Usage: generate-report.sh [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--all]
-# Default: since January 1st of current year, up to now.
+# Default: since January 1st of current year, up to now. From January 1st to 10th (the
+# days the status line recalls the year just ended), the year just ended instead.
 # --until takes an exclusive upper bound, so --until 2026-07-01 stops at June 30th.
 set -euo pipefail
 
@@ -20,7 +21,7 @@ CC_TMP="$(cc_tmpdir)"
 SERVER_PID=""
 BROWSER_PROFILE=""
 TODAY="$(date +%Y-%m-%d)"
-YEAR="$(date +%Y)"
+YEAR="${TODAY%%-*}"
 
 # ── Parse args ──────────────────────────────────────────────
 SINCE="${YEAR}-01-01"
@@ -29,6 +30,7 @@ SINCE_LABEL_EN="January ${YEAR}"
 UNTIL="" # exclusive upper bound; empty = up to now
 LANG_FILTER="" # empty = both
 LABEL_AUTO=1   # default mode: derive the "since" label from the earliest real session
+PERIOD_GIVEN=0 # --since, --until or --all was passed
 
 # Full month names for the auto-derived label (index 1-12)
 MONTHS_FR=("" "janvier" "février" "mars" "avril" "mai" "juin" "juillet" "août" "septembre" "octobre" "novembre" "décembre")
@@ -37,6 +39,7 @@ MONTHS_EN=("" "January" "February" "March" "April" "May" "June" "July" "August" 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --since)
+      PERIOD_GIVEN=1
       SINCE="$2"
       SINCE_LABEL_FR="$2"
       SINCE_LABEL_EN="$2"
@@ -44,10 +47,12 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --until)
+      PERIOD_GIVEN=1
       UNTIL="$2"
       shift 2
       ;;
     --all)
+      PERIOD_GIVEN=1
       SINCE=""
       SINCE_LABEL_FR="le début"
       SINCE_LABEL_EN="the beginning"
@@ -64,6 +69,28 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# The first days of January, with no period asked for: the year just ended, whole. The
+# new year holds a few days at most, and this is when its card is looked for (the status
+# line and the pane recall it over the same days: CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY, 10
+# by default, and 10 here too when it is set to 0 to silence them). Only when that year
+# has sessions: someone who installed in January gets the card of what they have.
+RECAP_LAST="${CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY:-10}"
+case "$RECAP_LAST" in ''|*[!0-9]*|0) RECAP_LAST=10 ;; esac
+RECAP_YEAR=""
+RECAP_ROWS=0
+if [ "$PERIOD_GIVEN" = "0" ] && [ "${TODAY:5:2}" = "01" ] && [ "$((10#${TODAY:8:2}))" -le "$RECAP_LAST" ] \
+  && [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null 2>&1; then
+  RECAP_ROWS="$(cc_sql -cmd '.timeout 2000' "$DB_PATH" "SELECT COUNT(*) FROM sessions WHERE COALESCE(excluded, 0) = 0 AND started_at >= '$((YEAR - 1))-01-01' AND started_at < '${YEAR}-01-01';" 2>/dev/null || echo 0)"
+fi
+case "$RECAP_ROWS" in ''|*[!0-9]*) RECAP_ROWS=0 ;; esac
+if [ "$RECAP_ROWS" -gt 0 ]; then
+  RECAP_YEAR="$((YEAR - 1))"
+  SINCE="${RECAP_YEAR}-01-01"
+  UNTIL="${YEAR}-01-01"
+  SINCE_LABEL_FR="janvier ${RECAP_YEAR}"
+  SINCE_LABEL_EN="January ${RECAP_YEAR}"
+fi
 
 SINCE_LABEL="$SINCE_LABEL_FR"
 
@@ -124,6 +151,9 @@ cc_ensure_schema "$DB_PATH"
 
 # ── Query DB ────────────────────────────────────────────────
 echo "Querying carbon.db (since ${SINCE_LABEL})..."
+if [ -n "$RECAP_YEAR" ]; then
+  echo "Period: the year ${RECAP_YEAR}, whole. Until January ${RECAP_LAST} the card covers the year just ended; pass --since ${YEAR}-01-01 for the new one."
+fi
 
 read -r TOTAL_SESSIONS TOTAL_CO2_RAW TOTAL_COST_RAW FIRST_DATE_RAW <<< \
   "$(sqlite3 "$DB_PATH" "SELECT COUNT(*), COALESCE(SUM(co2_grams), 0), COALESCE(SUM(cost_usd), 0), COALESCE(MIN(started_at), '') FROM sessions ${WHERE};" | tr '|' ' ')"

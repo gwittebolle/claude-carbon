@@ -92,6 +92,7 @@ import {
   mascotAlt,
   scaleAlt,
   noHistoryText,
+  autoSetupText,
   otherProjectsLine,
   paneHint,
   paneTitle,
@@ -103,6 +104,7 @@ import {
   sessionLine,
   updateHint,
   cardHint,
+  yearCardHint,
   showLabel,
   stripesAlt,
   stripesCaption,
@@ -150,7 +152,12 @@ import {
   newestRelease,
   updateFlagPaths,
   statePath,
+  parseSetupNeeded,
+  SETUP_NEEDED_FILE,
+  AUTO_SETUP_FILE,
   cardNudge,
+  cardNudgeOpen,
+  cardYear,
   CARD_STAMP_FILE,
   CARD_NUDGE_UNTIL_DAY,
   isView,
@@ -216,6 +223,8 @@ const VIEW_KEY = "pane.view";
 const BLOCKS_KEY = "pane.blocks";
 // The one-time "/carbon-panel" hint, for someone welcomed before the pane existed
 const HINT_KEY = "pane.hinted";
+// The one-time word that the hook created the database by itself
+const AUTO_SETUP_KEY = "autosetup.announced";
 
 // The middle of the palette, for a walk with no colour to set its pace
 const NEUTRAL_CLASS = 3;
@@ -302,6 +311,9 @@ async function resetSessionState($: EngineInterface) {
 // another reason (a new request's total) keeps the step.
 const pane: {
   historyFile: string | null;
+  // Where the hook names the tools it misses, and what it named at the last reading
+  setupFile: string | null;
+  setupNeeded: string[] | null;
   // The daily release check's flags (a marketplace install's, a clone's), the running
   // plugin's version, and the newer release the foot names (null when there is none)
   updateFiles: string[];
@@ -337,6 +349,8 @@ const pane: {
   reactUntil: number;
 } = {
   historyFile: null,
+  setupFile: null,
+  setupNeeded: null,
   updateFiles: [],
   ownVersion: null,
   newer: null,
@@ -385,7 +399,7 @@ const cardHintState: {
 async function cardHintOf($: EngineInterface, lang: Lang): Promise<string | null> {
   if (cardHintState.stampFile === null || pane.historyFile === null) return null;
   const now = await $.clock.now();
-  if (new Date(now).getDate() > cardHintState.untilDay) return null;
+  if (!cardNudgeOpen(now, cardHintState.untilDay)) return null;
   const today = new Date(now).toDateString();
   if (cardHintState.day !== today) {
     // Kept for the day once read: a file not there yet, or not readable now, is retried
@@ -406,11 +420,23 @@ async function cardHintOf($: EngineInterface, lang: Lang): Promise<string | null
     stamp = null;
   }
   const nudge = cardNudge(cardHintState.rows, now, stamp, cardHintState.untilDay);
-  return nudge === null ? null : cardHint(nudge.month, nudge.grams, lang);
+  if (nudge === null) return null;
+  return "year" in nudge
+    ? yearCardHint(nudge.year, nudge.grams, lang)
+    : cardHint(nudge.month, nudge.grams, lang);
 }
 
 async function loadPaneHistory($: EngineInterface) {
   pane.newer = await newerReleaseOf($);
+  pane.setupNeeded = null;
+  if (pane.setupFile !== null) {
+    try {
+      const text = await $.fs.read(pane.setupFile);
+      pane.setupNeeded = typeof text === "string" ? parseSetupNeeded(text) : null;
+    } catch {
+      pane.setupNeeded = null;
+    }
+  }
   if (pane.historyFile === null) {
     pane.rows = null;
     return;
@@ -539,7 +565,7 @@ async function terminalSession(
         {meta !== "" && <Text dimColor>{meta}</Text>}
         {/* No history file, or a reference until there is a median of one's own */}
         {pane.rows === null ? (
-          <Text dimColor>{noHistoryText(lang)}</Text>
+          <Text dimColor>{noHistoryText(lang, pane.setupNeeded)}</Text>
         ) : (
           sm === null && <Text dimColor>{colorNote(past.length, lang)}</Text>
         )}
@@ -704,6 +730,9 @@ export const register: Register = (on, options) => {
     // answer instead.
     const history = await loadHistory($);
     known = history;
+    let autoSetupFile: string | null = null;
+    // One toast per session start: the welcome is due at this one, or the hint below shows
+    let otherToastDue = !history.welcomed;
     if (!history.welcomed && e.isInteractive) {
       const surfaces = await $.session.surfaces();
       if (surfaces.length > 0) {
@@ -731,6 +760,8 @@ export const register: Register = (on, options) => {
       pane.updateFiles = isSet(await $.env.get("CLAUDE_CARBON_NO_UPDATE_NOTIFIER"))
         ? []
         : updateFlagPaths(stateEnv);
+      pane.setupFile = statePath(stateEnv, SETUP_NEEDED_FILE);
+      autoSetupFile = statePath(stateEnv, AUTO_SETUP_FILE);
       cardHintState.stampFile = isSet(await $.env.get("CLAUDE_CARBON_NO_CARD_NUDGE"))
         ? null
         : statePath(stateEnv, CARD_STAMP_FILE);
@@ -784,10 +815,39 @@ export const register: Register = (on, options) => {
         if (!hinted && surfaces.length > 0) {
           $.ui.toast(paneHint(lang), { timeoutMs: 10000 });
           await $.store.set(HINT_KEY, true);
+          otherToastDue = true;
         }
       }
     } catch {
       // /carbon-panel is someone else's here: the rest of the mod works without it.
+    }
+
+    // The hook created the database by itself (the plugin installed alone): said once,
+    // at a session start with no other toast, and only once the history file is there,
+    // which a creation that failed never writes.
+    try {
+      if (
+        !otherToastDue &&
+        e.isInteractive &&
+        autoSetupFile !== null &&
+        pane.historyFile !== null
+      ) {
+        const announced = (await $.store.get(AUTO_SETUP_KEY)) === true;
+        if (
+          !announced &&
+          typeof (await $.fs.read(autoSetupFile)) === "string" &&
+          typeof (await $.fs.read(pane.historyFile)) === "string"
+        ) {
+          const surfaces = await $.session.surfaces();
+          if (surfaces.length > 0) {
+            $.ui.toast(autoSetupText(lang), { timeoutMs: 10000 });
+            await $.store.set(AUTO_SETUP_KEY, true);
+          }
+        }
+      }
+    } catch {
+      // No sentinel (an install by the installer, or nothing set up yet), or no history
+      // file yet: said at a later session start.
     }
 
     return next(e);
@@ -1292,7 +1352,7 @@ export const register: Register = (on, options) => {
       const cardButton = (
         <Button
           key="card"
-          label={cardButtonLabel(new Date(now).getFullYear(), lang)}
+          label={cardButtonLabel(cardYear(now, cardHintState.untilDay), lang)}
           variant="primary"
           onPress={prepareCard}
         />
@@ -1419,7 +1479,7 @@ export const register: Register = (on, options) => {
         ...(contextUsed !== null ? [contextText(contextUsed, lang)] : []),
         ...(total.usd !== undefined && total.usd > 0 ? [costText(total.usd, lang)] : []),
       ].join(" · ");
-      const noHistory = pane.rows === null && <Text dimColor>{noHistoryText(lang)}</Text>;
+      const noHistory = pane.rows === null && <Text dimColor>{noHistoryText(lang, pane.setupNeeded)}</Text>;
       const empty =
         pane.rows !== null && !hasTotals && <Text dimColor>{emptyRangeText(lang)}</Text>;
 

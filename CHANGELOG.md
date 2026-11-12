@@ -1,6 +1,95 @@
 # Changelog
 
+## 2026-11-11
+
+### feat: early January, the card and its reminder cover the year just ended
+
+From the 1st to the 10th of January the reminder gives the year just ended,
+`📊 2026: 1444.4kgCO₂ · /carbon-card`, where it gave December. Over the same days
+`/carbon-card` with no period covers that year, whole, when it has sessions, and says so on a
+`Period:` line; the
+pane's button is named after it. `--since`, `--until` and `--all` are taken as before, and
+from the 11th the card is the new year's again. `CLAUDE_CARBON_CARD_NUDGE_UNTIL_DAY` moves
+the last day for the reminder and the card together.
+
+### feat: `/carbon-pr --summary` totals the reports posted on a repository's merged PRs
+
+`scripts/generate-pr-report.sh --summary` reads back, through `gh`, the report comments
+on the repository's merged pull requests and prints their total per month merged and per
+author; `--since YYYY-MM-DD` narrows it. Nothing is posted and the local database is not
+read: each figure is the one its author posted. A comment in the older one-line form, or
+edited by hand, is counted as unread and left out, and a pull request `gh` could not fetch
+is said apart. At most 100 pull requests are read at a time, the most recently updated first.
+
+### feat: in December the card reminder gives the year so far
+
+From the 1st to the 10th of a month the status line and the desktop app's session entry
+end with the month just closed, `📊 September: 84.2kgCO₂ · /carbon-card`. In December they
+give the year so far, `📊 2026: 1444.4kgCO₂ · /carbon-card`, the whole month: the card
+covers the calendar year. The same rules hold: sessions on 7 days or more, a card made
+during the month clears it, `CLAUDE_CARBON_NO_CARD_NUDGE=1` or a last day of 0 removes it.
+The status line's reminder tests now run on a fixed date.
+
+### feat: a repository can ask for the carbon report on its pull requests
+
+`"env": {"CLAUDE_CARBON_PR": "1"}` in a repository's committed `.claude/settings.json`
+asks for the `/carbon-pr` comment on its pull requests. Nothing is posted on that alone:
+each developer answers once per repository, and the answer stays on their machine.
+
+- The first `gh pr create` Claude runs there, Claude asks whether to post the report of
+  the developer's own sessions under their own GitHub account. No answer counts as no, and
+  the question does not come back.
+- After a yes, the comment is posted, then updated in place after each `git push` or
+  `gh pr create` Claude runs there, once the answer that pushed is recorded. One comment
+  per PR, and never by itself on a PR whose branch lives in a fork.
+- `scripts/generate-pr-report.sh --consent yes|never` changes the answer. A yes is only
+  taken in a repository that asks, once the question was put there. The answer is kept
+  under the repository's origin URL, credentials left out.
+  `CLAUDE_CARBON_NO_PR_AUTO=1` turns the question and the posting off for a developer.
+- A repository cannot answer for its developers: answers are not read from a config folder
+  or a database inside the repository, and posted by itself the comment only goes to the
+  repository `origin` names (`GH_REPO` and `GH_HOST` are dropped).
+- It needs the plugin's hooks: a new PostToolUse hook on `gh pr create` and `git push`
+  (`scripts/pr-hook.sh`), which calls no network; the posting itself runs from the Stop
+  hook (`scripts/pr-flush.sh`), with the developer's `gh` auth, only in such a repository
+  and only after a yes.
+
+The README's example of the comment shows the current table. `tests/run-pr-hook-tests.sh`
+covers the hook, the answer and the posting step, with the report script replaced.
+
 ## 2026-11-10
+
+### feat: the plugin installed alone records sessions
+
+Installed from the marketplace without the installer, the plugin had no database and
+recorded nothing. Its SessionStart hook now creates the database once, in
+`~/.claude/claude-carbon/`, with the sessions whose transcripts are still on disk, and the
+Stop hook records from then on. The terminal status line still needs the installer.
+
+- A one-time message says that sessions are now recorded on the machine, once the
+  history is there.
+- `jq` or `sqlite3` missing: nothing is created, `/carbon-panel` names the missing tool,
+  and the next session start tries again.
+- It happens once per config folder: a database deleted afterwards is not brought back,
+  unless the `auto-setup` file beside it is deleted too.
+- A database path set with `CLAUDE_CARBON_DB` is never created by the hook, since a missing
+  file there can be a synced folder not downloaded yet. `CLAUDE_CARBON_NO_AUTOSETUP=1`
+  turns the creation off.
+- An existing database is not touched by this path.
+- With a database, a plugin-only install now also gets the daily background check for a
+  newer release, as the installer does (`CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1` opts out).
+
+The README gains "In a team repository": the `.claude/settings.json` keys that enable the
+plugin for a repository's collaborators, the one command each of them runs, and how one
+person turns it off. `tests/run-plugin-bootstrap-tests.sh` covers the hook on the three CI
+systems.
+
+### docs: the README's "For teams" section matches what exists
+
+- The "AI usage report" link is gone: the page it pointed to no longer exists.
+- The sentence listing where the tool points to tokenclimate.com named two places and
+  left out three: the last line of a `/carbon-pr` comment, the foot of the `/carbon-panel`
+  pane and `CITATION.cff`. It now names the five.
 
 ### fix: the status line's quota falls back to the weekly window when there is no 5-hour one
 

@@ -113,6 +113,17 @@ export const CLONE_UPDATE_FILE = "update-check.json";
 // When the last card was made, "YYYY-MM", written by the card's script
 export const CARD_STAMP_FILE = "last-card-month";
 
+// Written by the SessionStart hook (safety-rescan.sh) when there is no database: the tools
+// it found missing, and the mark that it created the database by itself, once
+export const SETUP_NEEDED_FILE = "setup-needed";
+export const AUTO_SETUP_FILE = "auto-setup";
+
+// The missing tools the hook named, null for anything else than its own two words
+export function parseSetupNeeded(text: string): string[] | null {
+  const line = text.trim();
+  return /^(jq|sqlite3|jq sqlite3)$/.test(line) ? line.split(" ") : null;
+}
+
 type StateEnv = { configDir?: string; home?: string; userProfile?: string };
 
 // A file in that folder, null when nothing names it
@@ -188,19 +199,55 @@ export const CARD_NUDGE_UNTIL_DAY = 10;
 const CARD_NUDGE_MIN_DAYS = 7;
 
 // The status line's monthly nudge: from the 1st to the `untilDay`th, unless a card was made
-// this month (the stamp), the month just closed and its total, as the card's bar for it.
+// this month (the stamp), the month just closed and its total, as the card's bar for it
+// (in December, the year so far: see cardNudgeOpen).
 // Like the card, months and days are those of the sessions' UTC start; a month with
 // sessions on fewer than 7 days shows nothing, which keeps a near-empty card unadvertised.
+// In December it is the year so far instead, and it stays the whole month: the card
+// covers the calendar year, and that is the month to look back on it. In January, over
+// the usual first days, it is the year just ended, which the card then covers by
+// default (see cardYear). A last day of 0 (the opt-out) still shows nothing.
+export function cardNudgeOpen(nowMs: number, untilDay: number = CARD_NUDGE_UNTIL_DAY): boolean {
+  const now = new Date(nowMs);
+  if (!(untilDay > 0)) return false;
+  return now.getMonth() === 11 || now.getDate() <= untilDay;
+}
+
+// The year the card made now covers: the calendar year, and over the first days of
+// January the one just ended, as generate-report.sh picks it (a last day of 0 or less
+// counts as the 10th there too).
+export function cardYear(nowMs: number, untilDay: number = CARD_NUDGE_UNTIL_DAY): number {
+  const now = new Date(nowMs);
+  const last = untilDay > 0 ? untilDay : CARD_NUDGE_UNTIL_DAY;
+  return now.getMonth() === 0 && now.getDate() <= last
+    ? now.getFullYear() - 1
+    : now.getFullYear();
+}
+
 export function cardNudge(
   rows: readonly SessionRow[],
   nowMs: number,
   stamp: string | null,
   untilDay: number = CARD_NUDGE_UNTIL_DAY,
-): { month: number; grams: number } | null {
+): { month: number; grams: number } | { year: number; grams: number } | null {
   const now = new Date(nowMs);
   const pad = (n: number) => String(n).padStart(2, "0");
-  if (now.getDate() > untilDay) return null;
+  if (!cardNudgeOpen(nowMs, untilDay)) return null;
   if (stamp?.trim() === `${now.getFullYear()}-${pad(now.getMonth() + 1)}`) return null;
+  if (now.getMonth() === 11 || now.getMonth() === 0) {
+    const yearNumber = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const year = String(yearNumber);
+    const yearDays = new Set<string>();
+    let yearGrams = 0;
+    for (const row of rows) {
+      const day = new Date(row.at).toISOString().slice(0, 10);
+      if (day.slice(0, 4) !== year) continue;
+      yearDays.add(day);
+      yearGrams += row.grams;
+    }
+    if (yearDays.size < CARD_NUDGE_MIN_DAYS || !(yearGrams > 0)) return null;
+    return { year: yearNumber, grams: yearGrams };
+  }
   const closed = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const key = `${closed.getFullYear()}-${pad(closed.getMonth() + 1)}`;
   const days = new Set<string>();
