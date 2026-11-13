@@ -7,11 +7,29 @@ set -euo pipefail
 #
 # Called by install.sh (fresh install) and by update.sh, so an install made before a hook was
 # introduced gets repaired on the next /carbon-update instead of staying silently half-wired.
+#
+#   configure-settings.sh            wire this install (stops when another one is wired)
+#   configure-settings.sh --replace  wire this install in place of another one
+#   configure-settings.sh --remove   take this install's wiring out again
+#
+# --remove takes out only what this script writes from this folder: the status line and the
+# hooks whose command is exactly one of ours, the /carbon-* links that point here, and the
+# copy of the mod. The data in claude-carbon/ under the config folder stays.
+
+MODE="add"
+case "${1:-}" in
+  "") ;;
+  --replace) MODE="replace" ;;
+  --remove) MODE="remove" ;;
+  *) echo "usage: configure-settings.sh [--replace|--remove]" >&2; exit 2 ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
 # shellcheck source=scripts/portable-lib.sh
 . "${SCRIPT_DIR}/portable-lib.sh"
+# Under Homebrew this script is reached through the versioned Cellar folder, which the next
+# upgrade deletes: what gets written is the opt/ path, the one that stays.
+INSTALL_DIR="$(cc_stable_root "$(dirname "$SCRIPT_DIR")")"
 CONFIG_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
 SETTINGS_FILE="${CONFIG_DIR}/settings.json"
 
@@ -46,14 +64,20 @@ STOP_CMD="$(hook_cmd "${CMD_DIR}/scripts/persist-session.sh")"
 SESSIONSTART_CMD="$(hook_cmd "${CMD_DIR}/scripts/safety-rescan.sh")"
 SESSIONEND_CMD="$(hook_cmd "${CMD_DIR}/scripts/persist-on-exit.sh")"
 AGENTSTOP_CMD="$(hook_cmd "${CMD_DIR}/scripts/agent-stop.sh")"
+# The events this script writes a hook for, and the script each one runs.
+HOOK_EVENTS="Stop SessionEnd SessionStart SubagentStop"
+event_script() {
+  case "$1" in
+    Stop) echo persist-session.sh ;;
+    SessionEnd) echo persist-on-exit.sh ;;
+    SessionStart) echo safety-rescan.sh ;;
+    SubagentStop) echo agent-stop.sh ;;
+  esac
+}
 
-# Resolve a hook command to a comparable form. The same script reaches settings.json spelled
-# several ways: the README's manual block uses `~/code/claude-carbon/...`, this script writes
-# the expanded absolute path, and Claude Code accepts shell-escaped spaces (`~/Claude\ OS/...`).
-# Comparing the raw strings would register a second copy of a hook that is already there.
-# Commands whose directory does not exist (a third-party hook) are left as written.
-normalize_cmd() {
-  local c="$1" dir base
+# plain_cmd: a command as the path it names, without quotes, escapes or "~", not resolved.
+plain_cmd() {
+  local c="$1"
   # Strip a trailing carriage return. Under Git Bash, command substitution drops the
   # CR from a single-line capture but keeps the interior ones, so reading N commands
   # back out of jq yields a bare CR on every line but the last. Without this, our own
@@ -67,6 +91,17 @@ normalize_cmd() {
   # prefix inside a string read from settings.json and expanding it ourselves.
   # shellcheck disable=SC2088
   case "$c" in "~/"*) c="${HOME}/${c#\~/}" ;; esac
+  printf '%s' "$c"
+}
+
+# Resolve a hook command to a comparable form. The same script reaches settings.json spelled
+# several ways: the README's manual block uses `~/code/claude-carbon/...`, this script writes
+# the expanded absolute path, and Claude Code accepts shell-escaped spaces (`~/Claude\ OS/...`).
+# Comparing the raw strings would register a second copy of a hook that is already there.
+# Commands whose directory does not exist (a third-party hook) are left as written.
+normalize_cmd() {
+  local c dir base
+  c="$(plain_cmd "$1")"
   case "$c" in
     */*)
       dir="${c%/*}"
@@ -78,6 +113,11 @@ normalize_cmd() {
       ;;
   esac
   printf '%s' "$c"
+}
+
+# Commands registered for an event, one per line, as written in settings.json.
+event_commands() {
+  echo "$EXISTING" | jq -r --arg e "$1" '[.hooks[$e][]?.hooks[]?.command // empty] | .[]' 2>/dev/null
 }
 
 # Append a hook to an event array, unless that command is already registered under any
@@ -92,7 +132,7 @@ add_hook() {
     [ -n "$existing" ] || continue
     if [ "$(normalize_cmd "$existing")" = "$target" ]; then has="true"; break; fi
   done <<EOF
-$(echo "$EXISTING" | jq -r --arg e "$event" '[.hooks[$e][]?.hooks[]?.command] | .[]' 2>/dev/null)
+$(event_commands "$event")
 EOF
 
   if [ "$has" = "true" ]; then
@@ -105,12 +145,195 @@ EOF
         hooks: [{type: "command", command: $c}]
       }])
     ')"
+    CHANGED=1
     echo "  ${event} hook: added"
   fi
 }
 
+# Take one command out of an event, as it is written. Only the hook itself goes: the group
+# it sat in stays when it holds another hook, and so does the event when it holds another
+# group. Mutates $EXISTING.
+drop_hook_raw() {
+  EXISTING="$(echo "$EXISTING" | jq --arg e "$1" --arg c "${2%$'\r'}" '
+    .hooks[$e] = [ .hooks[$e][] |
+      if any(.hooks[]?; .command == $c)
+      then (.hooks |= map(select(.command != $c))) | select((.hooks | length) > 0)
+      else . end ] |
+    if (.hooks[$e] | length) == 0 then del(.hooks[$e]) else . end |
+    if (.hooks | length) == 0 then del(.hooks) else . end
+  ')"
+  CHANGED=1
+}
+
+# Take out the wiring that runs the scripts of one install folder: its status line, its
+# hooks, its /carbon-* links. A command with arguments (`statusline.sh --segment` inside
+# another status line) is never equal to a bare script, and stays. Mutates $EXISTING.
+remove_wiring_of() {
+  local root="$1" label="$2" event target existing removed
+  target="$(normalize_cmd "${root}/scripts/statusline.sh")"
+  existing="$(echo "$EXISTING" | jq -r '.statusLine.command // ""' 2>/dev/null)"
+  if [ -n "$existing" ] && [ "$(normalize_cmd "$existing")" = "$target" ]; then
+    EXISTING="$(echo "$EXISTING" | jq 'del(.statusLine)')"
+    CHANGED=1
+    echo "  statusLine: removed${label}"
+  fi
+  for event in $HOOK_EVENTS; do
+    target="$(normalize_cmd "${root}/scripts/$(event_script "$event")")"
+    removed=0
+    while IFS= read -r existing; do
+      [ -n "$existing" ] || continue
+      if [ "$(normalize_cmd "$existing")" = "$target" ]; then
+        drop_hook_raw "$event" "$existing"
+        removed=1
+      fi
+    done <<EOF
+$(event_commands "$event")
+EOF
+    [ "$removed" = "1" ] && echo "  ${event} hook: removed${label}"
+  done
+  remove_links_of "$root" "$label"
+}
+
+# The /carbon-* commands that come from one install folder: a link into its skills/, or on
+# Windows (where they are copies) a file identical to its skill. Anything else is the
+# user's own command and stays.
+remove_links_of() {
+  local root="$1" label="$2" name lnk src dest
+  for name in $SKILL_NAMES; do
+    lnk="${CONFIG_DIR}/commands/${name}.md"
+    src="${root}/skills/${name}/SKILL.md"
+    if [ -L "$lnk" ]; then
+      dest="$(readlink "$lnk" 2>/dev/null || true)"
+      case "$dest" in
+        "${root}/skills/"*) rm -f "$lnk"; echo "  /${name}: removed${label}" ;;
+        *)
+          # The same folder under another spelling (a symlinked parent, Homebrew's opt/)
+          if [ -f "$src" ] && [ -e "$lnk" ] && [ "$lnk" -ef "$src" ]; then
+            rm -f "$lnk"; echo "  /${name}: removed${label}"
+          fi ;;
+      esac
+    elif [ -f "$lnk" ] && cc_is_windows && [ -f "$src" ] && cmp -s "$src" "$lnk"; then
+      rm -f "$lnk"; echo "  /${name}: removed${label}"
+    fi
+  done
+}
+
+# Write $EXISTING back, only when something changed: Claude Code edits this file too, and a
+# rewrite that changes nothing can still lose what it wrote in between.
+# Via tmp + mv: a truncating redirect would destroy the user's settings if jq failed.
+write_settings() {
+  [ "$CHANGED" = "1" ] || return 0
+  local tmp="${SETTINGS_FILE}.tmp.$$"
+  if echo "$EXISTING" | jq '.' > "$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$SETTINGS_FILE"
+  else
+    rm -f "$tmp"
+    echo "  WARNING: could not write ${SETTINGS_FILE}; it was left unchanged." >&2
+  fi
+}
+
+SKILL_NAMES="carbon-report carbon-card carbon-update carbon-badge carbon-pr carbon-panel"
+CHANGED=0
+
+# ── Remove ──────────────────────────────────────────────────────────────────
+if [ "$MODE" = "remove" ]; then
+  if [ -f "$SETTINGS_FILE" ]; then
+    if ! EXISTING="$(jq -e 'if type == "object" then . else error("not an object") end' "$SETTINGS_FILE" 2>/dev/null)"; then
+      echo "  ${SETTINGS_FILE} is not valid JSON; it was left unchanged." >&2
+      exit 1
+    fi
+    remove_wiring_of "$INSTALL_DIR" ""
+    write_settings
+    if [ "$(echo "$EXISTING" | cc_carbon_plugin_on)" = "true" ]; then
+      echo "  The claude-carbon plugin is still enabled. To remove it as well:"
+      echo "    claude plugin uninstall claude-carbon"
+    fi
+  else
+    remove_links_of "$INSTALL_DIR" ""
+  fi
+  CLAUDE_CARBON_NO_MOD=1 bash "${SCRIPT_DIR}/install-mod.sh" || true
+  echo "  Your history stays in ${CONFIG_DIR}/claude-carbon/."
+  exit 0
+fi
+
+# ── Add ─────────────────────────────────────────────────────────────────────
 if [ -f "$SETTINGS_FILE" ]; then
   EXISTING="$(cat "$SETTINGS_FILE")"
+
+  # Another install already wired here would run every hook twice, each with its own
+  # factors, and keep the status line and the commands for itself. Look for commands that
+  # name one of our scripts in another folder: a folder that still holds claude-carbon is
+  # another install (stop, or take its place with --replace); a folder that is gone is a
+  # leftover of one (replaced). A script of that name in anything else is not ours.
+  OTHER_ROOTS=""
+  DEAD_STATUSLINE=0
+  DEAD_HOOKS=""
+  scan_cmd() {
+    local event="$1" raw="$2" p dir root name
+    p="$(plain_cmd "$raw")"
+    name="${p##*/}"
+    if [ "$event" = "statusLine" ]; then
+      [ "$name" = "statusline.sh" ] || return 0
+    else
+      [ "$name" = "$(event_script "$event")" ] || return 0
+    fi
+    dir="${p%/*}"
+    [ "${dir##*/}" = "scripts" ] || return 0
+    root="${dir%/*}"
+    [ "$(normalize_cmd "$raw")" = "$(normalize_cmd "${INSTALL_DIR}/scripts/${name}")" ] && return 0
+    # The plugin's own folder: Claude Code manages it, and the plugin check below covers it.
+    cc_is_plugin_cache "$root" && return 0
+    if [ "$(jq -r '.name // empty' "${root}/.claude-plugin/plugin.json" 2>/dev/null)" = "claude-carbon" ]; then
+      case "
+${OTHER_ROOTS}" in
+        *"
+${root}
+"*) ;;
+        *) OTHER_ROOTS="${OTHER_ROOTS}${root}
+" ;;
+      esac
+    elif [ ! -e "$p" ]; then
+      if [ "$event" = "statusLine" ]; then
+        case "$p" in *claude-carbon*) DEAD_STATUSLINE=1 ;; esac
+      else
+        DEAD_HOOKS="${DEAD_HOOKS}${event}	${raw}
+"
+      fi
+    fi
+  }
+  scan_cmd statusLine "$(echo "$EXISTING" | jq -r '.statusLine.command // ""' 2>/dev/null)"
+  for EVENT in $HOOK_EVENTS; do
+    while IFS= read -r RAW; do
+      [ -n "$RAW" ] && scan_cmd "$EVENT" "$RAW"
+    done <<EOF
+$(event_commands "$EVENT")
+EOF
+  done
+
+  if [ -n "$OTHER_ROOTS" ] && [ "$MODE" != "replace" ]; then
+    echo "  Another claude-carbon install is already wired into ${SETTINGS_FILE}:" >&2
+    printf '%s' "$OTHER_ROOTS" | sed 's/^/    /' >&2
+    echo "  Nothing was changed. To use this one instead (${INSTALL_DIR}), run again with --replace." >&2
+    echo "  Your history is kept either way." >&2
+    exit 1
+  fi
+  while IFS= read -r ROOT; do
+    [ -n "$ROOT" ] && remove_wiring_of "$ROOT" " (was ${ROOT})"
+  done <<EOF
+${OTHER_ROOTS}
+EOF
+  if [ "$DEAD_STATUSLINE" = "1" ]; then
+    EXISTING="$(echo "$EXISTING" | jq 'del(.statusLine)')"
+    CHANGED=1
+    echo "  statusLine: removed (its install is gone)"
+  fi
+  while IFS='	' read -r EVENT RAW; do
+    [ -n "$RAW" ] || continue
+    drop_hook_raw "$EVENT" "$RAW"
+    echo "  ${EVENT} hook: removed (its install is gone)"
+  done <<EOF
+${DEAD_HOOKS}
+EOF
 
   HAS_STATUSLINE="$(echo "$EXISTING" | jq 'has("statusLine")' 2>/dev/null)" || HAS_STATUSLINE="false"
   if [ "$HAS_STATUSLINE" = "true" ]; then
@@ -124,6 +347,7 @@ if [ -f "$SETTINGS_FILE" ]; then
     fi
   else
     EXISTING="$(echo "$EXISTING" | jq --arg cmd "$STATUSLINE_CMD" '. + {statusLine: {type: "command", command: $cmd}}')"
+    CHANGED=1
     echo "  statusLine: added"
   fi
 
@@ -145,14 +369,7 @@ if [ -f "$SETTINGS_FILE" ]; then
     add_hook SubagentStop "$AGENTSTOP_CMD" ".+"
   fi
 
-  # Write via tmp + mv: a truncating redirect would destroy the user's settings if jq failed.
-  TMP="${SETTINGS_FILE}.tmp.$$"
-  if echo "$EXISTING" | jq '.' > "$TMP" 2>/dev/null; then
-    mv -f "$TMP" "$SETTINGS_FILE"
-  else
-    rm -f "$TMP"
-    echo "  WARNING: could not write ${SETTINGS_FILE}; it was left unchanged." >&2
-  fi
+  write_settings
 else
   # `$end` would be a syntax error in jq 1.6 (`end` is a keyword there): the variable is
   # $session_end. Same tmp + mv as above, so a failing jq never leaves an empty file.
@@ -192,9 +409,13 @@ fi
 # copy on every run so an update still reaches the commands.
 COMMANDS_DIR="${CONFIG_DIR}/commands"
 mkdir -p "$COMMANDS_DIR"
-for SKILL_NAME in carbon-report carbon-card carbon-update carbon-badge carbon-pr carbon-panel; do
+for SKILL_NAME in $SKILL_NAMES; do
   SKILL_SRC="${INSTALL_DIR}/skills/${SKILL_NAME}/SKILL.md"
   SKILL_LNK="${COMMANDS_DIR}/${SKILL_NAME}.md"
+  # A link whose target is gone is a leftover of an install that was deleted.
+  if [ -L "$SKILL_LNK" ] && [ ! -e "$SKILL_LNK" ]; then
+    rm -f "$SKILL_LNK"
+  fi
   if [ -L "$SKILL_LNK" ]; then
     echo "  /${SKILL_NAME}: already installed (skipped)"
   elif [ -f "$SKILL_LNK" ]; then

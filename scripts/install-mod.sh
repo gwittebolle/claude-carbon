@@ -14,9 +14,10 @@ set -uo pipefail   # NOT -e: every failure below ends in a message, never in a h
 # CLAUDE_CARBON_NO_MOD=1 skips it, and removes the copy this script made.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
 # shellcheck source=scripts/portable-lib.sh
 . "${SCRIPT_DIR}/portable-lib.sh"
+# The marker below names this folder: under Homebrew, the one that survives an upgrade.
+INSTALL_DIR="$(cc_stable_root "$(dirname "$SCRIPT_DIR")")"
 CONFIG_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
 SETTINGS_FILE="${CONFIG_DIR}/settings.json"
 SKILLS_DIR="${CONFIG_DIR}/skills"
