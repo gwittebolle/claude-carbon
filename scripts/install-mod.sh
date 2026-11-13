@@ -30,6 +30,9 @@ MARKER=".claude-carbon-managed"
 TMP="${SKILLS_DIR}/.claude-carbon.tmp.$$"
 OLD="${SKILLS_DIR}/.claude-carbon.old.$$"
 
+# How to run this again, as the person installed it
+RUN_AGAIN="run the installer again"
+cc_is_homebrew "$INSTALL_DIR" && RUN_AGAIN="run 'claude-carbon setup' again"
 RESTART_LINE="    Restart Claude Code to load it (2.1.287 or later, 2.1.286 in the desktop app)."
 
 # Only ever delete one of our own work directories, never an arbitrary variable.
@@ -45,7 +48,7 @@ drop_workdir() {
 remove_managed() {
   if ! mv "$TARGET" "$OLD" 2>/dev/null; then
     echo "  mod: could not remove ${TARGET}, which stays in place."
-    echo "    Restart Claude Code, then run the installer again."
+    echo "    Restart Claude Code, then ${RUN_AGAIN}."
     return 1
   fi
   drop_workdir "$OLD"
@@ -147,7 +150,7 @@ if [ -d "$TARGET" ]; then
   if ! mv "$TARGET" "$OLD" 2>/dev/null; then
     drop_workdir "$TMP"
     echo "  mod: the copy in use could not be replaced; the previous one stays."
-    echo "    Restart Claude Code, then run the installer again."
+    echo "    Restart Claude Code, then ${RUN_AGAIN}."
     exit 0
   fi
 fi
@@ -158,7 +161,7 @@ if ! mv "$TMP" "$TARGET" 2>/dev/null; then
   else
     echo "  mod: could not put the new copy in place; nothing changed."
   fi
-  echo "    Restart Claude Code, then run the installer again."
+  echo "    Restart Claude Code, then ${RUN_AGAIN}."
   exit 0
 fi
 [ -d "$OLD" ] && drop_workdir "$OLD"

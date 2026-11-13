@@ -36,6 +36,14 @@ fi
 # The install the status line runs from, before any guess below
 SL_REPO="$REPO_DIR"
 [ -z "$REPO_DIR" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && REPO_DIR="$(ccp "$CLAUDE_PLUGIN_ROOT")"
+# The /carbon-* commands are links into the install: they name it when the status line
+# belongs to another tool (a clone outside the default folder, a Homebrew install).
+if [ -z "$REPO_DIR" ]; then
+  CMD_LNK="$(readlink "${SETTINGS%/settings.json}/commands/carbon-update.md" 2>/dev/null || true)"
+  case "$CMD_LNK" in
+    */skills/carbon-update/SKILL.md) [ -d "${CMD_LNK%/skills/*}/scripts" ] && REPO_DIR="${CMD_LNK%/skills/*}" ;;
+  esac
+fi
 [ -z "$REPO_DIR" ] && REPO_DIR="$(ccp "${CLAUDE_CARBON_DIR:-$HOME/code/claude-carbon}")"
 
 # Installed as a plugin and turned on, under its own name or the co2-tracker listing of

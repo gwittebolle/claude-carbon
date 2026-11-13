@@ -313,7 +313,12 @@ EOF
   if [ -n "$OTHER_ROOTS" ] && [ "$MODE" != "replace" ]; then
     echo "  Another claude-carbon install is already wired into ${SETTINGS_FILE}:" >&2
     printf '%s' "$OTHER_ROOTS" | sed 's/^/    /' >&2
-    echo "  Nothing was changed. To use this one instead (${INSTALL_DIR}), run again with --replace." >&2
+    echo "  Nothing was changed. To use this one instead (${INSTALL_DIR}):" >&2
+    if cc_is_homebrew "$INSTALL_DIR"; then
+      echo "    claude-carbon setup --replace" >&2
+    else
+      echo "    bash \"${SCRIPT_DIR}/configure-settings.sh\" --replace" >&2
+    fi
     echo "  Your history is kept either way." >&2
     exit 1
   fi

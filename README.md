@@ -527,6 +527,20 @@ curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/inst
 - The update also refreshes the [mod](#the-mod-carbon-panel-and-the-co2-of-each-answer)'s copy. When it asks for a restart (on Windows, a copy in use cannot be replaced), restart Claude Code and run it again; until then the previous copy stays.
 - Installed from the plugin marketplace, you can also let Claude Code update it by itself: in `/plugin`, tab **Marketplaces**, select `claude-carbon`, then **Enable auto-update**. The new version loads with the next session.
 
+## Uninstalling
+
+For an install made by the curl, PowerShell or npm installer:
+
+```bash
+bash ~/code/claude-carbon/scripts/configure-settings.sh --remove
+```
+
+(adjust the path if you installed with `CLAUDE_CARBON_DIR`). It takes the status line, the hooks, the `/carbon-*` commands and the mod's copy out of `~/.claude`, and nothing that belongs to another tool: a status line that calls `statusline.sh --segment` stays, and so does any other hook of a group it shared. Your history stays in `~/.claude/claude-carbon/`. To remove everything, delete that folder and the clone afterwards.
+
+For the plugin: `claude plugin uninstall claude-carbon@claude-carbon`.
+
+Installing a second copy on top of a first one (another folder, or the installer after the plugin's clone) would run every hook twice. The installer stops when it finds another install wired into `settings.json`, names it, and gives the command that takes its place (`configure-settings.sh --replace`). Hooks left by an install whose folder was deleted are replaced without asking.
+
 ## Dependencies
 
 - `jq` - JSON parsing
