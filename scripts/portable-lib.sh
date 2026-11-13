@@ -243,7 +243,7 @@ cc_stable_root() {
         prefix="${d%/Cellar/*}"
         rest="${d#"${prefix}"/Cellar/}"
         name="${rest%%/*}"
-        [ -d "${prefix}/opt/${name}/libexec" ] && d="${prefix}/opt/${name}/libexec"
+        [ "${prefix}/opt/${name}/libexec" -ef "$d" ] && d="${prefix}/opt/${name}/libexec"
         ;;
     esac
   fi

@@ -1015,6 +1015,83 @@ CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1; RC=$?
 check "third-party statusline.sh: configure goes on" "0" "$RC"
 check "third-party statusline.sh: left in place" "${THIRD}/statusline.sh" "$(jq -r '.statusLine.command' "$S")"
 
+# Commands configure cannot resolve to a file are live commands of someone else, even when
+# they end in the name of one of our scripts: an interpreter in front, a variable, a
+# relative path, or a missing file whose path does not name the project.
+LIVE="${TMPROOT}/live/scripts"
+mkdir -p "$LIVE"
+echo '#!/usr/bin/env bash' > "${LIVE}/agent-stop.sh"
+CFG="${TMPROOT}/unresolved"
+mkdir -p "$CFG"
+S="${CFG}/settings.json"
+jq -n --arg a "bash ${LIVE}/agent-stop.sh" '{
+  hooks: {
+    SubagentStop: [{matcher: "", hooks: [{type: "command", command: $a}]}],
+    SessionStart: [{matcher: "", hooks: [{type: "command", command: "$HOME/.tool/scripts/safety-rescan.sh"}]}],
+    Stop: [{matcher: "", hooks: [{type: "command", command: "\"$CLAUDE_PROJECT_DIR\"/scripts/persist-session.sh"}]}],
+    SessionEnd: [{matcher: "", hooks: [{type: "command", command: "/Volumes/unmounted/tool/scripts/persist-on-exit.sh"}]}]
+  }
+}' > "$S"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1; RC=$?
+check "unresolved commands: configure goes on" "0" "$RC"
+check "unresolved commands: a hook run through bash stays" "bash ${LIVE}/agent-stop.sh
+${AGENTSTOP}" "$(hook_commands "$S" SubagentStop)"
+check "unresolved commands: a hook behind \$HOME stays" "\$HOME/.tool/scripts/safety-rescan.sh
+${RESCAN}" "$(hook_commands "$S" SessionStart)"
+check "unresolved commands: a hook behind a quoted variable stays" "\"\$CLAUDE_PROJECT_DIR\"/scripts/persist-session.sh
+${STOP}" "$(hook_commands "$S" Stop)"
+check "unresolved commands: a missing file that does not name the project stays" "/Volumes/unmounted/tool/scripts/persist-on-exit.sh
+${SESSIONEND}" "$(hook_commands "$S" SessionEnd)"
+
+# A statusLine that is not an object is not ours: --remove still takes our hooks out.
+CFG="${TMPROOT}/remove-odd"
+mkdir -p "$CFG"
+S="${CFG}/settings.json"
+jq -n --arg stop "$STOP" '{statusLine: "foo", hooks: {Stop: [{matcher: "", hooks: [{type: "command", command: $stop}]}]}}' > "$S"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --remove >/dev/null 2>&1; RC=$?
+check "remove: an odd statusLine does not stop it" "0" "$RC"
+check "remove: an odd statusLine is left as it is" '"foo"' "$(jq -c '.statusLine' "$S")"
+check "remove: and our hook goes" "false" "$(jq 'has("hooks")' "$S")"
+
+# Not a JSON object: nothing is written, in either mode. An empty file is an empty object.
+CFG="${TMPROOT}/notjson"
+mkdir -p "$CFG"
+S="${CFG}/settings.json"
+printf '[1, 2]\n' > "$S"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1; RC=$?
+check "not an object: configure stops" "1" "$RC"
+check "not an object: the file is left as it was" "[1, 2]" "$(cat "$S")"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --remove >/dev/null 2>&1; RC=$?
+check "not an object: --remove stops too" "1" "$RC"
+: > "$S"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1; RC=$?
+check "empty settings.json: configure goes on" "0" "$RC"
+check "empty settings.json: gets the status line" "$STATUSLINE" "$(jq -r '.statusLine.command' "$S" | tr -d '\r')"
+
+# --remove from an install that was never wired leaves the other one's copy of the mod.
+COPYB="${TMPROOT}/copy-b"
+mkdir -p "$COPYB"
+cp -R "${REPO_DIR}/scripts" "${REPO_DIR}/.claude-plugin" "${REPO_DIR}/hooks" "${REPO_DIR}/types" "${REPO_DIR}/data" "${REPO_DIR}/skills" "$COPYB/"
+CFG="${TMPROOT}/remove-foreign"
+mkdir -p "$CFG"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+S="${CFG}/settings.json"
+BEFORE="$(cat "$S")"
+CLAUDE_CONFIG_DIR="$CFG" bash "${COPYB}/scripts/configure-settings.sh" --remove >/dev/null 2>&1
+check "remove from another copy: settings are left as they were" "$BEFORE" "$(cat "$S")"
+check "remove from another copy: the mod's copy stays" "yes" "$(has "${CFG}/skills/claude-carbon/.claude-carbon-managed")"
+check "remove from another copy: the commands stay" "yes" "$(has "${CFG}/commands/carbon-report.md")"
+
+# The same folder reached under another letter case (macOS, Windows) is this install.
+UPPER="$(dirname "$REPO_DIR")/$(basename "$REPO_DIR" | tr '[:lower:]' '[:upper:]')"
+if [ "$UPPER" != "$REPO_DIR" ] && [ "${UPPER}/scripts" -ef "${REPO_DIR}/scripts" ]; then
+  CFG="${TMPROOT}/case"
+  mkdir -p "$CFG"
+  CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+  CLAUDE_CONFIG_DIR="$CFG" bash "${UPPER}/scripts/configure-settings.sh" >/dev/null 2>&1; RC=$?
+  check "letter case: the same folder is not another install" "0" "$RC"
+fi
+
 # ---------------------------------------------------------------- jq 1.6 keywords
 # jq 1.6 (Ubuntu 20.04 and 22.04) rejects a variable named after a keyword: `--arg end`
 # then `$end` made a fresh install write no settings at all. CI runs a newer jq, so check

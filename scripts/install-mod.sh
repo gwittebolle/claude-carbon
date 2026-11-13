@@ -57,6 +57,12 @@ remove_managed() {
 is_managed() { [ -f "${TARGET}/${MARKER}" ]; }
 
 if [ "${CLAUDE_CARBON_NO_MOD:-}" = "1" ]; then
+  # --remove of configure-settings.sh: the copy another install made is that install's.
+  if [ -n "${CLAUDE_CARBON_MOD_OURS_ONLY:-}" ] && is_managed \
+     && ! grep -qF "from ${INSTALL_DIR}." "${TARGET}/${MARKER}" 2>/dev/null; then
+    echo "  mod: left in place (another install made it)"
+    exit 0
+  fi
   if is_managed; then
     remove_managed && echo "  mod: removed (CLAUDE_CARBON_NO_MOD=1)"
   else

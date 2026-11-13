@@ -171,7 +171,7 @@ drop_hook_raw() {
 remove_wiring_of() {
   local root="$1" label="$2" event target existing removed
   target="$(normalize_cmd "${root}/scripts/statusline.sh")"
-  existing="$(echo "$EXISTING" | jq -r '.statusLine.command // ""' 2>/dev/null)"
+  existing="$(echo "$EXISTING" | jq -r '(.statusLine | objects | .command) // ""' 2>/dev/null)"
   if [ -n "$existing" ] && [ "$(normalize_cmd "$existing")" = "$target" ]; then
     EXISTING="$(echo "$EXISTING" | jq 'del(.statusLine)')"
     CHANGED=1
@@ -224,7 +224,7 @@ remove_links_of() {
 write_settings() {
   [ "$CHANGED" = "1" ] || return 0
   local tmp="${SETTINGS_FILE}.tmp.$$"
-  if echo "$EXISTING" | jq '.' > "$tmp" 2>/dev/null; then
+  if echo "$EXISTING" | jq -e 'if type == "object" then . else error("not an object") end' > "$tmp" 2>/dev/null; then
     mv -f "$tmp" "$SETTINGS_FILE"
   else
     rm -f "$tmp"
@@ -236,12 +236,21 @@ SKILL_NAMES="carbon-report carbon-card carbon-update carbon-badge carbon-pr carb
 CHANGED=0
 
 # ── Remove ──────────────────────────────────────────────────────────────────
+# Read settings.json into $EXISTING. An empty file is an empty object; anything that is not
+# a JSON object stops the script before a single change, with the file as it was.
+read_settings() {
+  if ! grep -q '[^[:space:]]' "$SETTINGS_FILE" 2>/dev/null; then
+    EXISTING="{}"
+    CHANGED=1
+  elif ! EXISTING="$(jq -e 'if type == "object" then . else error("not an object") end' "$SETTINGS_FILE" 2>/dev/null)"; then
+    echo "  ${SETTINGS_FILE} is not a JSON object; it was left unchanged." >&2
+    exit 1
+  fi
+}
+
 if [ "$MODE" = "remove" ]; then
   if [ -f "$SETTINGS_FILE" ]; then
-    if ! EXISTING="$(jq -e 'if type == "object" then . else error("not an object") end' "$SETTINGS_FILE" 2>/dev/null)"; then
-      echo "  ${SETTINGS_FILE} is not valid JSON; it was left unchanged." >&2
-      exit 1
-    fi
+    read_settings
     remove_wiring_of "$INSTALL_DIR" ""
     write_settings
     if [ "$(echo "$EXISTING" | cc_carbon_plugin_on)" = "true" ]; then
@@ -251,14 +260,14 @@ if [ "$MODE" = "remove" ]; then
   else
     remove_links_of "$INSTALL_DIR" ""
   fi
-  CLAUDE_CARBON_NO_MOD=1 bash "${SCRIPT_DIR}/install-mod.sh" || true
+  CLAUDE_CARBON_NO_MOD=1 CLAUDE_CARBON_MOD_OURS_ONLY=1 bash "${SCRIPT_DIR}/install-mod.sh" || true
   echo "  Your history stays in ${CONFIG_DIR}/claude-carbon/."
   exit 0
 fi
 
 # ── Add ─────────────────────────────────────────────────────────────────────
 if [ -f "$SETTINGS_FILE" ]; then
-  EXISTING="$(cat "$SETTINGS_FILE")"
+  read_settings
 
   # Another install already wired here would run every hook twice, each with its own
   # factors, and keep the status line and the commands for itself. Look for commands that
@@ -277,13 +286,20 @@ if [ -f "$SETTINGS_FILE" ]; then
     else
       [ "$name" = "$(event_script "$event")" ] || return 0
     fi
+    # Only a bare absolute path can be judged. `bash /x/scripts/agent-stop.sh`, a path
+    # behind "$CLAUDE_PROJECT_DIR" or a relative one is a live command this script cannot
+    # resolve: testing it as a file would call it gone, and take another tool's hook out.
+    case "$p" in /*|[A-Za-z]:/*) ;; *) return 0 ;; esac
+    case "$p" in *'$'*|*'`'*) return 0 ;; esac
     dir="${p%/*}"
     [ "${dir##*/}" = "scripts" ] || return 0
     root="${dir%/*}"
     [ "$(normalize_cmd "$raw")" = "$(normalize_cmd "${INSTALL_DIR}/scripts/${name}")" ] && return 0
+    # The same file under another spelling (letter case on macOS and Windows)
+    [ "$p" -ef "${INSTALL_DIR}/scripts/${name}" ] && return 0
     # The plugin's own folder: Claude Code manages it, and the plugin check below covers it.
     cc_is_plugin_cache "$root" && return 0
-    if [ "$(jq -r '.name // empty' "${root}/.claude-plugin/plugin.json" 2>/dev/null)" = "claude-carbon" ]; then
+    if [ "$(jq -r '.name // empty' "${root}/.claude-plugin/plugin.json" 2>/dev/null | tr -d '\r')" = "claude-carbon" ]; then
       case "
 ${OTHER_ROOTS}" in
         *"
@@ -293,15 +309,18 @@ ${root}
 " ;;
       esac
     elif [ ! -e "$p" ]; then
+      # Gone, and named after the project: a leftover of ours. Without the name it could
+      # be anyone's script on a volume that is not mounted.
+      case "$p" in *claude-carbon*) ;; *) return 0 ;; esac
       if [ "$event" = "statusLine" ]; then
-        case "$p" in *claude-carbon*) DEAD_STATUSLINE=1 ;; esac
+        DEAD_STATUSLINE=1
       else
         DEAD_HOOKS="${DEAD_HOOKS}${event}	${raw}
 "
       fi
     fi
   }
-  scan_cmd statusLine "$(echo "$EXISTING" | jq -r '.statusLine.command // ""' 2>/dev/null)"
+  scan_cmd statusLine "$(echo "$EXISTING" | jq -r '(.statusLine | objects | .command) // ""' 2>/dev/null)"
   for EVENT in $HOOK_EVENTS; do
     while IFS= read -r RAW; do
       [ -n "$RAW" ] && scan_cmd "$EVENT" "$RAW"
@@ -342,7 +361,7 @@ EOF
 
   HAS_STATUSLINE="$(echo "$EXISTING" | jq 'has("statusLine")' 2>/dev/null)" || HAS_STATUSLINE="false"
   if [ "$HAS_STATUSLINE" = "true" ]; then
-    CURRENT_SL="$(echo "$EXISTING" | jq -r '.statusLine.command // ""' 2>/dev/null)"
+    CURRENT_SL="$(echo "$EXISTING" | jq -r '(.statusLine | objects | .command) // ""' 2>/dev/null)"
     if echo "$CURRENT_SL" | grep -q "claude-carbon"; then
       echo "  statusLine: already configured (skipped)"
     else

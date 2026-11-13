@@ -74,6 +74,10 @@ cmd_setup() {
 
 cmd_uninstall() {
   [ $# -eq 0 ] || { usage >&2; return 2; }
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "ERROR: jq is not installed, so settings.json cannot be edited. Install with: $(cc_install_hint jq)" >&2
+    return 1
+  fi
   bash "${SCRIPT_DIR}/configure-settings.sh" --remove || return 1
   if cc_is_homebrew "$INSTALL_DIR"; then
     echo "  To remove the program itself: brew uninstall claude-carbon"

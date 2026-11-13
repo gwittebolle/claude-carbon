@@ -174,7 +174,6 @@ check "upgrade: a second session start does not run it again" "sentinel" "$(cat 
 # Someone who took the mod out keeps it out across an upgrade.
 CFG2="${TMPROOT}/cfg-nomod"
 CLAUDE_CARBON_NO_MOD=1 CLAUDE_CONFIG_DIR="$CFG2" "$BREW_BIN" setup >/dev/null 2>&1
-rm -f "${CFG2}/claude-carbon/.version-2.0.0"
 CLAUDE_CONFIG_DIR="$CFG2" bash "${OPT}/scripts/post-upgrade.sh"
 check "upgrade: a mod taken out stays out" "no" "$(has "${CFG2}/skills/claude-carbon")"
 

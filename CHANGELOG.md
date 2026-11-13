@@ -14,7 +14,9 @@ A plain pass now stops when `settings.json` already runs another claude-carbon i
 (every hook would run twice, each with its own factors), names that install and changes
 nothing; `--replace` moves the status line, the hooks and the commands to this one. Hooks
 and commands left behind by an install whose folder was deleted are replaced without
-asking. `settings.json` is rewritten only when something changed.
+asking. `settings.json` is rewritten only when something changed, and never when it does
+not hold a JSON object. The installer wires before it reads or re-prices anything, so a
+refusal leaves the history as it was, and `/carbon-update` shows a refusal it used to hide.
 
 ### feat: a `claude-carbon` command, and an install a package manager can own
 
