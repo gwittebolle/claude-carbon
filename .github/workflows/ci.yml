@@ -57,6 +57,10 @@ jobs:
       - name: Exercise the settings.json merge and the update repair path
         run: bash tests/run-install-tests.sh
 
+      # A throwaway prefix laid out as a Homebrew formula leaves it; no brew, no network.
+      - name: Homebrew install, upgrade and uninstall
+        run: bash tests/run-brew-tests.sh
+
   badge:
     name: badge output
     runs-on: ubuntu-latest
@@ -214,6 +218,10 @@ jobs:
         if: always()
         run: /bin/bash tests/run-install-tests.sh
 
+      - name: Homebrew install, upgrade and uninstall
+        if: always()
+        run: /bin/bash tests/run-brew-tests.sh
+
       - name: Badge output
         if: always()
         run: /bin/bash tests/run-badge-tests.sh
@@ -326,6 +334,10 @@ jobs:
       - name: Install and update wiring
         if: always()
         run: bash tests/run-install-tests.sh
+
+      - name: Homebrew install, upgrade and uninstall
+        if: always()
+        run: bash tests/run-brew-tests.sh
 
       - name: Workflow agents
         if: always()

@@ -11,6 +11,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 STATE_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
 
+if cc_is_homebrew "$REPO_DIR"; then
+  echo "Installed with Homebrew. Update with:  brew upgrade claude-carbon"
+  echo "The next Claude Code session then brings your history to the new factors."
+  exit 0
+fi
 [ -d "${REPO_DIR}/.git" ] || { echo "Not a git-clone install; nothing to update." >&2; exit 0; }
 case "$REPO_DIR" in
   */.claude/plugins/*)

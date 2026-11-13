@@ -250,6 +250,26 @@ cc_stable_root() {
   printf '%s' "$d"
 }
 
+# cc_version <install dir>: the version of the install, read without jq.
+cc_version() {
+  sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "$1/.claude-plugin/plugin.json" 2>/dev/null | head -n 1
+}
+
+# cc_mark_version <state dir> <version>: 0 for the first caller to see this version, 1 for
+# every later one (and when it cannot tell). A sentinel per version, made with noclobber so
+# that of two sessions starting together only one wins. Older sentinels are dropped.
+cc_mark_version() {
+  local dir="$1" v="$2" f
+  [ -n "$v" ] || return 1
+  mkdir -p "$dir" 2>/dev/null || return 1
+  ( set -C; echo 1 >"${dir}/.version-${v}" ) 2>/dev/null || return 1
+  for f in "${dir}"/.version-*; do
+    [ -f "$f" ] && [ "$f" != "${dir}/.version-${v}" ] && rm -f "$f"
+  done
+  return 0
+}
+
 # ── Processes ───────────────────────────────────────────────────────────────
 # cc_detach <command> [args…]: run a command fully in the background, so it outlives
 # the hook that started it: session start moving on, the SessionEnd budget expiring, or
