@@ -159,5 +159,192 @@ sleep 1
 check "concurrent starts: one backfill launched" "$(wc -l <"${TMPROOT}/launches7" | tr -d ' ')" "1"
 check "sentinel holds a mark" "$(cat "${CFG}/claude-carbon/auto-setup")" "1"
 
+# ------------------------------------------------ 8. the plugin's status line
+# Claude Code ignores a plugin's statusLine: the hook, run as the plugin (CLAUDE_PLUGIN_ROOT
+# names its folder), keeps a fixed script that runs the current copy's status line, and
+# points settings.json at it once, only when no status line is set.
+plugin_copy() { # $1 = config dir, $2 = version: a copy of the plugin in Claude Code's cache
+  local p="$1/plugins/cache/claude-carbon/claude-carbon/$2"
+  mkdir -p "$p"
+  cp -R "${REPO_DIR}/scripts" "${REPO_DIR}/data" "${REPO_DIR}/.claude-plugin" "$p/"
+  printf '%s' "$p"
+}
+plugin_start() { # $1 = config dir, $2 = plugin root, rest = extra env assignments
+  local cfg="$1" root="$2"
+  shift 2
+  printf '{}' | env -u CLAUDE_CARBON_DB -u CLAUDE_CARBON_NO_STATUSLINE CLAUDE_CARBON_NO_AUTOSETUP=1 \
+    CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 CLAUDE_CONFIG_DIR="$cfg" CLAUDE_PLUGIN_ROOT="$root" "$@" \
+    bash "${root}/scripts/safety-rescan.sh"
+}
+sl_command() { jq -r '.statusLine.command // ""' "$1/settings.json" 2>/dev/null | tr -d '\r'; }
+# The command as the hook writes it: the native path, in double quotes on Windows
+sl_expected() {
+  local c
+  c="$(cc_native_path "$1/claude-carbon/statusline.sh")"
+  if cc_is_windows; then printf '"%s"' "$c"; else printf '%s' "${c// /\\ }"; fi
+}
+
+CFG="${TMPROOT}/sl1"
+mkdir -p "$CFG"
+P1="$(plugin_copy "$CFG" 1.20.0)"
+printf '{"permissions": {"allow": ["Bash(ls:*)"]}}\n' >"${CFG}/settings.json"
+OUT="$(plugin_start "$CFG" "$P1" 2>&1)"
+check "plugin status line: nothing printed" "$OUT" ""
+check "plugin status line: set in settings.json" "$(sl_command "$CFG")" "$(sl_expected "$CFG")"
+check "plugin status line: other settings kept" "$(jq -c '.permissions.allow' "${CFG}/settings.json" | tr -d '\r')" '["Bash(ls:*)"]'
+check "plugin status line: decision recorded" "$(cat "${CFG}/claude-carbon/statusline-set")" "set"
+check "plugin status line: the script is executable" "$([ -x "${CFG}/claude-carbon/statusline.sh" ] && echo yes)" "yes"
+check "plugin status line: plugin-root names this copy" "$(cat "${CFG}/claude-carbon/plugin-root")" "$(cc_native_path "$P1")"
+
+# The script runs that copy's status line
+SL_IN='{"session_id":"sl","model":{"id":"claude-opus-5","display_name":"Opus 5"},"cost":{"total_cost_usd":0.5},"workspace":{"current_dir":"/tmp/slproj"},"context_window":{"total_input_tokens":1000}}'
+SL_OUT="$(printf '%s' "$SL_IN" | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 bash "${CFG}/claude-carbon/statusline.sh" 2>/dev/null)"
+check "plugin status line: the script draws the status line" "$(printf '%s' "$SL_OUT" | grep -c 'gCO₂')" "1"
+
+# Removed by the person afterwards: never put back
+jq 'del(.statusLine)' "${CFG}/settings.json" >"${CFG}/s.tmp" && mv "${CFG}/s.tmp" "${CFG}/settings.json"
+plugin_start "$CFG" "$P1" >/dev/null 2>&1
+check "plugin status line: a removed one is not put back" "$(sl_command "$CFG")" ""
+
+# A new version: plugin-root follows it, settings.json is not rewritten
+CFG="${TMPROOT}/sl2"
+mkdir -p "$CFG"
+P1="$(plugin_copy "$CFG" 1.20.0)"
+plugin_start "$CFG" "$P1" >/dev/null 2>&1
+printf '\n' >>"${CFG}/settings.json"
+SIZE="$(wc -c <"${CFG}/settings.json" | tr -d ' ')"
+P2="$(plugin_copy "$CFG" 1.21.0)"
+plugin_start "$CFG" "$P2" >/dev/null 2>&1
+check "new version: plugin-root follows it" "$(cat "${CFG}/claude-carbon/plugin-root")" "$(cc_native_path "$P2")"
+check "new version: settings.json left as it is" "$(wc -c <"${CFG}/settings.json" | tr -d ' ')" "$SIZE"
+
+# No settings.json yet: created with the status line alone
+CFG="${TMPROOT}/sl3"
+mkdir -p "$CFG"
+P1="$(plugin_copy "$CFG" 1.20.0)"
+plugin_start "$CFG" "$P1" >/dev/null 2>&1
+check "no settings.json: created with the status line" "$(sl_command "$CFG")" "$(sl_expected "$CFG")"
+check "no settings.json: nothing else in it" "$(jq -c 'keys' "${CFG}/settings.json" | tr -d '\r')" '["statusLine"]'
+
+# Another tool's status line: left alone, and the decision kept
+CFG="${TMPROOT}/sl4"
+mkdir -p "$CFG"
+P1="$(plugin_copy "$CFG" 1.20.0)"
+printf '{"statusLine": {"type": "command", "command": "npx -y ccstatusline@latest"}}\n' >"${CFG}/settings.json"
+plugin_start "$CFG" "$P1" >/dev/null 2>&1
+check "another status line: left alone" "$(sl_command "$CFG")" "npx -y ccstatusline@latest"
+check "another status line: decision recorded" "$(cat "${CFG}/claude-carbon/statusline-set")" "skipped"
+jq 'del(.statusLine)' "${CFG}/settings.json" >"${CFG}/s.tmp" && mv "${CFG}/s.tmp" "${CFG}/settings.json"
+plugin_start "$CFG" "$P1" >/dev/null 2>&1
+check "another status line removed later: ours is not added" "$(sl_command "$CFG")" ""
+
+# Not a JSON object: untouched, and looked at again next time
+CFG="${TMPROOT}/sl5"
+mkdir -p "$CFG"
+P1="$(plugin_copy "$CFG" 1.20.0)"
+printf '[1, 2]\n' >"${CFG}/settings.json"
+plugin_start "$CFG" "$P1" >/dev/null 2>&1
+check "not an object: left as it was" "$(tr -d '\r' <"${CFG}/settings.json")" "[1, 2]"
+check "not an object: no decision recorded" "$([ -f "${CFG}/claude-carbon/statusline-set" ] && echo yes)" ""
+
+# CLAUDE_CARBON_NO_STATUSLINE: no status line, the script is still kept up to date
+CFG="${TMPROOT}/sl6"
+mkdir -p "$CFG"
+P1="$(plugin_copy "$CFG" 1.20.0)"
+plugin_start "$CFG" "$P1" CLAUDE_CARBON_NO_STATUSLINE=1 >/dev/null 2>&1
+check "opt-out: no settings.json written" "$([ -f "${CFG}/settings.json" ] && echo yes)" ""
+check "opt-out: no decision recorded" "$([ -f "${CFG}/claude-carbon/statusline-set" ] && echo yes)" ""
+check "opt-out: the script is there" "$([ -f "${CFG}/claude-carbon/statusline.sh" ] && echo yes)" "yes"
+
+# Not the plugin: a clone's hook (no CLAUDE_PLUGIN_ROOT, or one naming another folder)
+CFG="${TMPROOT}/sl7"
+new_config "$CFG"
+start "$CFG" CLAUDE_CARBON_NO_AUTOSETUP=1 >/dev/null 2>&1
+check "clone hook: no status line written" "$([ -f "${CFG}/settings.json" ] && echo yes)" ""
+check "clone hook: no plugin-root" "$([ -f "${CFG}/claude-carbon/plugin-root" ] && echo yes)" ""
+P1="$(plugin_copy "$CFG" 1.20.0)"
+printf '{}' | env -u CLAUDE_CARBON_DB CLAUDE_CARBON_NO_AUTOSETUP=1 CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 \
+  CLAUDE_CONFIG_DIR="$CFG" CLAUDE_PLUGIN_ROOT="$P1" bash "$HOOK" >/dev/null 2>&1
+check "another folder's CLAUDE_PLUGIN_ROOT: nothing written" "$([ -f "${CFG}/claude-carbon/plugin-root" ] && echo yes)" ""
+
+# The script when the copy it names is gone: the newest copy beside it, else nothing
+CFG="${TMPROOT}/sl8"
+mkdir -p "$CFG"
+P1="$(plugin_copy "$CFG" 1.20.0)"
+plugin_start "$CFG" "$P1" CLAUDE_CARBON_NO_STATUSLINE=1 >/dev/null 2>&1
+CACHE="${CFG}/plugins/cache/claude-carbon/claude-carbon"
+for V in 1.9.0 1.21.0; do
+  mkdir -p "${CACHE}/${V}/scripts"
+  printf '#!/usr/bin/env bash\ncat >/dev/null\necho "copy %s"\n' "$V" >"${CACHE}/${V}/scripts/statusline.sh"
+done
+rm -rf "$P1"
+check "copy gone: the newest one beside it runs" "$(printf '{}' | bash "${CFG}/claude-carbon/statusline.sh")" "copy 1.21.0"
+rm -rf "$CACHE"
+check "plugin uninstalled: prints nothing" "$(printf '{}' | bash "${CFG}/claude-carbon/statusline.sh"; echo "rc=$?")" "rc=0"
+
+# The plugin's own update flag: the status line run from the plugin names the new version
+CFG="${TMPROOT}/sl9"
+mkdir -p "$CFG"
+P1="$(plugin_copy "$CFG" 1.20.0)"
+plugin_start "$CFG" "$P1" >/dev/null 2>&1
+printf '{"behind":true,"local":"1.20.0","remote":"1.21.0","checked_at":%s}\n' "$(date +%s)" \
+  >"${CFG}/claude-carbon/plugin-update-check.json"
+SL_OUT="$(printf '%s' "$SL_IN" | env -u CLAUDE_CARBON_NO_UPDATE_NOTIFIER CLAUDE_CONFIG_DIR="$CFG" \
+  bash "${CFG}/claude-carbon/statusline.sh" 2>/dev/null)"
+check "plugin update flag: the status line names the new version" \
+  "$(printf '%s' "$SL_OUT" | grep -c '1.21.0 /carbon-update')" "1"
+# The update applied since: the new copy runs, the flag still says 1.20.0 is behind
+P2="$(plugin_copy "$CFG" 1.21.0)"
+plugin_start "$CFG" "$P2" >/dev/null 2>&1
+SL_OUT="$(printf '%s' "$SL_IN" | env -u CLAUDE_CARBON_NO_UPDATE_NOTIFIER CLAUDE_CONFIG_DIR="$CFG" \
+  bash "${CFG}/claude-carbon/statusline.sh" 2>/dev/null)"
+check "plugin update flag, update applied: no notice" \
+  "$(printf '%s' "$SL_OUT" | grep -c '/carbon-update')" "0"
+
+# settings.json behind a link (a dotfiles folder): the link is kept, nothing decided yet
+if ! cc_is_windows; then
+  CFG="${TMPROOT}/sl10"
+  mkdir -p "$CFG" "${TMPROOT}/dotfiles"
+  P1="$(plugin_copy "$CFG" 1.20.0)"
+  printf '{"model": "opus"}\n' >"${TMPROOT}/dotfiles/settings.json"
+  ln -s "${TMPROOT}/dotfiles/settings.json" "${CFG}/settings.json"
+  plugin_start "$CFG" "$P1" >/dev/null 2>&1
+  check "linked settings.json: the link is kept" "$([ -L "${CFG}/settings.json" ] && echo yes)" "yes"
+  check "linked settings.json: its target untouched" "$(jq -c . "${TMPROOT}/dotfiles/settings.json")" '{"model":"opus"}'
+  check "linked settings.json: no decision recorded" "$([ -f "${CFG}/claude-carbon/statusline-set" ] && echo yes)" ""
+
+  # Its permissions are kept
+  CFG="${TMPROOT}/sl11"
+  mkdir -p "$CFG"
+  P1="$(plugin_copy "$CFG" 1.20.0)"
+  printf '{"model": "opus"}\n' >"${CFG}/settings.json"
+  chmod 600 "${CFG}/settings.json"
+  plugin_start "$CFG" "$P1" >/dev/null 2>&1
+  check "permissions: status line set" "$(sl_command "$CFG")" "$(sl_expected "$CFG")"
+  check "permissions: kept" "$(ls -l "${CFG}/settings.json" | cut -c1-10)" "-rw-------"
+
+  # Read-only: left alone, nothing printed, nothing decided
+  CFG="${TMPROOT}/sl12"
+  mkdir -p "$CFG"
+  P1="$(plugin_copy "$CFG" 1.20.0)"
+  printf '{"model": "opus"}\n' >"${CFG}/settings.json"
+  chmod 444 "${CFG}/settings.json"
+  OUT="$(plugin_start "$CFG" "$P1" 2>&1)"
+  check "read-only settings.json: nothing printed" "$OUT" ""
+  check "read-only settings.json: untouched" "$(jq -c . "${CFG}/settings.json")" '{"model":"opus"}'
+  check "read-only settings.json: no decision recorded" "$([ -f "${CFG}/claude-carbon/statusline-set" ] && echo yes)" ""
+  chmod 644 "${CFG}/settings.json"
+
+  # A config folder with a space: the command runs in a shell, the space is escaped
+  CFG="${TMPROOT}/with space"
+  mkdir -p "$CFG"
+  P1="$(plugin_copy "$CFG" 1.20.0)"
+  plugin_start "$CFG" "$P1" >/dev/null 2>&1
+  check "space in the path: escaped" "$(sl_command "$CFG")" "$(sl_expected "$CFG")"
+  check "space in the path: the command runs" \
+    "$(printf '%s' "$SL_IN" | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 \
+      bash -c "$(sl_command "$CFG")" 2>/dev/null | grep -c 'gCO₂')" "1"
+fi
+
 echo "${PASS} passed, ${FAIL} failed"
 [ "$FAIL" -eq 0 ]

@@ -1105,6 +1105,31 @@ KW_ARGS="$(grep -rn -E -- '--arg(json)? (end|if|then|else|elif|reduce|foreach|tr
   "${REPO_DIR}/scripts" "${REPO_DIR}/skills" "${REPO_DIR}/install.sh" 2>/dev/null || true)"
 check "jq: no variable named after a jq 1.6 keyword" "" "$KW_ARGS"
 
+# ---------------------------------------------------------------- the plugin's status line script
+
+# The plugin sets ~/.claude/claude-carbon/statusline.sh as the status line. With the plugin
+# uninstalled or off, that script draws nothing or an old copy: the installer's takes its
+# place. With the plugin on, it stays.
+PSL_CFG="${TMPROOT}/plugin-sl-off"
+mkdir -p "$PSL_CFG"
+PSL="$(hook_form "$(cc_native_path "${PSL_CFG}/claude-carbon/statusline.sh")")"
+jq -n --arg sl "$PSL" '{statusLine: {type: "command", command: $sl}, enabledPlugins: {"claude-carbon@claude-carbon": false}}' \
+  > "${PSL_CFG}/settings.json"
+OUT="$(CLAUDE_CONFIG_DIR="$PSL_CFG" bash "$CONFIGURE" 2>&1)"
+check "plugin's status line, plugin off: replaced" "$STATUSLINE" \
+  "$(jq -r '.statusLine.command // ""' "${PSL_CFG}/settings.json" 2>/dev/null | tr -d '\r')"
+check "plugin's status line, plugin off: said" "yes" \
+  "$(printf '%s' "$OUT" | grep -q 'statusLine: replaced' && echo yes || echo no)"
+
+PSL_CFG="${TMPROOT}/plugin-sl-on"
+mkdir -p "$PSL_CFG"
+PSL="$(hook_form "$(cc_native_path "${PSL_CFG}/claude-carbon/statusline.sh")")"
+jq -n --arg sl "$PSL" '{statusLine: {type: "command", command: $sl}, enabledPlugins: {"claude-carbon@claude-carbon": true}}' \
+  > "${PSL_CFG}/settings.json"
+CLAUDE_CONFIG_DIR="$PSL_CFG" bash "$CONFIGURE" >/dev/null 2>&1
+check "plugin's status line, plugin on: kept" "$PSL" \
+  "$(jq -r '.statusLine.command // ""' "${PSL_CFG}/settings.json" 2>/dev/null | tr -d '\r')"
+
 # ----------------------------------------------------------------
 
 echo ""

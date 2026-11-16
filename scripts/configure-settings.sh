@@ -369,7 +369,18 @@ EOF
   HAS_STATUSLINE="$(echo "$EXISTING" | jq 'has("statusLine")' 2>/dev/null)" || HAS_STATUSLINE="false"
   if [ "$HAS_STATUSLINE" = "true" ]; then
     CURRENT_SL="$(echo "$EXISTING" | jq -r '(.statusLine | objects | .command) // ""' 2>/dev/null)"
-    if echo "$CURRENT_SL" | grep -q "claude-carbon"; then
+    # The script the plugin sets as its status line (see cc_plugin_statusline). It runs the
+    # plugin's copy: with the plugin off or uninstalled, it draws an old copy or nothing, so
+    # this install's status line takes its place. With the plugin on, it stays.
+    PLUGIN_ON="$(echo "$EXISTING" | jq -r '[(.enabledPlugins // {}) | to_entries[] | select(.value == true)
+        | .key | select(test("^(claude-carbon|co2-tracker)@")) | select(. != "claude-carbon@skills-dir")]
+        | length' 2>/dev/null | tr -d '\r')"
+    if [ "$(cc_path "$(plain_cmd "$CURRENT_SL")")" = "${CONFIG_DIR}/claude-carbon/statusline.sh" ] \
+       && [ "${PLUGIN_ON:-0}" = "0" ]; then
+      EXISTING="$(echo "$EXISTING" | jq --arg cmd "$STATUSLINE_CMD" '. + {statusLine: {type: "command", command: $cmd}}')"
+      CHANGED=1
+      echo "  statusLine: replaced (the plugin's, which is off or uninstalled)"
+    elif echo "$CURRENT_SL" | grep -q "claude-carbon"; then
       echo "  statusLine: already configured (skipped)"
     else
       echo "  statusLine: skipped (already set to another tool)"
