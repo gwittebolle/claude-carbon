@@ -117,7 +117,8 @@ normalize_cmd() {
 
 # Commands registered for an event, one per line, as written in settings.json.
 event_commands() {
-  echo "$EXISTING" | jq -r --arg e "$1" '[.hooks[$e][]?.hooks[]?.command // empty] | .[]' 2>/dev/null
+  # jq.exe ends every line with CRLF under Git Bash; a command never holds a CR itself.
+  echo "$EXISTING" | jq -r --arg e "$1" '[.hooks[$e][]?.hooks[]?.command // empty] | .[]' 2>/dev/null | tr -d '\r'
 }
 
 # Append a hook to an event array, unless that command is already registered under any
@@ -154,7 +155,10 @@ EOF
 # it sat in stays when it holds another hook, and so does the event when it holds another
 # group. Mutates $EXISTING.
 drop_hook_raw() {
-  EXISTING="$(echo "$EXISTING" | jq --arg e "$1" --arg c "${2%$'\r'}" '
+  local c
+  # A CR read back from jq.exe would make the comparison below miss the hook (Windows).
+  c="$(printf '%s' "$2" | tr -d '\r')"
+  EXISTING="$(echo "$EXISTING" | jq --arg e "$1" --arg c "$c" '
     .hooks[$e] = [ .hooks[$e][] |
       if any(.hooks[]?; .command == $c)
       then (.hooks |= map(select(.command != $c))) | select((.hooks | length) > 0)
