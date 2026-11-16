@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# cli.sh — the `claude-carbon` command of an install that did not come from install.sh
+# (Homebrew). It only chains the scripts next to it: nothing here computes anything.
+#
+#   claude-carbon setup [--replace]   wire the status line, hooks and /carbon-* commands
+#   claude-carbon uninstall           take them out again; the history stays
+#   claude-carbon --version
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/portable-lib.sh
+. "${SCRIPT_DIR}/portable-lib.sh"
+INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
+CONFIG_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
+STATE_DIR="${CONFIG_DIR}/claude-carbon"
+
+version() { cc_version "$INSTALL_DIR"; }
+
+usage() {
+  cat <<'EOF'
+Usage: claude-carbon <command>
+
+  setup [--replace]   Wire the status line, hooks and /carbon-* commands into Claude Code,
+                      and read your past sessions. Safe to run again.
+                      --replace takes the place of another claude-carbon install.
+  uninstall           Take the status line, hooks and commands out again.
+                      Your history stays where it is.
+  --version           Print the version.
+
+Everyday use is inside Claude Code: /carbon-report, /carbon-card, /carbon-badge.
+EOF
+}
+
+cmd_setup() {
+  local mode="" db had_db=0
+  case "${1:-}" in
+    "") ;;
+    --replace) mode="--replace" ;;
+    *) usage >&2; return 2 ;;
+  esac
+  for dep in jq sqlite3; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+      echo "ERROR: ${dep} is not installed. Install with: $(cc_install_hint "$dep")" >&2
+      return 1
+    fi
+  done
+
+  # The wiring first: it is the step that can refuse (another install already wired), and
+  # it should refuse before anything is read or re-priced.
+  echo "Configuring Claude Code..."
+  # shellcheck disable=SC2086  # $mode is empty or one fixed word
+  bash "${SCRIPT_DIR}/configure-settings.sh" $mode || return 1
+
+  db="$(cc_path "${CLAUDE_CARBON_DB:-${STATE_DIR}/carbon.db}")"
+  [ -f "$db" ] && had_db=1
+  echo ""
+  CLAUDE_CARBON_INSTALLER=1 bash "${SCRIPT_DIR}/setup.sh" || return 1
+  # A history another version priced: bring it to this version's factors (CO2 only).
+  if [ "$had_db" = "1" ]; then
+    bash "${SCRIPT_DIR}/recompute.sh" || echo "  (history not re-priced; see message above)"
+  fi
+
+  if cc_is_homebrew "$INSTALL_DIR"; then
+    # A clone that was here before left its "update available" notice; Homebrew has its own.
+    rm -f "${STATE_DIR}/update-check.json" 2>/dev/null || true
+    # This version is in place: the SessionStart hook has nothing to bring up to date.
+    cc_mark_version "$STATE_DIR" "$(version)" || true
+  fi
+
+  echo ""
+  echo "Done. Restart Claude Code to see your CO2 in the status line."
+}
+
+cmd_uninstall() {
+  [ $# -eq 0 ] || { usage >&2; return 2; }
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "ERROR: jq is not installed, so settings.json cannot be edited. Install with: $(cc_install_hint jq)" >&2
+    return 1
+  fi
+  bash "${SCRIPT_DIR}/configure-settings.sh" --remove || return 1
+  if cc_is_homebrew "$INSTALL_DIR"; then
+    echo "  To remove the program itself: brew uninstall claude-carbon"
+  fi
+}
+
+case "${1:-}" in
+  setup) shift; cmd_setup "$@" ;;
+  uninstall) shift; cmd_uninstall "$@" ;;
+  --version|-v|version) echo "claude-carbon $(version)" ;;
+  --help|-h|help) usage ;;
+  "") usage >&2; exit 2 ;;
+  *) echo "claude-carbon: unknown command '$1'" >&2; usage >&2; exit 2 ;;
+esac

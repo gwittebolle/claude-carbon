@@ -14,9 +14,10 @@ set -uo pipefail   # NOT -e: every failure below ends in a message, never in a h
 # CLAUDE_CARBON_NO_MOD=1 skips it, and removes the copy this script made.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
 # shellcheck source=scripts/portable-lib.sh
 . "${SCRIPT_DIR}/portable-lib.sh"
+# The marker below names this folder: under Homebrew, the one that survives an upgrade.
+INSTALL_DIR="$(cc_stable_root "$(dirname "$SCRIPT_DIR")")"
 CONFIG_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")"
 SETTINGS_FILE="${CONFIG_DIR}/settings.json"
 SKILLS_DIR="${CONFIG_DIR}/skills"
@@ -29,6 +30,9 @@ MARKER=".claude-carbon-managed"
 TMP="${SKILLS_DIR}/.claude-carbon.tmp.$$"
 OLD="${SKILLS_DIR}/.claude-carbon.old.$$"
 
+# How to run this again, as the person installed it
+RUN_AGAIN="run the installer again"
+cc_is_homebrew "$INSTALL_DIR" && RUN_AGAIN="run 'claude-carbon setup' again"
 RESTART_LINE="    Restart Claude Code to load it (2.1.287 or later, 2.1.286 in the desktop app)."
 
 # Only ever delete one of our own work directories, never an arbitrary variable.
@@ -44,7 +48,7 @@ drop_workdir() {
 remove_managed() {
   if ! mv "$TARGET" "$OLD" 2>/dev/null; then
     echo "  mod: could not remove ${TARGET}, which stays in place."
-    echo "    Restart Claude Code, then run the installer again."
+    echo "    Restart Claude Code, then ${RUN_AGAIN}."
     return 1
   fi
   drop_workdir "$OLD"
@@ -53,6 +57,12 @@ remove_managed() {
 is_managed() { [ -f "${TARGET}/${MARKER}" ]; }
 
 if [ "${CLAUDE_CARBON_NO_MOD:-}" = "1" ]; then
+  # --remove of configure-settings.sh: the copy another install made is that install's.
+  if [ -n "${CLAUDE_CARBON_MOD_OURS_ONLY:-}" ] && is_managed \
+     && ! grep -qF "from ${INSTALL_DIR}." "${TARGET}/${MARKER}" 2>/dev/null; then
+    echo "  mod: left in place (another install made it)"
+    exit 0
+  fi
   if is_managed; then
     remove_managed && echo "  mod: removed (CLAUDE_CARBON_NO_MOD=1)"
   else
@@ -146,7 +156,7 @@ if [ -d "$TARGET" ]; then
   if ! mv "$TARGET" "$OLD" 2>/dev/null; then
     drop_workdir "$TMP"
     echo "  mod: the copy in use could not be replaced; the previous one stays."
-    echo "    Restart Claude Code, then run the installer again."
+    echo "    Restart Claude Code, then ${RUN_AGAIN}."
     exit 0
   fi
 fi
@@ -157,7 +167,7 @@ if ! mv "$TMP" "$TARGET" 2>/dev/null; then
   else
     echo "  mod: could not put the new copy in place; nothing changed."
   fi
-  echo "    Restart Claude Code, then run the installer again."
+  echo "    Restart Claude Code, then ${RUN_AGAIN}."
   exit 0
 fi
 [ -d "$OLD" ] && drop_workdir "$OLD"

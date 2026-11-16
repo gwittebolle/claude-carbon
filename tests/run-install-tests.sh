@@ -859,6 +859,244 @@ cp "${REPO_DIR}/.claude-plugin/plugin.json" "${FAKE}/.claude-plugin/"
 CLAUDE_CONFIG_DIR="$CFG" bash "${FAKE}/scripts/install-mod.sh" >/dev/null 2>&1
 check "mod: a checkout without hooks/mod installs nothing" "no" "$(has "${CFG}/skills")"
 
+# ---------------------------------------------------------------- remove
+# --remove takes out what configure wrote from this folder, and nothing else.
+CFG="${TMPROOT}/remove"
+mkdir -p "$CFG"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+S="${CFG}/settings.json"
+OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --remove 2>&1)"
+check "remove: the status line is gone" "false" "$(jq 'has("statusLine")' "$S")"
+check "remove: no hook is left" "false" "$(jq 'has("hooks")' "$S")"
+check "remove: the commands are gone" "" "$(ls "${CFG}/commands" 2>/dev/null)"
+check "remove: the copy of the mod is gone" "no" "$(has "${CFG}/skills/claude-carbon")"
+said "remove: says the history stays" "Your history stays" "$OUT"
+
+# What belongs to anything else stays: a hook in the same group as ours, a hook in its own
+# group, another event, a status line that calls ours with an argument, a hand-written command.
+CFG="${TMPROOT}/remove-mixed"
+mkdir -p "${CFG}/commands"
+S="${CFG}/settings.json"
+jq -n --arg stop "$STOP" --arg rescan "$RESCAN" --arg sl "${STATUSLINE} --segment" '{
+  statusLine: {type: "command", command: $sl},
+  permissions: {allow: ["Bash(ls:*)"]},
+  hooks: {
+    Stop: [
+      {matcher: "", hooks: [{type: "command", command: "/opt/other/notify.sh"}, {type: "command", command: $stop}]},
+      {matcher: "x", hooks: [{type: "command", command: "/opt/other/second.sh"}]}
+    ],
+    SessionStart: [{matcher: "", hooks: [{type: "command", command: $rescan}]}],
+    PreToolUse: [{matcher: "Bash", hooks: [{type: "command", command: "/opt/other/guard.sh"}]}]
+  }
+}' > "$S"
+echo "my own command" > "${CFG}/commands/carbon-report.md"
+ln -s "${REPO_DIR}/skills/carbon-card/SKILL.md" "${CFG}/commands/carbon-card.md" 2>/dev/null \
+  || cp "${REPO_DIR}/skills/carbon-card/SKILL.md" "${CFG}/commands/carbon-card.md"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --remove >/dev/null 2>&1
+check "remove: a status line calling ours with an argument stays" "${STATUSLINE} --segment" "$(jq -r '.statusLine.command' "$S" | tr -d '\r')"
+check "remove: the other hook of a shared group stays, with its group" \
+  '[{"matcher":"","hooks":[{"type":"command","command":"/opt/other/notify.sh"}]},{"matcher":"x","hooks":[{"type":"command","command":"/opt/other/second.sh"}]}]' \
+  "$(jq -c '.hooks.Stop' "$S")"
+check "remove: an event left empty goes" "false" "$(jq '.hooks | has("SessionStart")' "$S")"
+check "remove: another event stays" "/opt/other/guard.sh" "$(hook_commands "$S" PreToolUse)"
+check "remove: unrelated settings stay" '["Bash(ls:*)"]' "$(jq -c '.permissions.allow' "$S")"
+check "remove: a hand-written command stays" "my own command" "$(cat "${CFG}/commands/carbon-report.md")"
+check "remove: our command goes" "no" "$(has "${CFG}/commands/carbon-card.md")"
+
+# A second pass finds nothing and does not rewrite the file. Sizes are compared on disk:
+# a $(cat) capture would drop the final CRLF jq.exe writes on Windows, not just the LF.
+printf '\n' >> "$S"   # a byte a rewrite would drop
+SIZE="$(wc -c < "$S" | tr -d ' ')"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --remove >/dev/null 2>&1
+check "remove: nothing to remove leaves the file as it is" "$SIZE" "$(wc -c < "$S" | tr -d ' ')"
+
+# An add that changes nothing does not rewrite the file either.
+CFG="${TMPROOT}/add-nowrite"
+mkdir -p "$CFG"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+S="${CFG}/settings.json"
+printf '\n\n' >> "$S"
+SIZE="$(wc -c < "$S" | tr -d ' ')"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+check "configure: a pass that changes nothing leaves the file as it is" "$SIZE" "$(wc -c < "$S" | tr -d ' ')"
+
+# With the plugin on, --remove says how to remove the plugin too, and leaves it enabled.
+CFG="${TMPROOT}/remove-plugin"
+mkdir -p "$CFG"
+S="${CFG}/settings.json"
+jq -n --arg sl "$STATUSLINE" '{statusLine: {type: "command", command: $sl}, enabledPlugins: {"claude-carbon@claude-carbon": true}}' > "$S"
+OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --remove 2>&1)"
+said "remove: names the plugin still enabled" "claude plugin uninstall claude-carbon" "$OUT"
+check "remove: the plugin stays enabled" "true" "$(jq '.enabledPlugins["claude-carbon@claude-carbon"]' "$S")"
+
+# ---------------------------------------------------------------- another install
+# A second install wired on top of a first one would run every hook twice. configure stops
+# and changes nothing; --replace takes the first one's place.
+OTHER="${TMPROOT}/other-clone"
+mkdir -p "${OTHER}/scripts" "${OTHER}/.claude-plugin" "${OTHER}/skills/carbon-report"
+for f in statusline.sh persist-session.sh safety-rescan.sh persist-on-exit.sh agent-stop.sh; do
+  echo '#!/usr/bin/env bash' > "${OTHER}/scripts/${f}"
+done
+echo '{"name": "claude-carbon", "version": "1.0.0"}' > "${OTHER}/.claude-plugin/plugin.json"
+echo "claude-carbon report" > "${OTHER}/skills/carbon-report/SKILL.md"
+OTHER_N="$(cc_native_path "$OTHER")"
+
+other_settings() {
+  jq -n --arg sl "$(hook_form "${OTHER_N}/scripts/statusline.sh")" \
+        --arg stop "$(hook_form "${OTHER_N}/scripts/persist-session.sh")" \
+        --arg start "$(hook_form "${OTHER_N}/scripts/safety-rescan.sh")" '{
+    statusLine: {type: "command", command: $sl},
+    hooks: {
+      Stop: [{matcher: "", hooks: [{type: "command", command: "/opt/other/notify.sh"}, {type: "command", command: $stop}]}],
+      SessionStart: [{matcher: "", hooks: [{type: "command", command: $start}]}]
+    }
+  }'
+}
+
+CFG="${TMPROOT}/other"
+mkdir -p "${CFG}/commands"
+S="${CFG}/settings.json"
+other_settings > "$S"
+ln -s "${OTHER}/skills/carbon-report/SKILL.md" "${CFG}/commands/carbon-report.md" 2>/dev/null \
+  || cp "${OTHER}/skills/carbon-report/SKILL.md" "${CFG}/commands/carbon-report.md"
+BEFORE="$(cat "$S")"
+OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" 2>&1)"; RC=$?
+check "other install: configure stops" "1" "$RC"
+# The folder as settings.json names it: the "C:/…" spelling on Windows, identity elsewhere
+said "other install: names its folder" "$OTHER_N" "$OUT"
+said "other install: names --replace" "--replace" "$OUT"
+check "other install: settings are left as they were" "$BEFORE" "$(cat "$S")"
+check "other install: no command is added" "carbon-report.md" "$(ls "${CFG}/commands")"
+check "other install: no copy of the mod is made" "no" "$(has "${CFG}/skills/claude-carbon")"
+
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --replace >/dev/null 2>&1; RC=$?
+check "replace: succeeds" "0" "$RC"
+check "replace: the status line is this install's" "$STATUSLINE" "$(jq -r '.statusLine.command' "$S" | tr -d '\r')"
+check "replace: Stop keeps the other tool's hook and gets ours once" "/opt/other/notify.sh
+${STOP}" "$(hook_commands "$S" Stop)"
+check "replace: SessionStart is ours alone" "$RESCAN" "$(hook_commands "$S" SessionStart)"
+if ! cc_is_windows; then
+  check "replace: the command points to this install" "${REPO_DIR}/skills/carbon-report/SKILL.md" "$(readlink "${CFG}/commands/carbon-report.md")"
+fi
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1; RC=$?
+check "replace: a plain pass afterwards has nothing to stop on" "0" "$RC"
+check "replace: and adds no second hook" "2" "$(hook_count "$S" Stop)"
+
+# The same wiring once its folder is deleted: leftovers, replaced without asking. A hook of
+# another tool whose file is missing too is not ours to judge, and stays.
+GONE="${TMPROOT}/gone-clone/claude-carbon"
+GONE_N="$(cc_native_path "$GONE")"
+CFG="${TMPROOT}/gone"
+mkdir -p "${CFG}/commands"
+S="${CFG}/settings.json"
+jq -n --arg sl "$(hook_form "${GONE_N}/scripts/statusline.sh")" \
+      --arg stop "$(hook_form "${GONE_N}/scripts/persist-session.sh")" '{
+  statusLine: {type: "command", command: $sl},
+  hooks: {Stop: [{matcher: "", hooks: [{type: "command", command: $stop}]},
+                 {matcher: "", hooks: [{type: "command", command: "/nowhere/notify.sh"}]}]}
+}' > "$S"
+ln -s "${GONE}/skills/carbon-report/SKILL.md" "${CFG}/commands/carbon-report.md" 2>/dev/null || true
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1; RC=$?
+check "gone install: configure goes on" "0" "$RC"
+check "gone install: the status line is this install's" "$STATUSLINE" "$(jq -r '.statusLine.command' "$S" | tr -d '\r')"
+check "gone install: its hook is replaced, the other tool's stays" "/nowhere/notify.sh
+${STOP}" "$(hook_commands "$S" Stop)"
+if ! cc_is_windows; then
+  check "gone install: its dangling command is replaced" "${REPO_DIR}/skills/carbon-report/SKILL.md" "$(readlink "${CFG}/commands/carbon-report.md")"
+fi
+
+# A script of the same name in a folder that is not claude-carbon belongs to someone else.
+THIRD="${TMPROOT}/third/scripts"
+mkdir -p "$THIRD"
+echo '#!/usr/bin/env bash' > "${THIRD}/statusline.sh"
+CFG="${TMPROOT}/third-cfg"
+mkdir -p "$CFG"
+S="${CFG}/settings.json"
+# Git Bash rewrites a "/c/…" argument to "C:/…" on its way to jq.exe: write and compare the
+# "C:/…" spelling there, so the test reads back exactly what it wrote.
+THIRD_N="$(cc_native_path "$THIRD")"
+jq -n --arg sl "${THIRD_N}/statusline.sh" '{statusLine: {type: "command", command: $sl}}' > "$S"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1; RC=$?
+check "third-party statusline.sh: configure goes on" "0" "$RC"
+check "third-party statusline.sh: left in place" "${THIRD_N}/statusline.sh" "$(jq -r '.statusLine.command' "$S" | tr -d '\r')"
+
+# Commands configure cannot resolve to a file are live commands of someone else, even when
+# they end in the name of one of our scripts: an interpreter in front, a variable, a
+# relative path, or a missing file whose path does not name the project.
+LIVE="${TMPROOT}/live/scripts"
+mkdir -p "$LIVE"
+echo '#!/usr/bin/env bash' > "${LIVE}/agent-stop.sh"
+CFG="${TMPROOT}/unresolved"
+mkdir -p "$CFG"
+S="${CFG}/settings.json"
+jq -n --arg a "bash ${LIVE}/agent-stop.sh" '{
+  hooks: {
+    SubagentStop: [{matcher: "", hooks: [{type: "command", command: $a}]}],
+    SessionStart: [{matcher: "", hooks: [{type: "command", command: "$HOME/.tool/scripts/safety-rescan.sh"}]}],
+    Stop: [{matcher: "", hooks: [{type: "command", command: "\"$CLAUDE_PROJECT_DIR\"/scripts/persist-session.sh"}]}],
+    SessionEnd: [{matcher: "", hooks: [{type: "command", command: "/Volumes/unmounted/tool/scripts/persist-on-exit.sh"}]}]
+  }
+}' > "$S"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1; RC=$?
+check "unresolved commands: configure goes on" "0" "$RC"
+check "unresolved commands: a hook run through bash stays" "bash ${LIVE}/agent-stop.sh
+${AGENTSTOP}" "$(hook_commands "$S" SubagentStop)"
+check "unresolved commands: a hook behind \$HOME stays" "\$HOME/.tool/scripts/safety-rescan.sh
+${RESCAN}" "$(hook_commands "$S" SessionStart)"
+check "unresolved commands: a hook behind a quoted variable stays" "\"\$CLAUDE_PROJECT_DIR\"/scripts/persist-session.sh
+${STOP}" "$(hook_commands "$S" Stop)"
+check "unresolved commands: a missing file that does not name the project stays" "/Volumes/unmounted/tool/scripts/persist-on-exit.sh
+${SESSIONEND}" "$(hook_commands "$S" SessionEnd)"
+
+# A statusLine that is not an object is not ours: --remove still takes our hooks out.
+CFG="${TMPROOT}/remove-odd"
+mkdir -p "$CFG"
+S="${CFG}/settings.json"
+jq -n --arg stop "$STOP" '{statusLine: "foo", hooks: {Stop: [{matcher: "", hooks: [{type: "command", command: $stop}]}]}}' > "$S"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --remove >/dev/null 2>&1; RC=$?
+check "remove: an odd statusLine does not stop it" "0" "$RC"
+check "remove: an odd statusLine is left as it is" '"foo"' "$(jq -c '.statusLine' "$S")"
+check "remove: and our hook goes" "false" "$(jq 'has("hooks")' "$S")"
+
+# Not a JSON object: nothing is written, in either mode. An empty file is an empty object.
+CFG="${TMPROOT}/notjson"
+mkdir -p "$CFG"
+S="${CFG}/settings.json"
+printf '[1, 2]\n' > "$S"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1; RC=$?
+check "not an object: configure stops" "1" "$RC"
+check "not an object: the file is left as it was" "[1, 2]" "$(cat "$S")"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --remove >/dev/null 2>&1; RC=$?
+check "not an object: --remove stops too" "1" "$RC"
+: > "$S"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1; RC=$?
+check "empty settings.json: configure goes on" "0" "$RC"
+check "empty settings.json: gets the status line" "$STATUSLINE" "$(jq -r '.statusLine.command' "$S" | tr -d '\r')"
+
+# --remove from an install that was never wired leaves the other one's copy of the mod.
+COPYB="${TMPROOT}/copy-b"
+mkdir -p "$COPYB"
+cp -R "${REPO_DIR}/scripts" "${REPO_DIR}/.claude-plugin" "${REPO_DIR}/hooks" "${REPO_DIR}/types" "${REPO_DIR}/data" "${REPO_DIR}/skills" "$COPYB/"
+CFG="${TMPROOT}/remove-foreign"
+mkdir -p "$CFG"
+CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+S="${CFG}/settings.json"
+BEFORE="$(cat "$S")"
+CLAUDE_CONFIG_DIR="$CFG" bash "${COPYB}/scripts/configure-settings.sh" --remove >/dev/null 2>&1
+check "remove from another copy: settings are left as they were" "$BEFORE" "$(cat "$S")"
+check "remove from another copy: the mod's copy stays" "yes" "$(has "${CFG}/skills/claude-carbon/.claude-carbon-managed")"
+check "remove from another copy: the commands stay" "yes" "$(has "${CFG}/commands/carbon-report.md")"
+
+# The same folder reached under another letter case (macOS, Windows) is this install.
+UPPER="$(dirname "$REPO_DIR")/$(basename "$REPO_DIR" | tr '[:lower:]' '[:upper:]')"
+if [ "$UPPER" != "$REPO_DIR" ] && [ "${UPPER}/scripts" -ef "${REPO_DIR}/scripts" ]; then
+  CFG="${TMPROOT}/case"
+  mkdir -p "$CFG"
+  CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1
+  CLAUDE_CONFIG_DIR="$CFG" bash "${UPPER}/scripts/configure-settings.sh" >/dev/null 2>&1; RC=$?
+  check "letter case: the same folder is not another install" "0" "$RC"
+fi
+
 # ---------------------------------------------------------------- jq 1.6 keywords
 # jq 1.6 (Ubuntu 20.04 and 22.04) rejects a variable named after a keyword: `--arg end`
 # then `$end` made a fresh install write no settings at all. CI runs a newer jq, so check

@@ -221,6 +221,55 @@ cc_is_plugin_cache() {
   return 1
 }
 
+# cc_is_homebrew <install dir>: 0 when Homebrew put this install there. Its formula writes
+# the INSTALL_METHOD file; a file rather than an environment variable, because Claude Code
+# runs the hooks straight from settings.json, with nothing in between to set one.
+cc_is_homebrew() {
+  [ -f "$1/INSTALL_METHOD" ] || return 1
+  local m=""
+  IFS= read -r m < "$1/INSTALL_METHOD" 2>/dev/null || true
+  [ "${m%$'\r'}" = "homebrew" ]
+}
+
+# cc_stable_root <install dir>: the path to write into a file that outlives this version.
+# Homebrew keeps each version in <prefix>/Cellar/<name>/<version>/ and deletes it on
+# upgrade; <prefix>/opt/<name>/ is the link that always names the current one. Any other
+# install is returned as given.
+cc_stable_root() {
+  local d="$1" prefix rest name
+  if cc_is_homebrew "$d"; then
+    case "$d" in
+      */Cellar/*/*/libexec)
+        prefix="${d%/Cellar/*}"
+        rest="${d#"${prefix}"/Cellar/}"
+        name="${rest%%/*}"
+        [ "${prefix}/opt/${name}/libexec" -ef "$d" ] && d="${prefix}/opt/${name}/libexec"
+        ;;
+    esac
+  fi
+  printf '%s' "$d"
+}
+
+# cc_version <install dir>: the version of the install, read without jq.
+cc_version() {
+  sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "$1/.claude-plugin/plugin.json" 2>/dev/null | head -n 1
+}
+
+# cc_mark_version <state dir> <version>: 0 for the first caller to see this version, 1 for
+# every later one (and when it cannot tell). A sentinel per version, made with noclobber so
+# that of two sessions starting together only one wins. Older sentinels are dropped.
+cc_mark_version() {
+  local dir="$1" v="$2" f
+  [ -n "$v" ] || return 1
+  mkdir -p "$dir" 2>/dev/null || return 1
+  ( set -C; echo 1 >"${dir}/.version-${v}" ) 2>/dev/null || return 1
+  for f in "${dir}"/.version-*; do
+    [ -f "$f" ] && [ "$f" != "${dir}/.version-${v}" ] && rm -f "$f"
+  done
+  return 0
+}
+
 # ── Processes ───────────────────────────────────────────────────────────────
 # cc_detach <command> [args…]: run a command fully in the background, so it outlives
 # the hook that started it: session start moving on, the SessionEnd budget expiring, or

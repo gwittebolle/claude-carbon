@@ -48,6 +48,14 @@ if [ -z "$REPO_DIR" ]; then
   done
   [ -n "$CACHE_LATEST" ] && REPO_DIR="${CACHE_LATEST%/}"
 fi
+# The /carbon-* commands are links into the install: they name it when the status line
+# belongs to another tool (a clone outside the default folder, a Homebrew install).
+if [ -z "$REPO_DIR" ]; then
+  CMD_LNK="$(readlink "$CFG/commands/carbon-report.md" 2>/dev/null || true)"
+  case "$CMD_LNK" in
+    */skills/carbon-report/SKILL.md) [ -d "${CMD_LNK%/skills/*}/scripts" ] && REPO_DIR="${CMD_LNK%/skills/*}" ;;
+  esac
+fi
 [ -z "$REPO_DIR" ] && REPO_DIR="$HOME/code/claude-carbon"
 FACTORS_FILE="$REPO_DIR/data/factors.json"
 
@@ -69,7 +77,7 @@ DB_PATH="$(ccp "${CLAUDE_CARBON_DB:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-c
 
 if [ ! -f "$DB_PATH" ]; then
   echo "Database not found. Run setup.sh first:"
-  echo "  bash ${CLAUDE_CARBON_DIR:-$HOME/code/claude-carbon}/scripts/setup.sh"
+  echo "  bash \"${REPO_DIR}/scripts/setup.sh\""
   exit 1
 fi
 

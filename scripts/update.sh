@@ -11,6 +11,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 STATE_DIR="$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/claude-carbon"
 
+if cc_is_homebrew "$REPO_DIR"; then
+  echo "Installed with Homebrew. Update with:  brew upgrade claude-carbon"
+  echo "The next Claude Code session then brings your history to the new factors."
+  exit 0
+fi
 [ -d "${REPO_DIR}/.git" ] || { echo "Not a git-clone install; nothing to update." >&2; exit 0; }
 case "$REPO_DIR" in
   */.claude/plugins/*)
@@ -58,7 +63,13 @@ fi
 # Re-run the settings/commands wiring: it is additive and idempotent, and it repairs installs
 # made before a hook existed (setup.sh only touches the DB, it never writes settings.json).
 # Only the mod's lines are shown: one may ask for a restart (install-mod.sh).
-bash "${SCRIPT_DIR}/configure-settings.sh" 2>&1 | grep -E '^ +(mod:|Restart)' || true
+CONFIGURE_OUT="$(bash "${SCRIPT_DIR}/configure-settings.sh" 2>&1)" && CONFIGURE_RC=0 || CONFIGURE_RC=$?
+if [ "$CONFIGURE_RC" != "0" ]; then
+  # It refused (another install is wired, settings.json unreadable): say why.
+  printf '%s\n' "$CONFIGURE_OUT" >&2
+else
+  printf '%s\n' "$CONFIGURE_OUT" | grep -E '^ +(mod:|Restart)' || true
+fi
 
 # Refresh the DB schema, then re-price history (CO2-only by default: cheap, idempotent,
 # no mixed-model cost drift).

@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-11-13
+
+### feat: the wiring can be removed, and a second install no longer doubles the hooks
+
+`scripts/configure-settings.sh --remove` takes out of `settings.json` the status line and
+the hooks this install wrote, the `/carbon-*` commands that link to it and the mod's copy.
+It compares whole commands, so a status line that calls `statusline.sh --segment`, another
+tool's hook in the same group and a hand-written `/carbon-report` all stay. The history in
+`~/.claude/claude-carbon/` is never touched.
+
+A plain pass now stops when `settings.json` already runs another claude-carbon install
+(every hook would run twice, each with its own factors), names that install and changes
+nothing; `--replace` moves the status line, the hooks and the commands to this one. Hooks
+and commands left behind by an install whose folder was deleted are replaced without
+asking. `settings.json` is rewritten only when something changed, and never when it does
+not hold a JSON object. The installer wires before it reads or re-prices anything, so a
+refusal leaves the history as it was, and `/carbon-update` shows a refusal it used to hide.
+
+### feat: a `claude-carbon` command, and an install a package manager can own
+
+`scripts/cli.sh` gives `setup`, `setup --replace`, `uninstall` and `--version` to an
+install that did not come from `install.sh`. When the install folder carries an
+`INSTALL_METHOD` file reading `homebrew`, `settings.json`, the commands and the mod's
+marker get the `opt/` path, which survives an upgrade, in place of the versioned `Cellar/`
+one the command runs from. Such an install has no updater: `/carbon-update` answers
+`brew upgrade claude-carbon`, the daily version check does not run, and the first session
+after an upgrade refreshes the mod's copy and re-prices the history (CO2 only), once per
+version, with what it did in `~/.claude/claude-carbon/post-upgrade.log`.
+
+When the status line belongs to another tool, the `/carbon-*` commands now find the
+install through their own link, before falling back to `~/code/claude-carbon`.
+
 ## 2026-11-11
 
 ### feat: early January, the card and its reminder cover the year just ended

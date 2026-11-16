@@ -161,23 +161,25 @@ else
   fi
 fi
 
-# 3. Run setup (creates DB, backfills history)
+# 3. Configure Claude Code settings and install the /carbon-* commands. First, because it
+# is the step that can refuse (another install already wired): nothing is read or re-priced
+# before it agrees.
+echo ""
+echo "Configuring Claude Code..."
+
+bash "$INSTALL_DIR/scripts/configure-settings.sh"
+
+# 4. Run setup (creates DB, backfills history)
 echo ""
 CLAUDE_CARBON_INSTALLER=1 bash "$INSTALL_DIR/scripts/setup.sh"
 
-# 3b. On update, re-price stored history with the new factors (CO2-only; cost left intact).
+# 4b. On update, re-price stored history with the new factors (CO2-only; cost left intact).
 if [ "$WAS_UPDATE" = "1" ]; then
   DB_PATH="$(cc_path "${CLAUDE_CARBON_DB:-${CONFIG_DIR}/claude-carbon/carbon.db}")"
   if [ -f "$DB_PATH" ]; then
     bash "$INSTALL_DIR/scripts/recompute.sh" || echo "  (history not re-priced; see message above)"
   fi
 fi
-
-# 4. Configure Claude Code settings and install the /carbon-* commands
-echo ""
-echo "Configuring Claude Code..."
-
-bash "$INSTALL_DIR/scripts/configure-settings.sh"
 
 echo ""
 echo "Done. Restart Claude Code to see your CO2 in the status line."
