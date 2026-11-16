@@ -289,7 +289,7 @@ cc_write_statusline_shim() {
 # "statusLine" entry out of settings.json, and this file, to remove it.
 D="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 R=""
-IFS= read -r R <"${D}/plugin-root" 2>/dev/null || true
+IFS= read -r R 2>/dev/null <"${D}/plugin-root" || true
 R="${R%$'\r'}"
 if [ -n "$R" ] && [ ! -f "${R}/scripts/statusline.sh" ]; then
   # That copy was removed by an update: the newest version folder beside it
@@ -316,16 +316,23 @@ SHIM
 # <data dir>/statusline-set ("set" or "skipped"). CLAUDE_CARBON_NO_STATUSLINE=1 skips it.
 # Never prints: it runs from the SessionStart hook.
 cc_plugin_statusline() {
-  local root="$1" dir="$2" settings="$3" shim tmp cmd
+  local root="$1" dir="$2" settings="$3" shim tmp cmd native cur=""
   command -v jq >/dev/null 2>&1 || return 0
   mkdir -p "$dir" 2>/dev/null || return 0
   shim="${dir}/statusline.sh"
-  tmp="${dir}/plugin-root.tmp.$$"
-  printf '%s\n' "$(cc_native_path "$root")" >"$tmp" 2>/dev/null && mv -f "$tmp" "${dir}/plugin-root"
+  native="$(cc_native_path "$root")"
+  IFS= read -r cur 2>/dev/null <"${dir}/plugin-root" || true
+  if [ "${cur%$'\r'}" != "$native" ]; then
+    tmp="${dir}/plugin-root.tmp.$$"
+    printf '%s\n' "$native" >"$tmp" 2>/dev/null && mv -f "$tmp" "${dir}/plugin-root"
+  fi
   cc_write_statusline_shim "$shim" || return 0
 
   [ -z "${CLAUDE_CARBON_NO_STATUSLINE:-}" ] || return 0
   [ -f "${dir}/statusline-set" ] && return 0
+  # A settings.json kept elsewhere behind a link (a dotfiles folder): replacing it would
+  # cut the link. Left to the person, and looked at again next time.
+  [ -L "$settings" ] && return 0
   if [ -f "$settings" ] && grep -q '[^[:space:]]' "$settings" 2>/dev/null; then
     # Not a JSON object: leave it alone, and look again at the next start
     jq -e 'type == "object"' "$settings" >/dev/null 2>&1 || return 0
@@ -337,15 +344,18 @@ cc_plugin_statusline() {
   # noclobber: of two sessions starting together, only one writes settings.json
   ( set -C; echo set >"${dir}/statusline-set" ) 2>/dev/null || return 0
   cmd="$(cc_native_path "$shim")"
-  # Windows: in double quotes, as configure-settings.sh writes its commands (PowerShell)
-  cc_is_windows && cmd="\"${cmd}\""
+  # Windows: in double quotes, as configure-settings.sh writes its commands (PowerShell);
+  # elsewhere a space escaped, as the shell Claude Code runs it in reads it
+  if cc_is_windows; then cmd="\"${cmd}\""; else cmd="${cmd// /\\ }"; fi
   tmp="${settings}.tmp.$$"
   if [ -f "$settings" ] && grep -q '[^[:space:]]' "$settings" 2>/dev/null; then
+    # A copy first, so the new file keeps the old one's permissions
+    cp -p "$settings" "$tmp" 2>/dev/null || { rm -f "$tmp" "${dir}/statusline-set"; return 0; }
     jq --arg c "$cmd" '. + {statusLine: {type: "command", command: $c}}' "$settings" >"$tmp" 2>/dev/null
   else
     jq -n --arg c "$cmd" '{statusLine: {type: "command", command: $c}}' >"$tmp" 2>/dev/null
   fi
-  if [ -s "$tmp" ] && jq -e 'type == "object"' "$tmp" >/dev/null 2>&1; then
+  if [ -s "$tmp" ] && jq -e 'type == "object" and has("statusLine")' "$tmp" >/dev/null 2>&1; then
     mv -f "$tmp" "$settings"
   else
     rm -f "$tmp" "${dir}/statusline-set"

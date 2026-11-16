@@ -9,8 +9,11 @@ each version. The plugin's SessionStart hook now keeps `~/.claude/claude-carbon/
 a fixed script that runs the status line of the copy the last session started with (or of
 the newest copy beside it, after an update), and points `settings.json` at it once, at the
 first session start, only when no status line is set. Another tool's status line, or one
-removed afterwards, is never touched. `CLAUDE_CARBON_NO_STATUSLINE=1` skips it. Once the
-plugin is uninstalled the script prints nothing.
+removed afterwards, is never touched, nor a `settings.json` that is a link to another
+file; the new file keeps the old one's permissions. `CLAUDE_CARBON_NO_STATUSLINE=1` skips
+it. Once the plugin is uninstalled the script prints nothing. Behind that status line, the
+`/carbon-*` commands find the plugin's copy through `plugin-root`, and the update notice
+reads the plugin's own release check.
 
 ### docs: one line to install, at the top of the README
 

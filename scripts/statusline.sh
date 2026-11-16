@@ -307,6 +307,8 @@ fi
 # staleness gate means an abandoned flag (background check stopped) self-clears.
 UPDATE_SEGMENT=""
 UPD_FILE="${CONFIG_DIR}/claude-carbon/update-check.json"
+# The plugin's copy (its own status line, see cc_plugin_statusline) has its own flag
+cc_is_plugin_cache "$SCRIPT_DIR" && UPD_FILE="${CONFIG_DIR}/claude-carbon/plugin-update-check.json"
 if [ -z "${CLAUDE_CARBON_NO_UPDATE_NOTIFIER:-}" ] && [ -f "$UPD_FILE" ] && command -v jq &>/dev/null; then
   # One jq call for the three fields: this runs on every turn, so each spawn is felt.
   UPD_BEHIND=""; UPD_AT=0; UPD_REMOTE=""

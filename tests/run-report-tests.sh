@@ -171,6 +171,36 @@ check "quoted statusLine: the install is found" \
   "  Since January 1: 2,468 kg, 123% of a 2 t per-person annual budget" \
   "$(line_after "$OUT" "--- Annual budget (${YEAR}) ---")"
 
+# The plugin's own status line: a small script in the data folder, next to a plugin-root
+# file naming the plugin's copy. The install is the folder plugin-root names, never the
+# config folder above the script.
+PHOME="${TMPROOT}/phome"
+mkdir -p "${PHOME}/cfg/claude-carbon"
+printf '#!/usr/bin/env bash\n' > "${PHOME}/cfg/claude-carbon/statusline.sh"
+printf '%s\n' "$REPO_DIR" > "${PHOME}/cfg/claude-carbon/plugin-root"
+jq -n --arg c "${PHOME}/cfg/claude-carbon/statusline.sh" '{statusLine: {type: "command", command: $c}}' \
+  > "${PHOME}/cfg/settings.json"
+OUT="$(
+  unset CLAUDE_PLUGIN_ROOT CLAUDE_CARBON_DIR
+  HOME="$PHOME" CLAUDE_CONFIG_DIR="${PHOME}/cfg" CLAUDE_CARBON_DB="$DB" CLAUDE_CARBON_LOCALE=en_US \
+    bash "$REPORT" 2>&1
+)"
+check "plugin status line: the install is the folder plugin-root names" \
+  "  Since January 1: 2,468 kg, 123% of a 2 t per-person annual budget" \
+  "$(line_after "$OUT" "--- Annual budget (${YEAR}) ---")"
+
+# plugin-root naming a copy that is gone (an update removed it): the lookup falls through
+# to the next guess instead of using the config folder.
+printf '%s\n' "${PHOME}/gone" > "${PHOME}/cfg/claude-carbon/plugin-root"
+OUT="$(
+  unset CLAUDE_PLUGIN_ROOT
+  HOME="$PHOME" CLAUDE_CONFIG_DIR="${PHOME}/cfg" CLAUDE_CARBON_DIR="$REPO_DIR" CLAUDE_CARBON_DB="$DB" \
+    CLAUDE_CARBON_LOCALE=en_US bash "$REPORT" 2>&1
+)"
+check "plugin status line, copy gone: falls through to the next guess" \
+  "  Since January 1: 2,468 kg, 123% of a 2 t per-person annual budget" \
+  "$(line_after "$OUT" "--- Annual budget (${YEAR}) ---")"
+
 echo ""
 echo "passed: ${PASSED}   failed: ${FAILED}"
 [ "$FAILED" -eq 0 ] || exit 1

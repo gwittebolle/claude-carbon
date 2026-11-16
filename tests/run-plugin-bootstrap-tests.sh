@@ -181,7 +181,7 @@ sl_command() { jq -r '.statusLine.command // ""' "$1/settings.json" 2>/dev/null 
 sl_expected() {
   local c
   c="$(cc_native_path "$1/claude-carbon/statusline.sh")"
-  if cc_is_windows; then printf '"%s"' "$c"; else printf '%s' "$c"; fi
+  if cc_is_windows; then printf '"%s"' "$c"; else printf '%s' "${c// /\\ }"; fi
 }
 
 CFG="${TMPROOT}/sl1"
@@ -281,6 +281,51 @@ rm -rf "$P1"
 check "copy gone: the newest one beside it runs" "$(printf '{}' | bash "${CFG}/claude-carbon/statusline.sh")" "copy 1.21.0"
 rm -rf "$CACHE"
 check "plugin uninstalled: prints nothing" "$(printf '{}' | bash "${CFG}/claude-carbon/statusline.sh"; echo "rc=$?")" "rc=0"
+
+# The plugin's own update flag: the status line run from the plugin names the new version
+CFG="${TMPROOT}/sl9"
+mkdir -p "$CFG"
+P1="$(plugin_copy "$CFG" 1.20.0)"
+plugin_start "$CFG" "$P1" >/dev/null 2>&1
+printf '{"behind":true,"local":"1.20.0","remote":"1.21.0","checked_at":%s}\n' "$(date +%s)" \
+  >"${CFG}/claude-carbon/plugin-update-check.json"
+SL_OUT="$(printf '%s' "$SL_IN" | env -u CLAUDE_CARBON_NO_UPDATE_NOTIFIER CLAUDE_CONFIG_DIR="$CFG" \
+  bash "${CFG}/claude-carbon/statusline.sh" 2>/dev/null)"
+check "plugin update flag: the status line names the new version" \
+  "$(printf '%s' "$SL_OUT" | grep -c '1.21.0 /carbon-update')" "1"
+
+# settings.json behind a link (a dotfiles folder): the link is kept, nothing decided yet
+if ! cc_is_windows; then
+  CFG="${TMPROOT}/sl10"
+  mkdir -p "$CFG" "${TMPROOT}/dotfiles"
+  P1="$(plugin_copy "$CFG" 1.20.0)"
+  printf '{"model": "opus"}\n' >"${TMPROOT}/dotfiles/settings.json"
+  ln -s "${TMPROOT}/dotfiles/settings.json" "${CFG}/settings.json"
+  plugin_start "$CFG" "$P1" >/dev/null 2>&1
+  check "linked settings.json: the link is kept" "$([ -L "${CFG}/settings.json" ] && echo yes)" "yes"
+  check "linked settings.json: its target untouched" "$(jq -c . "${TMPROOT}/dotfiles/settings.json")" '{"model":"opus"}'
+  check "linked settings.json: no decision recorded" "$([ -f "${CFG}/claude-carbon/statusline-set" ] && echo yes)" ""
+
+  # Its permissions are kept
+  CFG="${TMPROOT}/sl11"
+  mkdir -p "$CFG"
+  P1="$(plugin_copy "$CFG" 1.20.0)"
+  printf '{"model": "opus"}\n' >"${CFG}/settings.json"
+  chmod 600 "${CFG}/settings.json"
+  plugin_start "$CFG" "$P1" >/dev/null 2>&1
+  check "permissions: status line set" "$(sl_command "$CFG")" "$(sl_expected "$CFG")"
+  check "permissions: kept" "$(ls -l "${CFG}/settings.json" | cut -c1-10)" "-rw-------"
+
+  # A config folder with a space: the command runs in a shell, the space is escaped
+  CFG="${TMPROOT}/with space"
+  mkdir -p "$CFG"
+  P1="$(plugin_copy "$CFG" 1.20.0)"
+  plugin_start "$CFG" "$P1" >/dev/null 2>&1
+  check "space in the path: escaped" "$(sl_command "$CFG")" "$(sl_expected "$CFG")"
+  check "space in the path: the command runs" \
+    "$(printf '%s' "$SL_IN" | CLAUDE_CONFIG_DIR="$CFG" CLAUDE_CARBON_NO_UPDATE_NOTIFIER=1 \
+      bash -c "$(sl_command "$CFG")" 2>/dev/null | grep -c 'gCO₂')" "1"
+fi
 
 echo "${PASS} passed, ${FAIL} failed"
 [ "$FAIL" -eq 0 ]

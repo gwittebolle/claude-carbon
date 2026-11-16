@@ -30,7 +30,16 @@ if command -v jq >/dev/null 2>&1 && [ -f "$CFG/settings.json" ]; then
   # unquote, expand ~ and unescape spaces
   SL_CMD="${SL_CMD#\"}"; SL_CMD="${SL_CMD%\"}"
   SL_CMD="${SL_CMD//\\ / }"; SL_CMD="${SL_CMD/#\~/$HOME}"; SL_CMD="$(ccp "$SL_CMD")"
-  [ -n "$SL_CMD" ] && [ -f "$SL_CMD" ] && REPO_DIR="$(cd "$(dirname "$SL_CMD")/.." 2>/dev/null && pwd)"
+  if [ -n "$SL_CMD" ] && [ -f "$SL_CMD" ]; then
+    SL_DIR="$(dirname "$SL_CMD")"
+    if [ -f "$SL_DIR/plugin-root" ]; then
+      # The plugin's own status line: a small script next to a file naming the plugin's folder
+      R=""; IFS= read -r R <"$SL_DIR/plugin-root" 2>/dev/null; R="$(ccp "${R%$'\r'}")"
+      [ -n "$R" ] && [ -d "$R/scripts" ] && REPO_DIR="$R"
+    else
+      REPO_DIR="$(cd "$SL_DIR/.." 2>/dev/null && pwd)"
+    fi
+  fi
 fi
 [ -z "$REPO_DIR" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && REPO_DIR="$(ccp "$CLAUDE_PLUGIN_ROOT")"
 [ -z "$REPO_DIR" ] && [ -n "${CLAUDE_CARBON_DIR:-}" ] && REPO_DIR="$(ccp "$CLAUDE_CARBON_DIR")"

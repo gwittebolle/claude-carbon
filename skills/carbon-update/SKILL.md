@@ -30,7 +30,14 @@ if command -v jq >/dev/null 2>&1 && [ -f "$SETTINGS" ]; then
   SL_CMD="${SL_CMD#\"}"; SL_CMD="${SL_CMD%\"}"
   SL_CMD="${SL_CMD//\\ / }"; SL_CMD="${SL_CMD/#\~/$HOME}"; SL_CMD="$(ccp "$SL_CMD")"
   if [ -n "$SL_CMD" ] && [ -f "$SL_CMD" ]; then
-    REPO_DIR="$(cd "$(dirname "$SL_CMD")/.." 2>/dev/null && pwd)"
+    SL_DIR="$(dirname "$SL_CMD")"
+    if [ -f "$SL_DIR/plugin-root" ]; then
+      # The plugin's own status line: a small script next to a file naming the plugin's folder
+      R=""; IFS= read -r R <"$SL_DIR/plugin-root" 2>/dev/null; R="$(ccp "${R%$'\r'}")"
+      [ -n "$R" ] && [ -d "$R/scripts" ] && REPO_DIR="$R"
+    else
+      REPO_DIR="$(cd "$SL_DIR/.." 2>/dev/null && pwd)"
+    fi
   fi
 fi
 # The install the status line runs from, before any guess below
