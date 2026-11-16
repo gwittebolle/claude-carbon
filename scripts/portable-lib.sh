@@ -333,6 +333,8 @@ cc_plugin_statusline() {
   # A settings.json kept elsewhere behind a link (a dotfiles folder): replacing it would
   # cut the link. Left to the person, and looked at again next time.
   [ -L "$settings" ] && return 0
+  # Read-only: the person keeps it that way on purpose
+  if [ -e "$settings" ] && [ ! -w "$settings" ]; then return 0; fi
   if [ -f "$settings" ] && grep -q '[^[:space:]]' "$settings" 2>/dev/null; then
     # Not a JSON object: leave it alone, and look again at the next start
     jq -e 'type == "object"' "$settings" >/dev/null 2>&1 || return 0

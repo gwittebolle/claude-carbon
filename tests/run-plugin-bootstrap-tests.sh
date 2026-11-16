@@ -293,6 +293,13 @@ SL_OUT="$(printf '%s' "$SL_IN" | env -u CLAUDE_CARBON_NO_UPDATE_NOTIFIER CLAUDE_
   bash "${CFG}/claude-carbon/statusline.sh" 2>/dev/null)"
 check "plugin update flag: the status line names the new version" \
   "$(printf '%s' "$SL_OUT" | grep -c '1.21.0 /carbon-update')" "1"
+# The update applied since: the new copy runs, the flag still says 1.20.0 is behind
+P2="$(plugin_copy "$CFG" 1.21.0)"
+plugin_start "$CFG" "$P2" >/dev/null 2>&1
+SL_OUT="$(printf '%s' "$SL_IN" | env -u CLAUDE_CARBON_NO_UPDATE_NOTIFIER CLAUDE_CONFIG_DIR="$CFG" \
+  bash "${CFG}/claude-carbon/statusline.sh" 2>/dev/null)"
+check "plugin update flag, update applied: no notice" \
+  "$(printf '%s' "$SL_OUT" | grep -c '/carbon-update')" "0"
 
 # settings.json behind a link (a dotfiles folder): the link is kept, nothing decided yet
 if ! cc_is_windows; then
@@ -315,6 +322,18 @@ if ! cc_is_windows; then
   plugin_start "$CFG" "$P1" >/dev/null 2>&1
   check "permissions: status line set" "$(sl_command "$CFG")" "$(sl_expected "$CFG")"
   check "permissions: kept" "$(ls -l "${CFG}/settings.json" | cut -c1-10)" "-rw-------"
+
+  # Read-only: left alone, nothing printed, nothing decided
+  CFG="${TMPROOT}/sl12"
+  mkdir -p "$CFG"
+  P1="$(plugin_copy "$CFG" 1.20.0)"
+  printf '{"model": "opus"}\n' >"${CFG}/settings.json"
+  chmod 444 "${CFG}/settings.json"
+  OUT="$(plugin_start "$CFG" "$P1" 2>&1)"
+  check "read-only settings.json: nothing printed" "$OUT" ""
+  check "read-only settings.json: untouched" "$(jq -c . "${CFG}/settings.json")" '{"model":"opus"}'
+  check "read-only settings.json: no decision recorded" "$([ -f "${CFG}/claude-carbon/statusline-set" ] && echo yes)" ""
+  chmod 644 "${CFG}/settings.json"
 
   # A config folder with a space: the command runs in a shell, the space is escaped
   CFG="${TMPROOT}/with space"

@@ -307,14 +307,22 @@ fi
 # staleness gate means an abandoned flag (background check stopped) self-clears.
 UPDATE_SEGMENT=""
 UPD_FILE="${CONFIG_DIR}/claude-carbon/update-check.json"
-# The plugin's copy (its own status line, see cc_plugin_statusline) has its own flag
-cc_is_plugin_cache "$SCRIPT_DIR" && UPD_FILE="${CONFIG_DIR}/claude-carbon/plugin-update-check.json"
+# The plugin's copy (its own status line, see cc_plugin_statusline) has its own flag. Nothing
+# clears it when `claude plugin update` lands, so it counts only for the version that ran the
+# check: the cache folder's name, no process spent on it.
+UPD_OWN=""
+if cc_is_plugin_cache "$SCRIPT_DIR"; then
+  UPD_FILE="${CONFIG_DIR}/claude-carbon/plugin-update-check.json"
+  UPD_OWN="${SCRIPT_DIR%/scripts}"; UPD_OWN="${UPD_OWN##*/}"
+fi
 if [ -z "${CLAUDE_CARBON_NO_UPDATE_NOTIFIER:-}" ] && [ -f "$UPD_FILE" ] && command -v jq &>/dev/null; then
-  # One jq call for the three fields: this runs on every turn, so each spawn is felt.
-  UPD_BEHIND=""; UPD_AT=0; UPD_REMOTE=""
-  IFS="$(printf '\t')" read -r UPD_BEHIND UPD_AT UPD_REMOTE <<EOF
-$(jq -r '[(.behind // false), (.checked_at // 0), (.remote // "")] | @tsv' "$UPD_FILE" 2>/dev/null)
+  # One jq call for the four fields: this runs on every turn, so each spawn is felt.
+  UPD_BEHIND=""; UPD_AT=0; UPD_REMOTE=""; UPD_LOCAL=""
+  IFS="$(printf '\t')" read -r UPD_BEHIND UPD_AT UPD_REMOTE UPD_LOCAL <<EOF
+$(jq -r '[(.behind // false), (.checked_at // 0), (.remote // ""), (.local // "")] | @tsv' "$UPD_FILE" 2>/dev/null)
 EOF
+  UPD_LOCAL="${UPD_LOCAL%$'\r'}"
+  [ -n "$UPD_OWN" ] && [ "$UPD_LOCAL" != "$UPD_OWN" ] && UPD_BEHIND=""
   if [ "$UPD_BEHIND" = "true" ] && [ "${UPD_AT:-0}" -gt 0 ] 2>/dev/null && [ "$(( $(date +%s) - UPD_AT ))" -lt 604800 ] 2>/dev/null; then
     # Naming the target version turns "something changed" into a judgeable call: a patch and a
     # minor deserve different urgency. Falls back to the bare command if the flag predates it.

@@ -13,7 +13,8 @@ removed afterwards, is never touched, nor a `settings.json` that is a link to an
 file; the new file keeps the old one's permissions. `CLAUDE_CARBON_NO_STATUSLINE=1` skips
 it. Once the plugin is uninstalled the script prints nothing. Behind that status line, the
 `/carbon-*` commands find the plugin's copy through `plugin-root`, and the update notice
-reads the plugin's own release check.
+reads the plugin's own release check, for the version that ran it only. The installer
+replaces that status line when the plugin is off or uninstalled.
 
 ### docs: one line to install, at the top of the README
 
