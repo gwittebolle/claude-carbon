@@ -19,6 +19,16 @@ STAMP="${DB_DIR}/.last-rescan"
 # Drain stdin so the hook never blocks on an unread pipe
 cat >/dev/null 2>&1 || true
 
+# The plugin's status line (see cc_plugin_statusline): only when this hook runs as the
+# plugin, which Claude Code tells by CLAUDE_PLUGIN_ROOT, naming this very folder. A clone's
+# status line is written by its installer instead. Before the database checks below, which
+# exit early.
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] \
+   && [ "$(cc_path "$CLAUDE_PLUGIN_ROOT")/scripts" -ef "$SCRIPT_DIR" ]; then
+  cc_plugin_statusline "$(cd "${SCRIPT_DIR}/.." && pwd)" "$DB_DIR" \
+    "$(cc_path "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}")/settings.json"
+fi
+
 # No database yet: the plugin installed alone, with no installer run. Create it once,
 # with the history backfill.sh finds on disk, so the Stop hook records from then on.
 #  - never when CLAUDE_CARBON_DB is set: a missing file there can be a synced folder not

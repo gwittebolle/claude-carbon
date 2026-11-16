@@ -270,6 +270,89 @@ cc_mark_version() {
   return 0
 }
 
+# ── The plugin's status line ────────────────────────────────────────────────
+# Claude Code ignores a statusLine a plugin declares, and the plugin's folder changes with
+# each version (plugins/cache/<marketplace>/<plugin>/<version>/). So the plugin keeps a
+# small script at a fixed place, <data dir>/statusline.sh, that runs the status line of
+# the copy the last session started with (named in <data dir>/plugin-root), and points
+# settings.json at it once, when no status line is set.
+
+# cc_write_statusline_shim <file>: the fixed script, written as a whole each time.
+cc_write_statusline_shim() {
+  local f="$1" tmp="$1.tmp.$$"
+  cat >"$tmp" 2>/dev/null <<'SHIM' || { rm -f "$tmp"; return 1; }
+#!/usr/bin/env bash
+# claude-carbon status line, written by the claude-carbon plugin. Claude Code does not let a
+# plugin set a status line, and the plugin's folder changes with each version: this runs the
+# status line of the copy the last session started with (plugin-root, beside this file), or
+# of the newest copy beside it. With the plugin uninstalled it prints nothing: take the
+# "statusLine" entry out of settings.json, and this file, to remove it.
+D="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+R=""
+IFS= read -r R <"${D}/plugin-root" 2>/dev/null || true
+R="${R%$'\r'}"
+if [ -n "$R" ] && [ ! -f "${R}/scripts/statusline.sh" ]; then
+  # That copy was removed by an update: the newest version folder beside it
+  N=""
+  for V in "${R%/*}"/*/; do
+    [ -f "${V}scripts/statusline.sh" ] || continue
+    if [ -z "$N" ] || [ "$(printf '%s\n%s\n' "$N" "$V" | sort -V | tail -n 1)" = "$V" ]; then N="$V"; fi
+  done
+  R="${N%/}"
+fi
+if [ -n "$R" ] && [ -f "${R}/scripts/statusline.sh" ]; then
+  exec bash "${R}/scripts/statusline.sh" "$@"
+fi
+cat >/dev/null 2>&1
+exit 0
+SHIM
+  if cmp -s "$tmp" "$f"; then rm -f "$tmp"; else chmod +x "$tmp" 2>/dev/null; mv -f "$tmp" "$f"; fi
+}
+
+# cc_plugin_statusline <plugin root> <data dir> <settings file>: refresh plugin-root and the
+# fixed script, then, once, set it as the status line when settings.json has none. Another
+# tool's status line, or one the person removed after we set ours, is never touched: the
+# decision is taken once, at the first session start that sees the plugin, and kept in
+# <data dir>/statusline-set ("set" or "skipped"). CLAUDE_CARBON_NO_STATUSLINE=1 skips it.
+# Never prints: it runs from the SessionStart hook.
+cc_plugin_statusline() {
+  local root="$1" dir="$2" settings="$3" shim tmp cmd
+  command -v jq >/dev/null 2>&1 || return 0
+  mkdir -p "$dir" 2>/dev/null || return 0
+  shim="${dir}/statusline.sh"
+  tmp="${dir}/plugin-root.tmp.$$"
+  printf '%s\n' "$(cc_native_path "$root")" >"$tmp" 2>/dev/null && mv -f "$tmp" "${dir}/plugin-root"
+  cc_write_statusline_shim "$shim" || return 0
+
+  [ -z "${CLAUDE_CARBON_NO_STATUSLINE:-}" ] || return 0
+  [ -f "${dir}/statusline-set" ] && return 0
+  if [ -f "$settings" ] && grep -q '[^[:space:]]' "$settings" 2>/dev/null; then
+    # Not a JSON object: leave it alone, and look again at the next start
+    jq -e 'type == "object"' "$settings" >/dev/null 2>&1 || return 0
+    if [ "$(jq 'has("statusLine")' "$settings" 2>/dev/null | tr -d '\r')" = "true" ]; then
+      ( set -C; echo skipped >"${dir}/statusline-set" ) 2>/dev/null
+      return 0
+    fi
+  fi
+  # noclobber: of two sessions starting together, only one writes settings.json
+  ( set -C; echo set >"${dir}/statusline-set" ) 2>/dev/null || return 0
+  cmd="$(cc_native_path "$shim")"
+  # Windows: in double quotes, as configure-settings.sh writes its commands (PowerShell)
+  cc_is_windows && cmd="\"${cmd}\""
+  tmp="${settings}.tmp.$$"
+  if [ -f "$settings" ] && grep -q '[^[:space:]]' "$settings" 2>/dev/null; then
+    jq --arg c "$cmd" '. + {statusLine: {type: "command", command: $c}}' "$settings" >"$tmp" 2>/dev/null
+  else
+    jq -n --arg c "$cmd" '{statusLine: {type: "command", command: $c}}' >"$tmp" 2>/dev/null
+  fi
+  if [ -s "$tmp" ] && jq -e 'type == "object"' "$tmp" >/dev/null 2>&1; then
+    mv -f "$tmp" "$settings"
+  else
+    rm -f "$tmp" "${dir}/statusline-set"
+  fi
+  return 0
+}
+
 # ── Processes ───────────────────────────────────────────────────────────────
 # cc_detach <command> [args…]: run a command fully in the background, so it outlives
 # the hook that started it: session start moving on, the SessionEnd budget expiring, or
