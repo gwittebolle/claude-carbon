@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-16
+
+### docs: one way to install, at the top of the README
+
+The Install section now gives a single path that works in a terminal and in the Code tab
+of the desktop app: paste one message and Claude runs the installer. What to do when the
+install stops, and the other ways to install (the command run by hand, `npx`, the plugin),
+fold under it. The status line's segments and the quota source moved to How it works.
+
 ## 2026-11-13
 
 ### feat: the wiring can be removed, and a second install no longer doubles the hooks

@@ -23,96 +23,55 @@ claude-carbon is an open source Claude Code plugin that tracks the carbon footpr
 
 ## Install
 
-Two ways, same result. Pick the one that fits you:
+Paste this message into Claude Code, in a terminal or in the **Code** tab of the Claude desktop app. It works in any language.
 
-- **Not a developer, or you use the Claude desktop app:** [let Claude install it for you](#option-1-from-the-claude-desktop-app-no-terminal). No terminal, one message to paste.
-- **Developer, at ease in a terminal:** [one command](#option-2-from-a-terminal-developers).
+macOS, Linux, WSL:
 
-Already installed? See [Updating](#updating).
+```text
+Install claude-carbon for me by running this command:
+curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
+```
 
-### Option 1: from the Claude desktop app (no terminal)
+Windows:
+
+```text
+Install claude-carbon for me by running this command in PowerShell:
+irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
+```
+
+Claude asks before running the command: accept. If the mode selector under the prompt shows **Auto**, pick **Manual** first: auto mode blocks a command that downloads a script and runs it. Switch back afterwards.
+
+Then quit Claude Code completely, open it again and start a new session. Your CO2 now shows next to the session's cost:
+
+- in a terminal, in the status line: `claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 · 65gCO₂ | Use 24% ↻13:00`
+- in the desktop app, under the prompt: `This session: 3.6 gCO₂ · $0.12`
+
+`/carbon-report` gives your totals, and `/carbon-panel` opens the pane in the desktop app. The `$` is an API-equivalent cost, not what your subscription bills. To update later, run `/carbon-update`.
 
 ![Illustration of the Claude desktop app with the claude-carbon pane open: a blue pixel molecule, "This session: 8.2 gCO₂ · 0.04× your median", the last 30 days as tiles and warming stripes, a "Get my 2026 card" button, and "This session: 8.2 gCO₂" under the prompt](docs/desktop-pane.png)
 
-1. Open the **Code** tab of the Claude desktop app and start a session, in any folder. In the mode selector under the prompt box, pick **Manual** if it shows **Auto**: auto mode blocks any command that downloads a script and runs it, and Claude would hand you the command instead of running it. Switch back once the install is done.
-2. Paste the message for your system. It works in any language. Claude runs the installer for you and asks before running the command: accept.
-
-   macOS or Linux:
-
-   ```text
-   Install claude-carbon for me by running this command:
-   curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
-   ```
-
-   Windows:
-
-   ```text
-   Install claude-carbon for me by running this command in PowerShell:
-   irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
-   ```
-
-3. Quit the desktop app completely, open it again, and start a new session in the Code tab. Under the prompt you now see `This session: 3.6 gCO₂ · $0.12` (`Cette session : 3,6 gCO₂ · 0,12 $` in French). `/carbon-report` and `/carbon-card` work from there too.
-
-   The `$` is an API-equivalent cost, not what your subscription bills.
-
-**If the install stops**
+<details>
+<summary><b>If the install stops</b></summary>
 
 - **macOS opens a window about "command line developer tools".** That is `git`, which the installer needs and a Mac without developer tools does not have yet. Click **Install**, wait until it finishes (a few minutes), then tell Claude: "Run the claude-carbon install again."
 - **"jq is not installed" or "sqlite3 is not installed".** Tell Claude: "Install what is missing, then run the claude-carbon install again." Every Mac has `sqlite3`, and macOS 15 and later also have `jq`; on an older Mac the installer fetches the official `jq` itself, checked against its published checksum. On Windows the installer prints the `winget` command for each one missing. If `winget` answers "Access is denied", security software on the PC is blocking it: allow `winget` there, then ask Claude again.
 - **Windows says Git Bash is missing.** Install [Git for Windows](https://git-scm.com/downloads/win) (Claude Code needs it on Windows anyway), quit the app completely and reopen it, then ask Claude again in a new session. Claude Code looks for Git Bash when a session starts, so a session open during the Git install still runs without it.
+- **Installed from Anthropic's community marketplace and the plugin fails to load?** The `co2-tracker@claude-community` entry is pinned to a release from August 2026 that current Claude Code rejects ("Duplicate hooks file detected"). Run `/plugin uninstall co2-tracker@claude-community`, then install as above.
 
-The chat and Cowork tabs are not covered: their sessions run on Anthropic's servers, so nothing reaches your machine to count.
+</details>
 
-### Option 2: from a terminal (developers)
+<details>
+<summary><b>Other ways to install</b></summary>
 
-![Live CO2 in the Claude Code status line](docs/demo.gif)
+- **Run the command yourself** in a terminal: the `curl` or `irm` line above, without the sentence in front. On Windows it needs [Git for Windows](https://git-scm.com/downloads/win) and two packages first, see [Windows](#windows).
+- **With Node.js:** `npx claude-carbon` runs the same installer.
+- **As a Claude Code plugin:** `/plugin marketplace add gwittebolle/claude-carbon`, then `/plugin install claude-carbon@claude-carbon`. It brings the hooks, the commands and the desktop app's display, but no terminal status line: Claude Code does not let a plugin set one.
 
-**1. Install (or update):**
+Running the installer again updates an existing install.
 
-macOS, Linux, WSL:
+</details>
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
-```
-
-Windows (PowerShell), which needs [Git for Windows](https://git-scm.com/downloads/win) and two packages first - see [Windows](#windows):
-
-```powershell
-irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
-```
-
-Or, on any platform with Node.js:
-
-```bash
-npx claude-carbon
-```
-
-Same command to install and to update to the latest version (all three run the same installer).
-
-> **Installed from Anthropic's community marketplace and the plugin fails to load?** The `co2-tracker@claude-community` entry is pinned to a release from August 2026 that current Claude Code rejects ("Duplicate hooks file detected"). Run `/plugin uninstall co2-tracker@claude-community`, then install with one of the commands above.
-
-**2. Restart Claude Code.** Your CO2 appears in the status line:
-
-```
-claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 · 65gCO₂ | Use 24% ↻13:00
-```
-
-Segments, left to right: project + git branch, model + context window %, API-equivalent session cost + CO2, subscription quota % + reset time. The quota is the 5-hour window, or the weekly one when no 5-hour window is open (always, on a verified Ultra account; on Pro and Max, between a 5-hour window's reset and your next request): `Use 41% 7d ↻Thu`, the reset as a weekday while it is more than a day away. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the window (once usage reaches 15%, after a grace of 15 min for the 5-hour window and of a day for the weekly one).
-
-> **Where the CO2 shows up.** The status line is a feature of the Claude Code terminal UI. It is displayed only when you run `claude` in a terminal, including the integrated terminal of VS Code or JetBrains. The IDE extensions' chat panel has no status line at all, so nothing is displayed there even though the hooks still run and your sessions are recorded: `/carbon-report` covers them. If you use the VS Code panel and want the live CO2, open a terminal in VS Code (`` Ctrl+` ``) and run `claude` from there. The web app (claude.ai/code) runs neither the status line nor the hooks, so nothing is displayed or recorded there. The desktop app does not display the status line either; the plugin's [mod](#the-mod-carbon-panel-and-the-co2-of-each-answer) draws the CO2 in its Code tab.
-
-**Quota source.** The percentage is Anthropic's own, the same data Claude Code displays in `/usage`. No heuristic, no token-limit file to seed. Two sources in order:
-
-1. **stdin** (preferred): the `rate_limits` Claude Code passes in the statusline JSON, `five_hour` first, else `seven_day`. When `rate_limits` is there, a window it leaves out does not exist, and nothing else is asked.
-2. **OAuth API fallback**, only when stdin has no `rate_limits` (before the session's first response, or with an older Claude Code): `GET https://api.anthropic.com/api/oauth/usage` with the bearer token from macOS Keychain, `CLAUDE_CODE_OAUTH_TOKEN`, or `~/.claude/.credentials.json`, at most once a minute whether it answers or not. The answer is cached in `~/.claude/claude-carbon/oauth-usage.json`; a window without a reset time, or whose reset has passed, is left out.
-
-Accurate on Pro, Max and Ultra.
-
-**3. Use the slash commands:**
-
-- `/carbon-report` - text report with totals, a car equivalent, this year's share of a 2 t per-person budget, top sessions
-- `/carbon-card` - generate shareable PNG report cards (drawn with the Chrome or Edge already on your machine, see [Dependencies](#dependencies); without one the card opens in your browser)
-- `/carbon-update` - update to the latest version, whichever way you installed (see [Updating](#updating))
+Not covered: the chat and Cowork tabs and the web app (claude.ai/code). Their sessions run on Anthropic's servers, so nothing reaches your machine to count.
 
 ## Example report
 
@@ -352,6 +311,19 @@ An agent's transcript stops changing once the agent is done, so its totals are k
 **Cost** is the theoretical API list value (pay-as-you-go), not your subscription price: input, output, cache write, and cache read (0.1x input) at current Anthropic rates, set in `data/prices.json`. Cache writes are billed per TTL tier, 1.25x input for the 5-minute tier and 2x for the 1-hour one; each session's split is read from its transcript rather than assumed (Claude Code writes at the 1-hour tier). On deduplicated data it matches `ccusage`.
 
 **statusline** reads this session's row from `carbon.db` at each turn, so the CO2 it shows is the session total on the same basis as the reports, one turn behind at most. Before that row exists (first turn, or no database yet) it falls back to an estimate from `context_window.total_input_tokens`, which is the size of the current context rather than a running total: subagents are invisible to it and every compaction sends it back down. Either way the status line displays, it never feeds the reports.
+
+### The status line
+
+Segments, left to right: project + git branch, model + context window %, API-equivalent session cost + CO2, subscription quota % + reset time. The quota is the 5-hour window, or the weekly one when no 5-hour window is open (always, on a verified Ultra account; on Pro and Max, between a 5-hour window's reset and your next request): `Use 41% 7d ↻Thu`, the reset as a weekday while it is more than a day away. A 🔥 prefix appears when the sustained burn rate would overshoot 100% of the limit by the end of the window (once usage reaches 15%, after a grace of 15 min for the 5-hour window and of a day for the weekly one).
+
+> **Where the CO2 shows up.** The status line is a feature of the Claude Code terminal UI. It is displayed only when you run `claude` in a terminal, including the integrated terminal of VS Code or JetBrains. The IDE extensions' chat panel has no status line at all, so nothing is displayed there even though the hooks still run and your sessions are recorded: `/carbon-report` covers them. If you use the VS Code panel and want the live CO2, open a terminal in VS Code (`` Ctrl+` ``) and run `claude` from there. The web app (claude.ai/code) runs neither the status line nor the hooks, so nothing is displayed or recorded there. The desktop app does not display the status line either; the plugin's [mod](#the-mod-carbon-panel-and-the-co2-of-each-answer) draws the CO2 in its Code tab.
+
+**Quota source.** The percentage is Anthropic's own, the same data Claude Code displays in `/usage`. No heuristic, no token-limit file to seed. Two sources in order:
+
+1. **stdin** (preferred): the `rate_limits` Claude Code passes in the statusline JSON, `five_hour` first, else `seven_day`. When `rate_limits` is there, a window it leaves out does not exist, and nothing else is asked.
+2. **OAuth API fallback**, only when stdin has no `rate_limits` (before the session's first response, or with an older Claude Code): `GET https://api.anthropic.com/api/oauth/usage` with the bearer token from macOS Keychain, `CLAUDE_CODE_OAUTH_TOKEN`, or `~/.claude/.credentials.json`, at most once a minute whether it answers or not. The answer is cached in `~/.claude/claude-carbon/oauth-usage.json`; a window without a reset time, or whose reset has passed, is left out.
+
+Accurate on Pro, Max and Ultra.
 
 ### Surviving the 30-day transcript purge
 
