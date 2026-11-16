@@ -892,6 +892,35 @@ jq -n --arg stop "$STOP" --arg rescan "$RESCAN" --arg sl "${STATUSLINE} --segmen
 echo "my own command" > "${CFG}/commands/carbon-report.md"
 ln -s "${REPO_DIR}/skills/carbon-card/SKILL.md" "${CFG}/commands/carbon-card.md" 2>/dev/null \
   || cp "${REPO_DIR}/skills/carbon-card/SKILL.md" "${CFG}/commands/carbon-card.md"
+# TEMP DEBUG (Windows): how the Stop commands come back out of jq, and whether each one,
+# CR stripped, matches itself in a jq --arg comparison. Removed once understood.
+if cc_is_windows; then
+  DBG_CMDS="$(jq -r '[.hooks.Stop[]?.hooks[]?.command // empty] | .[]' "$S")"
+  echo "DEBUG stop commands bytes:"; printf '%s' "$DBG_CMDS" | od -c | sed 's/^/DEBUG /' | head -20
+  while IFS= read -r DBG_L; do
+    DBG_L2="${DBG_L%$'\r'}"
+    echo "DEBUG line=[${DBG_L2}] match=$(jq --arg c "$DBG_L2" '[.hooks.Stop[].hooks[] | select(.command == $c)] | length' "$S" | tr -d '\r')"
+    printf '%s' "$DBG_L2" | od -c | sed 's/^/DEBUG   /' | head -4
+  done <<EOF
+$DBG_CMDS
+EOF
+  echo "DEBUG remove output:"
+  CLAUDE_CONFIG_DIR="$CFG" bash -x "$CONFIGURE" --remove 2>&1 | grep -E "drop_hook_raw|normalize_cmd|target=|removed" | sed 's/^/DEBUG /' | head -60
+  jq -n --arg stop "$STOP" --arg rescan "$RESCAN" --arg sl "${STATUSLINE} --segment" '{
+    statusLine: {type: "command", command: $sl},
+    permissions: {allow: ["Bash(ls:*)"]},
+    hooks: {
+      Stop: [
+        {matcher: "", hooks: [{type: "command", command: "/opt/other/notify.sh"}, {type: "command", command: $stop}]},
+        {matcher: "x", hooks: [{type: "command", command: "/opt/other/second.sh"}]}
+      ],
+      SessionStart: [{matcher: "", hooks: [{type: "command", command: $rescan}]}],
+      PreToolUse: [{matcher: "Bash", hooks: [{type: "command", command: "/opt/other/guard.sh"}]}]
+    }
+  }' > "$S"
+  ln -s "${REPO_DIR}/skills/carbon-card/SKILL.md" "${CFG}/commands/carbon-card.md" 2>/dev/null \
+    || cp "${REPO_DIR}/skills/carbon-card/SKILL.md" "${CFG}/commands/carbon-card.md"
+fi
 CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --remove >/dev/null 2>&1
 check "remove: a status line calling ours with an argument stays" "${STATUSLINE} --segment" "$(jq -r '.statusLine.command' "$S" | tr -d '\r')"
 check "remove: the other hook of a shared group stays, with its group" \
@@ -961,7 +990,8 @@ ln -s "${OTHER}/skills/carbon-report/SKILL.md" "${CFG}/commands/carbon-report.md
 BEFORE="$(cat "$S")"
 OUT="$(CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" 2>&1)"; RC=$?
 check "other install: configure stops" "1" "$RC"
-said "other install: names its folder" "$OTHER" "$OUT"
+# The folder as settings.json names it: the "C:/…" spelling on Windows, identity elsewhere
+said "other install: names its folder" "$OTHER_N" "$OUT"
 said "other install: names --replace" "--replace" "$OUT"
 check "other install: settings are left as they were" "$BEFORE" "$(cat "$S")"
 check "other install: no command is added" "carbon-report.md" "$(ls "${CFG}/commands")"
@@ -1010,10 +1040,13 @@ echo '#!/usr/bin/env bash' > "${THIRD}/statusline.sh"
 CFG="${TMPROOT}/third-cfg"
 mkdir -p "$CFG"
 S="${CFG}/settings.json"
-jq -n --arg sl "${THIRD}/statusline.sh" '{statusLine: {type: "command", command: $sl}}' > "$S"
+# Git Bash rewrites a "/c/…" argument to "C:/…" on its way to jq.exe: write and compare the
+# "C:/…" spelling there, so the test reads back exactly what it wrote.
+THIRD_N="$(cc_native_path "$THIRD")"
+jq -n --arg sl "${THIRD_N}/statusline.sh" '{statusLine: {type: "command", command: $sl}}' > "$S"
 CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" >/dev/null 2>&1; RC=$?
 check "third-party statusline.sh: configure goes on" "0" "$RC"
-check "third-party statusline.sh: left in place" "${THIRD}/statusline.sh" "$(jq -r '.statusLine.command' "$S")"
+check "third-party statusline.sh: left in place" "${THIRD_N}/statusline.sh" "$(jq -r '.statusLine.command' "$S" | tr -d '\r')"
 
 # Commands configure cannot resolve to a file are live commands of someone else, even when
 # they end in the name of one of our scripts: an interpreter in front, a variable, a

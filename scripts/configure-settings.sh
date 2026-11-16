@@ -169,12 +169,13 @@ drop_hook_raw() {
 # hooks, its /carbon-* links. A command with arguments (`statusline.sh --segment` inside
 # another status line) is never equal to a bare script, and stays. Mutates $EXISTING.
 remove_wiring_of() {
-  local root="$1" label="$2" event target existing removed
+  local root="$1" label="$2" event target existing removed wired=0
   target="$(normalize_cmd "${root}/scripts/statusline.sh")"
   existing="$(echo "$EXISTING" | jq -r '(.statusLine | objects | .command) // ""' 2>/dev/null)"
   if [ -n "$existing" ] && [ "$(normalize_cmd "$existing")" = "$target" ]; then
     EXISTING="$(echo "$EXISTING" | jq 'del(.statusLine)')"
     CHANGED=1
+    wired=1
     echo "  statusLine: removed${label}"
   fi
   for event in $HOOK_EVENTS; do
@@ -189,16 +190,18 @@ remove_wiring_of() {
     done <<EOF
 $(event_commands "$event")
 EOF
-    [ "$removed" = "1" ] && echo "  ${event} hook: removed${label}"
+    [ "$removed" = "1" ] && { wired=1; echo "  ${event} hook: removed${label}"; }
   done
-  remove_links_of "$root" "$label"
+  remove_links_of "$root" "$label" "$wired"
 }
 
 # The /carbon-* commands that come from one install folder: a link into its skills/, or on
 # Windows (where they are copies) a file identical to its skill. Anything else is the
-# user's own command and stays.
+# user's own command and stays. A Windows copy says nothing about which install made it
+# (two copies of claude-carbon ship the same file), so it goes only when settings.json ran
+# this install ($3 = 1, the default when there is no settings.json to tell).
 remove_links_of() {
-  local root="$1" label="$2" name lnk src dest
+  local root="$1" label="$2" wired="${3:-1}" name lnk src dest
   for name in $SKILL_NAMES; do
     lnk="${CONFIG_DIR}/commands/${name}.md"
     src="${root}/skills/${name}/SKILL.md"
@@ -212,7 +215,7 @@ remove_links_of() {
             rm -f "$lnk"; echo "  /${name}: removed${label}"
           fi ;;
       esac
-    elif [ -f "$lnk" ] && cc_is_windows && [ -f "$src" ] && cmp -s "$src" "$lnk"; then
+    elif [ "$wired" = "1" ] && [ -f "$lnk" ] && cc_is_windows && [ -f "$src" ] && cmp -s "$src" "$lnk"; then
       rm -f "$lnk"; echo "  /${name}: removed${label}"
     fi
   done
