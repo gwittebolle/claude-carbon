@@ -906,6 +906,13 @@ check "remove: our command goes" "no" "$(has "${CFG}/commands/carbon-card.md")"
 # A second pass finds nothing and does not rewrite the file.
 BEFORE="$(cat "$S")"
 printf '\n' >> "$S"   # a byte a rewrite would drop
+if cc_is_windows; then  # TEMP DEBUG
+  echo "DEBUG2 before: $(wc -c < "$S") bytes; tail:"; tail -c 12 "$S" | od -c | sed 's/^/DEBUG2 /'
+  cp "$S" "${S}.dbg"
+  CLAUDE_CONFIG_DIR="$CFG" bash -x "$CONFIGURE" --remove 2>&1 | grep -E "CHANGED=|drop_hook_raw|del\(|write_settings|mv -f|removed|DEBUG" | sed 's/^/DEBUG2 /' | head -40
+  echo "DEBUG2 after: $(wc -c < "$S") bytes; tail:"; tail -c 12 "$S" | od -c | sed 's/^/DEBUG2 /'
+  cp "${S}.dbg" "$S"
+fi
 CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --remove >/dev/null 2>&1
 check "remove: nothing to remove leaves the file as it is" "$(printf '%s\n' "$BEFORE" | wc -c | tr -d ' ')" "$(( $(wc -c < "$S" | tr -d ' ') - 1 ))"
 
