@@ -903,18 +903,12 @@ check "remove: unrelated settings stay" '["Bash(ls:*)"]' "$(jq -c '.permissions.
 check "remove: a hand-written command stays" "my own command" "$(cat "${CFG}/commands/carbon-report.md")"
 check "remove: our command goes" "no" "$(has "${CFG}/commands/carbon-card.md")"
 
-# A second pass finds nothing and does not rewrite the file.
-BEFORE="$(cat "$S")"
+# A second pass finds nothing and does not rewrite the file. Sizes are compared on disk:
+# a $(cat) capture would drop the final CRLF jq.exe writes on Windows, not just the LF.
 printf '\n' >> "$S"   # a byte a rewrite would drop
-if cc_is_windows; then  # TEMP DEBUG
-  echo "DEBUG2 before: $(wc -c < "$S") bytes; tail:"; tail -c 12 "$S" | od -c | sed 's/^/DEBUG2 /'
-  cp "$S" "${S}.dbg"
-  CLAUDE_CONFIG_DIR="$CFG" bash -x "$CONFIGURE" --remove 2>&1 | grep -E "CHANGED=|drop_hook_raw|del\(|write_settings|mv -f|removed|DEBUG" | sed 's/^/DEBUG2 /' | head -40
-  echo "DEBUG2 after: $(wc -c < "$S") bytes; tail:"; tail -c 12 "$S" | od -c | sed 's/^/DEBUG2 /'
-  cp "${S}.dbg" "$S"
-fi
+SIZE="$(wc -c < "$S" | tr -d ' ')"
 CLAUDE_CONFIG_DIR="$CFG" bash "$CONFIGURE" --remove >/dev/null 2>&1
-check "remove: nothing to remove leaves the file as it is" "$(printf '%s\n' "$BEFORE" | wc -c | tr -d ' ')" "$(( $(wc -c < "$S" | tr -d ' ') - 1 ))"
+check "remove: nothing to remove leaves the file as it is" "$SIZE" "$(wc -c < "$S" | tr -d ' ')"
 
 # An add that changes nothing does not rewrite the file either.
 CFG="${TMPROOT}/add-nowrite"
