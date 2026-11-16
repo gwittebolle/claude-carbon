@@ -2,12 +2,23 @@
 
 ## 2026-11-16
 
-### docs: one way to install, at the top of the README
+### feat: the plugin sets the terminal status line when there is none
 
-The Install section now gives a single path that works in a terminal and in the Code tab
-of the desktop app: paste one message and Claude runs the installer. What to do when the
-install stops, and the other ways to install (the command run by hand, `npx`, the plugin),
-fold under it. The status line's segments and the quota source moved to How it works.
+Claude Code ignores a status line a plugin declares, and the plugin's folder changes with
+each version. The plugin's SessionStart hook now keeps `~/.claude/claude-carbon/statusline.sh`,
+a fixed script that runs the status line of the copy the last session started with (or of
+the newest copy beside it, after an update), and points `settings.json` at it once, at the
+first session start, only when no status line is set. Another tool's status line, or one
+removed afterwards, is never touched. `CLAUDE_CARBON_NO_STATUSLINE=1` skips it. Once the
+plugin is uninstalled the script prints nothing.
+
+### docs: one line to install, at the top of the README
+
+The Install section now starts with the plugin, in one command that works on every system:
+`/plugin install claude-carbon --marketplace gwittebolle/claude-carbon`, with the message
+to paste when the desktop app does not take it. What to do when the install stops, and the
+installer and `npx`, fold under it. The status line's segments and the quota source moved
+to How it works.
 
 ## 2026-11-13
 

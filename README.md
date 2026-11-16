@@ -23,39 +23,33 @@ claude-carbon is an open source Claude Code plugin that tracks the carbon footpr
 
 ## Install
 
-Paste this message into Claude Code, in a terminal or in the **Code** tab of the Claude desktop app. It works in any language.
-
-macOS, Linux, WSL:
+In Claude Code, type:
 
 ```text
-Install claude-carbon for me by running this command:
-curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
+/plugin install claude-carbon --marketplace gwittebolle/claude-carbon
 ```
 
-Windows:
+Claude Code asks you to confirm the marketplace, shows what the plugin installs, then asks where to install it: pick **Install for you**. The same line works on macOS, Linux and Windows. In the **Code** tab of the Claude desktop app, if the line is not taken, paste this message instead and accept when Claude asks:
 
 ```text
-Install claude-carbon for me by running this command in PowerShell:
-irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
+Install the claude-carbon plugin for me: claude plugin install claude-carbon --marketplace gwittebolle/claude-carbon
 ```
-
-Claude asks before running the command: accept. If the mode selector under the prompt shows **Auto**, pick **Manual** first: auto mode blocks a command that downloads a script and runs it. Switch back afterwards.
 
 Then quit Claude Code completely, open it again and start a new session. Your CO2 now shows next to the session's cost:
 
-- in a terminal, in the status line: `claude-carbon ⌥ main | 🟢 Opus 5 ▓▓▓░░░░░░░ 35% | $0.50 · 65gCO₂ | Use 24% ↻13:00`
+- in a terminal, in the status line: `$0.50 · 65gCO₂`
 - in the desktop app, under the prompt: `This session: 3.6 gCO₂ · $0.12`
 
-`/carbon-report` gives your totals, and `/carbon-panel` opens the pane in the desktop app. The `$` is an API-equivalent cost, not what your subscription bills. To update later, run `/carbon-update`.
+The plugin sets that status line once, at its first session start, and only when you have none: another tool's status line is left as it is (to add the CO2 to it, see [ccstatusline](#using-with-ccstatusline)). `/carbon-report` gives your totals, and `/carbon-panel` opens the pane in the desktop app. The `$` is an API-equivalent cost, not what your subscription bills. To update later, run `/carbon-update`.
 
-![Illustration of the Claude desktop app with the claude-carbon pane open: a blue pixel molecule, "This session: 8.2 gCO₂ · 0.04× your median", the last 30 days as tiles and warming stripes, a "Get my 2026 card" button, and "This session: 8.2 gCO₂" under the prompt](docs/desktop-pane.png)
+<p align="center"><img src="docs/desktop-pane.png" width="560" alt="Illustration of the Claude desktop app with the claude-carbon pane open: a blue pixel molecule, &quot;This session: 8.2 gCO₂ · 0.04× your median&quot;, the last 30 days as tiles and warming stripes, a &quot;Get my 2026 card&quot; button, and &quot;This session: 8.2 gCO₂&quot; under the prompt"></p>
 
 <details>
 <summary><b>If the install stops</b></summary>
 
-- **macOS opens a window about "command line developer tools".** That is `git`, which the installer needs and a Mac without developer tools does not have yet. Click **Install**, wait until it finishes (a few minutes), then tell Claude: "Run the claude-carbon install again."
-- **"jq is not installed" or "sqlite3 is not installed".** Tell Claude: "Install what is missing, then run the claude-carbon install again." Every Mac has `sqlite3`, and macOS 15 and later also have `jq`; on an older Mac the installer fetches the official `jq` itself, checked against its published checksum. On Windows the installer prints the `winget` command for each one missing. If `winget` answers "Access is denied", security software on the PC is blocking it: allow `winget` there, then ask Claude again.
-- **Windows says Git Bash is missing.** Install [Git for Windows](https://git-scm.com/downloads/win) (Claude Code needs it on Windows anyway), quit the app completely and reopen it, then ask Claude again in a new session. Claude Code looks for Git Bash when a session starts, so a session open during the Git install still runs without it.
+- **macOS opens a window about "command line developer tools".** That is `git`, which Claude Code needs to fetch the plugin and a Mac without developer tools does not have yet. Click **Install**, wait until it finishes (a few minutes), then install again.
+- **"jq is not installed" or "sqlite3 is not installed".** Tell Claude: "Install what is missing.", then restart Claude Code. Every Mac has `sqlite3`, and macOS 15 and later also have `jq`. On an older Mac, Claude can install `jq` with Homebrew, or the installer (under Other ways to install) fetches the official `jq` itself, checked against its published checksum. On Windows, `/carbon-panel` names the one missing and Claude can install it with `winget`. If `winget` answers "Access is denied", security software on the PC is blocking it: allow `winget` there, then try again.
+- **Windows says Git Bash is missing.** Install [Git for Windows](https://git-scm.com/downloads/win) (Claude Code needs it on Windows anyway), quit the app completely and reopen it, then install again in a new session. Claude Code looks for Git Bash when a session starts, so a session open during the Git install still runs without it.
 - **Installed from Anthropic's community marketplace and the plugin fails to load?** The `co2-tracker@claude-community` entry is pinned to a release from August 2026 that current Claude Code rejects ("Duplicate hooks file detected"). Run `/plugin uninstall co2-tracker@claude-community`, then install as above.
 
 </details>
@@ -63,11 +57,24 @@ Then quit Claude Code completely, open it again and start a new session. Your CO
 <details>
 <summary><b>Other ways to install</b></summary>
 
-- **Run the command yourself** in a terminal: the `curl` or `irm` line above, without the sentence in front. On Windows it needs [Git for Windows](https://git-scm.com/downloads/win) and two packages first, see [Windows](#windows).
-- **With Node.js:** `npx claude-carbon` runs the same installer.
-- **As a Claude Code plugin:** `/plugin marketplace add gwittebolle/claude-carbon`, then `/plugin install claude-carbon@claude-carbon`. It brings the hooks, the commands and the desktop app's display, but no terminal status line: Claude Code does not let a plugin set one.
+- **The installer**, a script that clones this repository and wires everything into `~/.claude/settings.json` itself. Paste this message into Claude Code, or run the command after the colon yourself in a terminal:
 
-Running the installer again updates an existing install.
+  ```text
+  Install claude-carbon for me by running this command:
+  curl -fsSL https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.sh | bash
+  ```
+
+  On Windows, in PowerShell (it needs [Git for Windows](https://git-scm.com/downloads/win) and two packages first, see [Windows](#windows)):
+
+  ```text
+  Install claude-carbon for me by running this command in PowerShell:
+  irm https://raw.githubusercontent.com/gwittebolle/claude-carbon/main/install.ps1 | iex
+  ```
+
+  If the mode selector under the prompt shows **Auto**, pick **Manual** first: auto mode blocks a command that downloads a script and runs it. You can read [install.sh](install.sh) before running it.
+- **With Node.js:** `npx claude-carbon` runs the same installer.
+
+Use one way only: the plugin and the installer together would run every hook twice. Already installed with the installer? Nothing to change, `/carbon-update` keeps it up to date.
 
 </details>
 
@@ -405,7 +412,7 @@ Claude Code draws mods in the terminal and in the desktop app's Code tab only: n
 
 The mod comes with the plugin. Already installed from the marketplace: run `/plugin marketplace update claude-carbon` and `/plugin update claude-carbon@claude-carbon`, then restart Claude Code.
 
-The plugin alone records your sessions too, without the terminal status line (a plugin cannot set one; the installer does):
+The plugin alone records your sessions, and sets the terminal status line when you have none (see [Install](#install)):
 
 ```
 /plugin install claude-carbon --marketplace gwittebolle/claude-carbon
@@ -509,7 +516,7 @@ bash ~/code/claude-carbon/scripts/configure-settings.sh --remove
 
 (adjust the path if you installed with `CLAUDE_CARBON_DIR`). It takes the status line, the hooks, the `/carbon-*` commands and the mod's copy out of `~/.claude`, and nothing that belongs to another tool: a status line that calls `statusline.sh --segment` stays, and so does any other hook of a group it shared. Your history stays in `~/.claude/claude-carbon/`. To remove everything, delete that folder and the clone afterwards.
 
-For the plugin: `claude plugin uninstall claude-carbon@claude-carbon`.
+For the plugin: `claude plugin uninstall claude-carbon@claude-carbon`, then take the `statusLine` entry that names `claude-carbon/statusline.sh` out of `~/.claude/settings.json`: the plugin cannot do it as it goes, and once it is gone that status line prints nothing. `CLAUDE_CARBON_NO_STATUSLINE=1` keeps the plugin from setting a status line at all.
 
 Installing a second copy on top of a first one (another folder, or the installer after the plugin's clone) would run every hook twice. The installer stops when it finds another install wired into `settings.json`, names it, and gives the command that takes its place (`configure-settings.sh --replace`). Hooks left by an install whose folder was deleted are replaced without asking.
 
