@@ -2,6 +2,14 @@
 
 ## 2026-11-17
 
+### chore: the Homebrew command is a file named claude-carbon
+
+`scripts/cli.sh` becomes `scripts/claude-carbon`, so the formula installs the command with
+Homebrew's `bin.write_exec_script` instead of a wrapper with an empty environment. The
+command and its subcommands do not change, nor does anything for an install made with the
+installer, `npx` or the plugin. shellcheck, the portability checks and `.gitattributes`
+name the file, which has no `.sh` to match on.
+
 ### docs: METHODOLOGY reads the October and November papers on context length
 
 A dated "What changed since (November 2026)" block under "Where the estimate stands":
