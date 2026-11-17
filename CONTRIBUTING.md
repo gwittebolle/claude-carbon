@@ -28,7 +28,7 @@ bash tests/run-install-tests.sh   # the settings.json wiring and the update repa
 node --experimental-strip-types tests/run-mod-tests.mjs   # the mod's pure modules
 bash tests/run-mod-kit.sh         # the mod's own tests, under claude plugin test
 bash scripts/check-versions.sh    # the three version manifests agree
-shellcheck --severity=warning $(find . -name '*.sh' -not -path './.git/*')
+shellcheck --severity=warning $(find . \( -name '*.sh' -o -path ./scripts/claude-carbon \) -not -path './.git/*')
 ```
 
 `run-vectors.sh` replays the golden vectors in `tests/methodology-vectors.json`
