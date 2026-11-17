@@ -228,7 +228,7 @@ echo "no reintroduced non-Windows dependencies"
 # "~/Claude OS/code/claude-carbon") into filenames that do not exist. grep then read
 # nothing, and every guard below reported "ok" while checking exactly zero files.
 RUNTIME_FILES=()
-for f in "${REPO_DIR}"/scripts/*.sh "${REPO_DIR}/install.sh" "${REPO_DIR}"/skills/*/SKILL.md; do
+for f in "${REPO_DIR}"/scripts/*.sh "${REPO_DIR}/scripts/claude-carbon" "${REPO_DIR}/install.sh" "${REPO_DIR}"/skills/*/SKILL.md; do
   case "$f" in
     */release.sh|*/check-versions.sh|*/traffic-snapshot.sh) continue ;;  # maintainer tooling, never runs on a user machine
   esac
@@ -302,7 +302,7 @@ else
 fi
 
 CRLF_FILES=""
-for f in "${REPO_DIR}"/scripts/*.sh "${REPO_DIR}"/tests/*.sh "${REPO_DIR}/install.sh"; do
+for f in "${REPO_DIR}"/scripts/*.sh "${REPO_DIR}/scripts/claude-carbon" "${REPO_DIR}"/tests/*.sh "${REPO_DIR}/install.sh"; do
   if LC_ALL=C grep -qU $'\r' "$f" 2>/dev/null; then CRLF_FILES="${CRLF_FILES} $(basename "$f")"; fi
 done
 if [ -z "$CRLF_FILES" ]; then ok "no CRLF in tracked shell scripts"; else bad "no CRLF in tracked shell scripts" "$CRLF_FILES"; fi
@@ -755,7 +755,7 @@ echo ""
 echo "syntax"
 
 SYNTAX_BAD=""
-for f in "${REPO_DIR}"/scripts/*.sh "${REPO_DIR}"/tests/*.sh "${REPO_DIR}/install.sh"; do
+for f in "${REPO_DIR}"/scripts/*.sh "${REPO_DIR}/scripts/claude-carbon" "${REPO_DIR}"/tests/*.sh "${REPO_DIR}/install.sh"; do
   bash -n "$f" 2>/dev/null || SYNTAX_BAD="${SYNTAX_BAD} $(basename "$f")"
 done
 if [ -z "$SYNTAX_BAD" ]; then ok "all shell scripts parse"; else bad "all shell scripts parse" "$SYNTAX_BAD"; fi

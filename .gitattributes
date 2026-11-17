@@ -5,6 +5,7 @@
 # everything that is executed or parsed rather than edited by hand.
 *.sh        text eol=lf
 *.bash      text eol=lf
+scripts/claude-carbon text eol=lf
 *.json      text eol=lf
 *.jsonl     text eol=lf
 *.md        text eol=lf

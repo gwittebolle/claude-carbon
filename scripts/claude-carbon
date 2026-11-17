@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-# cli.sh — the `claude-carbon` command of an install that did not come from install.sh
-# (Homebrew). It only chains the scripts next to it: nothing here computes anything.
+# claude-carbon: the command of an install that did not come from install.sh (Homebrew).
+# Named like the command so the formula can use `bin.write_exec_script` as is. It only
+# chains the scripts next to it: nothing here computes anything.
 #
 #   claude-carbon setup [--replace]   wire the status line, hooks and /carbon-* commands
 #   claude-carbon uninstall           take them out again; the history stays

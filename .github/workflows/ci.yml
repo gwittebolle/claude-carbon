@@ -500,7 +500,7 @@ jobs:
 
       # Warnings and errors gate the build; style notes are advisory and stay out of the way.
       - name: Lint every shell script
-        run: find . -name '*.sh' -not -path './.git/*' -print0 | sort -z | xargs -0 shellcheck --severity=warning
+        run: find . \( -name '*.sh' -o -path ./scripts/claude-carbon \) -not -path './.git/*' -print0 | sort -z | xargs -0 shellcheck --severity=warning
 
   version-manifests:
     name: version manifests

@@ -70,7 +70,7 @@ brew_install() {
   rm -f "${PREFIX}/opt/claude-carbon"
   ln -s "../Cellar/claude-carbon/${v}" "${PREFIX}/opt/claude-carbon"
   # bin.write_exec_script: a wrapper that execs the versioned path
-  printf '#!/bin/bash\nexec "%s" "$@"\n' "${keg}/libexec/scripts/cli.sh" > "$BREW_BIN"
+  printf '#!/bin/bash\nexec "%s" "$@"\n' "${keg}/libexec/scripts/claude-carbon" > "$BREW_BIN"
   chmod +x "$BREW_BIN"
 }
 
@@ -79,7 +79,7 @@ brew_install() {
 if git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   # Homebrew keeps the modes of the tarball for what goes into libexec: a script the
   # wrapper or settings.json runs directly must be executable in git itself.
-  for f in cli.sh statusline.sh persist-session.sh persist-on-exit.sh safety-rescan.sh agent-stop.sh; do
+  for f in claude-carbon statusline.sh persist-session.sh persist-on-exit.sh safety-rescan.sh agent-stop.sh; do
     MODE="$(git -C "$REPO_DIR" ls-files -s "scripts/${f}" | cut -d' ' -f1)"
     # Not committed yet (a new file in a working tree): fall back to the file on disk.
     [ -n "$MODE" ] || { [ -x "${REPO_DIR}/scripts/${f}" ] && MODE=100755; }
