@@ -8,8 +8,8 @@ A dated "What changed since (November 2026)" block under "Where the estimate sta
 the decode term that grows with context now has a published form with an explicit
 `input x output` term, the prompt cache leaves it intact, its slope is a memory-read cost
 of about 0.2 J per gigabyte times a KV size Claude does not publish, and the first
-measurement past 128k context exists, at batch 1 only. No factor moves. `docs/reduce.md` adds that a history pruning which drops the
-cached prefix can raise energy.
+measurement past 128k context exists, at batch 1 only. No factor moves. `docs/reduce.md`
+adds that a history pruning which drops the cached prefix can raise energy.
 
 ## 2026-11-16
 
