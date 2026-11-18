@@ -37,12 +37,12 @@ The cache-write TTL tier does not appear in this formula. Writing a 5-minute ent
 
 ## Infrastructure parameters
 
-| Parameter      | Value            | Description                                                                   |
-| -------------- | ---------------- | ----------------------------------------------------------------------------- |
-| PUE            | 1.14             | AWS datacenter power usage effectiveness                                      |
-| CIF            | 0.287 kgCO2e/kWh | AWS region grid CIF, location-based (Jegham et al.); US average is ~380 g/kWh |
-| WUE (on-site)  | 0.18 L/kWh       | Water for datacenter cooling (not used in CO2 calc)                           |
-| WUE (off-site) | 5.11 L/kWh       | Water for electricity generation (not used in CO2 calc)                       |
+| Parameter      | Value            | Description                                                                                                                |
+| -------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| PUE            | 1.14             | AWS datacenter power usage effectiveness                                                                                   |
+| CIF            | 0.287 kgCO2e/kWh | AWS region grid CIF, location-based (Jegham et al.); US average is ~380 g/kWh                                              |
+| WUE (on-site)  | 0.18 L/kWh       | Water for datacenter cooling, AWS 2023 value used by Jegham et al.; AWS reports 0.12 L/kWh for 2025 (not used in CO2 calc) |
+| WUE (off-site) | 5.11 L/kWh       | Water for electricity generation (not used in CO2 calc)                                                                    |
 
 ## Per-model factors (gCO2e per million tokens)
 
@@ -181,7 +181,7 @@ For EUR, `data/prices.json` carries `eur_per_usd` (ECB euro reference rate, 0.87
 - Cache read energy is a derived estimate, not a measurement (see Cache read energy below). Cache reads are 90%+ of tokens in Claude Code, and across its hard bound (0-0.20) the chosen factor (default 0.08) swings the headline number from ~0.65x to ~1.5x, the widest single-parameter lever in the tool. At the default, output tokens still dominate the CO2 total.
 - Status line lags by one turn. It reads the session's own row from `carbon.db`, written by the `Stop` hook at the end of every turn, so it shows the same cumulative figure as the reports rather than an independent estimate. Until that row exists (first turn of a session, or no DB) it falls back to a `context_window.total_input_tokens` estimate, which is a snapshot of the current context: no subagents, and it drops back after every compaction. On a long agentic session that fallback understates the total by orders of magnitude, which is why it is only a fallback. Neither value is used in reports.
 - Grid-average, not real-time. The CIF is the static AWS region grid intensity (location-based, 0.287); the US national average is higher (~380 g/kWh). Actual emissions depend on Anthropic's datacenter location, energy mix, and time of day.
-- Single-fleet assumption. Since 2026 Anthropic serves Claude from a mixed fleet: AWS (Trainium and GPUs, the infrastructure Jegham measured), Google Cloud TPUs (1+ GW coming online during 2026), and, since May 2026, the whole of the Colossus 1 site in Memphis (~247 MW of permitted gas turbines plus 150-300 MW of TVA grid; a 1.2 GW permanent gas plant is under construction and the mobile turbines are due out by July 2027), largely gas-powered (~350-450 gCO2e/kWh vs the 287 used here). A single CIF and a single per-model energy cannot capture per-request routing across hardware and grids. The weighted effect of Memphis alone is roughly +5-10% on the CIF, within this tool's order-of-magnitude uncertainty; the TPU share pulls the other way. Watch item: revisit the CIF if the fleet mix shifts further toward gas-powered capacity.
+- Single-fleet assumption. Since 2026 Anthropic serves Claude from a mixed fleet: AWS (Trainium and GPUs; Jegham et al. assume GPU nodes on AWS), Google Cloud TPUs (1+ GW coming online during 2026), and, since May 2026, the whole of the Colossus 1 site in Memphis (~247 MW of permitted gas turbines plus 150-300 MW of TVA grid; a 1.2 GW permanent gas plant is under construction and the mobile turbines are due out by July 2027), largely gas-powered (~350-450 gCO2e/kWh vs the 287 used here). A single CIF and a single per-model energy cannot capture per-request routing across hardware and grids. The weighted effect of Memphis alone is roughly +5-10% on the CIF, within this tool's order-of-magnitude uncertainty; the TPU share pulls the other way. Watch item: revisit the CIF if the fleet mix shifts further toward gas-powered capacity.
 
 ## Where the estimate stands (September 2026)
 

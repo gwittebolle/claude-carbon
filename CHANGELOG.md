@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-18
+
+### docs: METHODOLOGY dates the on-site water figure and no longer says Jegham measured
+
+The on-site WUE in the infrastructure table (0.18 L/kWh) is the AWS 2023 value that
+Jegham et al. use; the row now says so and gives the 0.12 L/kWh AWS reports for 2025. The
+figure enters no calculation. The single-fleet limitation no longer calls the AWS
+infrastructure something Jegham measured: the paper models energy from API throughput and
+assumed hardware, as the Source section already states. The `_methodology` note in
+`data/factors.json` now says estimated rather than measured too; no value changes.
+
 ## 2026-11-17
 
 ### chore: the Homebrew command is a file named claude-carbon
