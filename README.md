@@ -391,6 +391,8 @@ It is one developer's total, so it belongs in your profile README or a personal 
 
 Numbers follow the locale the report uses (`fr` prints `12,4 kg`, `us` and the world default print `12.4 kg`); `CLAUDE_CARBON_LOCALE` forces a set.
 
+Costs are shown in US dollars. `CLAUDE_CARBON_CURRENCY=EUR` shows them in euros instead (`€12.34`, in French `12,34 €`) in the status line, `/carbon-report`, the `Totals since` line, the cards and the mod. They are converted at display time with the dated ECB rate in `data/prices.json` (`eur_per_usd`); the stored costs stay in USD. The pull request report (`/carbon-pr`) stays in dollars, since its comments are read by other people and added up across authors.
+
 ## The mod: /carbon-panel and the CO2 of each answer
 
 The claude-carbon plugin also holds a [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that shows the CO2 of each answer when it ends, computed locally with the same formula and factors as the status line, and the session's total with its API-price cost.

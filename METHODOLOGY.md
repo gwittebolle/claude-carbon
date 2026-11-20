@@ -171,7 +171,7 @@ The per-model prices live in `model_overrides` in `data/prices.json`. A key matc
 
 Claude Code writes at the 1-hour tier. Measured on 2026-08-24 over 24,978 assistant requests of local transcripts: 174,465,500 tokens in `ephemeral_1h`, 0 in `ephemeral_5m`. Before this correction the tool applied the 5-minute multiplier to every cache write, understating that line item by a factor 1.6, which on the same sample is +12.5% on total cost ($5,216 -> $5,870 at Opus list price). Rows captured before the split existed carry `cache_creation_1h_tokens = 0` and stay priced at the 5-minute tier; `backfill.sh` repairs the column from any transcript still inside the 30-day window, and `recompute.sh --with-cost` then re-derives their cost. On deduplicated data this reconciles to within a few percent of ccusage.
 
-For EUR, `data/prices.json` carries `eur_per_usd` (ECB euro reference rate, 0.8729 as of 2026-06-22); convert `cost_usd` at display time rather than storing EUR amounts, so a single dated rate stays the only source of truth and historical rows never need re-conversion. The recent USD/EUR range is tight (~±1%), so a monthly refresh keeps EUR accurate well within the CO2/cost uncertainty.
+For EUR (`CLAUDE_CARBON_CURRENCY=EUR`), `data/prices.json` carries `eur_per_usd` (ECB euro reference rate, 0.8729 as of 2026-06-22); the status line, `/carbon-report`, the cards and the mod convert `cost_usd` at display time rather than storing EUR amounts, so a single dated rate stays the only source of truth and historical rows never need re-conversion. The recent USD/EUR range is tight (~±1%), so a monthly refresh keeps EUR accurate well within the CO2/cost uncertainty.
 
 ## Limitations
 

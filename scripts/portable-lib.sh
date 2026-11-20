@@ -614,6 +614,29 @@ cc_prev_month_name() {
   printf '%s' "${names[$((m - 1))]}"
 }
 
+# ── Currency ────────────────────────────────────────────────────────────────
+# Costs are stored in USD. CLAUDE_CARBON_CURRENCY=EUR shows them in euros at the dated
+# `eur_per_usd` rate of data/prices.json; the stored rows are never converted.
+# cc_currency_init <prices.json>: sets CC_CURRENCY (USD or EUR) and CC_FX, the factor from
+# USD. Anything but EUR, or a missing or unreadable rate, stays USD.
+cc_currency_init() {
+  CC_CURRENCY="USD"
+  CC_FX="1"
+  local rate
+  [ "$(printf '%s' "${CLAUDE_CARBON_CURRENCY:-}" | LC_ALL=C tr '[:lower:]' '[:upper:]')" = "EUR" ] || return 0
+  rate="$(jq -r '.eur_per_usd // empty' "$1" 2>/dev/null || true)"
+  if LC_ALL=C awk -v r="$rate" 'BEGIN { exit !(r ~ /^[0-9]+(\.[0-9]+)?$/ && r > 0) }'; then
+    CC_CURRENCY="EUR"
+    CC_FX="$rate"
+  fi
+}
+
+# cc_money <usd> <decimals>: the amount in the chosen currency with its symbol, "$12.34" or "€10.77".
+cc_money() {
+  LC_ALL=C awk -v u="$1" -v fx="$CC_FX" -v d="$2" -v c="$CC_CURRENCY" \
+    'BEGIN { printf "%s" "%." d "f", (c == "EUR" ? "€" : "$"), u * fx }'
+}
+
 # ── Locale ──────────────────────────────────────────────────────────────────
 # cc_system_locale — the OS-level locale, for shells that carry no LANG at all
 # (macOS GUI-launched hooks, and every Windows shell). Empty when unknown.

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-20
+
+### feat: `CLAUDE_CARBON_CURRENCY=EUR` shows costs in euros
+
+Costs were always in US dollars. With `CLAUDE_CARBON_CURRENCY=EUR` the status line,
+`/carbon-report`, the `Totals since` line, the cards and the mod show them in euros
+(`€12.34`, in French `12,34 €`), converted at display time with the `eur_per_usd` rate that
+`data/prices.json` already carries. Stored costs stay in USD, so switching back needs no
+migration; an unknown value, or a missing or invalid rate, keeps dollars. The pull request
+report stays in dollars: its comments are read by other people and summed across authors.
+New helpers `cc_currency_init` and `cc_money` in `scripts/portable-lib.sh`; `formatUsd`,
+`costText` and `moneyValue` take a currency in the mod. The cards' `{{TOTAL_COST}}` now carries
+its symbol.
+
 ## 2026-11-18
 
 ### docs: METHODOLOGY dates the on-site water figure and no longer says Jegham measured

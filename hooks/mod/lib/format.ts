@@ -151,11 +151,42 @@ export function answerLine(view: AnswerCo2View): string {
 
 // Two decimals, as the status line rounds it; "< 0,01 $" under a cent. French puts the
 // sign after the number, English before it.
-export function formatUsd(usd: number, lang: Lang): string {
-  const isTiny = usd < 0.01;
-  const amount = decimal(isTiny ? 0.01 : usd, 2, lang);
-  const money = lang === "fr" ? `${amount}${NBSP}$` : `$${amount}`;
+export function formatUsd(
+  usd: number,
+  lang: Lang,
+  currency: Currency = displayCurrency,
+): string {
+  const value = usd * currency.rate;
+  const isTiny = value < 0.01;
+  const money = withSymbol(decimal(isTiny ? 0.01 : value, 2, lang), lang, currency);
   return isTiny ? `<${NBSP}${money}` : money;
+}
+
+// What costs are shown in. They are stored in USD; EUR converts at display time with the
+// dated eur_per_usd of data/prices.json (METHODOLOGY.md, "Pricing").
+export type Currency = { code: "USD" | "EUR"; rate: number };
+export const USD: Currency = { code: "USD", rate: 1 };
+let displayCurrency: Currency = USD;
+
+// CLAUDE_CARBON_CURRENCY: EUR with a usable rate, USD for anything else.
+export function currencyFrom(
+  setting: string | undefined,
+  eurPerUsd: number | null,
+): Currency {
+  const wantsEur = setting !== undefined && setting.trim().toUpperCase() === "EUR";
+  return wantsEur && eurPerUsd !== null && eurPerUsd > 0
+    ? { code: "EUR", rate: eurPerUsd }
+    : USD;
+}
+
+// The currency the entry, the pane and the status line show costs in.
+export function setCurrency(currency: Currency): void {
+  displayCurrency = currency;
+}
+
+function withSymbol(amount: string, lang: Lang, currency: Currency): string {
+  const symbol = currency.code === "EUR" ? "€" : "$";
+  return lang === "fr" ? `${amount}${NBSP}${symbol}` : `${symbol}${amount}`;
 }
 
 // The entry pinned under the prompt. The surface already heads it with the plugin's name.
@@ -617,8 +648,12 @@ export function changeValue(change: number): string {
 }
 
 // "27 616 $", "$27,616", "12,30 $"
-export function moneyValue(usd: number, lang: Lang): string {
-  return costText(usd, lang).replace(lang === "fr" ? " au prix API" : " at API prices", "");
+export function moneyValue(
+  usd: number,
+  lang: Lang,
+  currency: Currency = displayCurrency,
+): string {
+  return costText(usd, lang, currency).replace(lang === "fr" ? " au prix API" : " at API prices", "");
 }
 
 // Under the value tile, so it holds whoever pays: a subscription, an API key, extra
@@ -630,14 +665,17 @@ export function apiValueNote(lang: Lang): string {
 }
 
 // "12,34 $ au prix API", "$12.34 at API prices"
-export function costText(usd: number, lang: Lang): string {
-  // Whole dollars from a thousand up, grouped: "27 608 $", "$27,608"
+export function costText(
+  usd: number,
+  lang: Lang,
+  currency: Currency = displayCurrency,
+): string {
+  // Whole units from a thousand up, grouped: "27 608 $", "$27,608"
+  const value = usd * currency.rate;
   const money =
-    usd >= 1000
-      ? lang === "fr"
-        ? `${thousands(usd, lang)}${NBSP}$`
-        : `$${thousands(usd, lang)}`
-      : formatUsd(usd, lang);
+    value >= 1000
+      ? withSymbol(thousands(value, lang), lang, currency)
+      : formatUsd(usd, lang, currency);
   return lang === "fr" ? `${money} au prix API` : `${money} at API prices`;
 }
 

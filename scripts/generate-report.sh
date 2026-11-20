@@ -177,7 +177,8 @@ EOF
 . "$SCRIPT_DIR/format-lib.sh"
 
 read -r TOTAL_CO2_VALUE TOTAL_CO2_UNIT <<< "$(format_co2 "$TOTAL_CO2_RAW")"
-TOTAL_COST="$(echo "$TOTAL_COST_RAW" | LC_ALL=C awk '{printf "%.0f", $1}')"
+cc_currency_init "$PROJECT_DIR/data/prices.json"
+TOTAL_COST="$(cc_money "$TOTAL_COST_RAW" 0)"
 FIRST_DATE="$(echo "$FIRST_DATE_RAW" | cut -c1-10)"
 # Car equivalence factors: data/factors.json "equivalences", derivations in
 # METHODOLOGY.md "Equivalences used in reports". The FR card always uses the ADEME
@@ -490,7 +491,7 @@ if [ ! -f "${STATE_DIR}/card-tokens-with-cache" ]; then
   fi
   { mkdir -p "$STATE_DIR" && : > "${STATE_DIR}/card-tokens-with-cache"; } 2>/dev/null || true
 fi
-echo "Totals since ${SINCE_LABEL_EN}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${EQUIV_SRC}) · ${TOTAL_SESSIONS} sessions"
+echo "Totals since ${SINCE_LABEL_EN}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · ${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${EQUIV_SRC}) · ${TOTAL_SESSIONS} sessions"
 
 # The card put in front of the user: the French one on the French (or undetected)
 # locale, which is also the set whose figure the Totals line quotes.

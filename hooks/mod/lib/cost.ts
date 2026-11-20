@@ -66,6 +66,14 @@ function numberOrUndefined(value: unknown): number | undefined {
     : undefined;
 }
 
+// The euro rate of data/prices.json, euros per US dollar. Null when it is missing or not
+// a positive number: costs stay in dollars then.
+export function eurPerUsd(json: unknown): number | null {
+  if (!isObject(json)) return null;
+  const rate = json.eur_per_usd;
+  return typeof rate === "number" && Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
 // Reads data/prices.json as parsed JSON, falling back per value like `//` in jq. Null
 // when it is not a JSON object: there is no price to show then.
 export function parsePrices(json: unknown): Prices | null {

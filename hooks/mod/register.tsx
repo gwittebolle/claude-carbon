@@ -32,7 +32,7 @@ import {
   parseFactors,
 } from "./lib/co2.ts";
 import type { Factors, Family } from "./lib/co2.ts";
-import { costUsd, parsePrices } from "./lib/cost.ts";
+import { costUsd, eurPerUsd, parsePrices } from "./lib/cost.ts";
 import { DETAIL_SVG_HEIGHT, periodDetail, splitBarSvg, swatchSvg } from "./lib/detail.ts";
 import type { Prices } from "./lib/cost.ts";
 import {
@@ -75,6 +75,8 @@ import {
   commandDescription,
   compareText,
   costText,
+  currencyFrom,
+  setCurrency,
   currentLine,
   dateLabel,
   detectLang,
@@ -657,6 +659,7 @@ export const register: Register = (on, options) => {
   let car: CarEquivalence | null = null;
   // Null when data/prices.json cannot be read: the entry then shows the CO2 alone.
   let prices: Prices | null = null;
+  let eurRate: number | null = null;
   let lang: Lang = "fr";
   let hasCarbonStatusLine = false;
   let current: OpenTurn | null = null;
@@ -688,9 +691,12 @@ export const register: Register = (on, options) => {
     }
     try {
       const text = await $.fs.read(`${$.plugin.root}/data/prices.json`);
-      prices = typeof text === "string" ? parsePrices(JSON.parse(text)) : null;
+      const json: unknown = typeof text === "string" ? JSON.parse(text) : null;
+      prices = parsePrices(json);
+      eurRate = eurPerUsd(json);
     } catch {
       prices = null;
+      eurRate = null;
     }
     try {
       const text = await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`);
@@ -725,6 +731,7 @@ export const register: Register = (on, options) => {
         : languageSetting(settings.language),
     );
     car = carEquivalence(factorsJson, equivalenceSet(envValues, lang));
+    setCurrency(currencyFrom(await $.env.get("CLAUDE_CARBON_CURRENCY"), eurRate));
 
     // Once per machine. A session nothing draws yet is welcomed at its first
     // answer instead.

@@ -132,13 +132,13 @@ co2_display() {
 }
 CO2_DISPLAY="$(co2_display "$CO2_G")"
 
-# Round cost to 2 decimals
-COST_DISPLAY="$(echo "$COST_USD" | LC_ALL=C awk '{printf "%.2f", $1}')"
+cc_currency_init "$PRICES_FILE"
+COST_DISPLAY="$(cc_money "$COST_USD" 2)"
 
 # Segment mode stops here: no progress bar, no quota lookup (and so no
 # network fallback), no git call. The host status line owns the rest.
 if [ "$SEGMENT_MODE" = "1" ]; then
-  echo "\$${COST_DISPLAY} · ${CO2_DISPLAY}"
+  echo "${COST_DISPLAY} · ${CO2_DISPLAY}"
   exit 0
 fi
 
@@ -456,4 +456,4 @@ if [ -z "${CLAUDE_CARBON_NO_CARD_NUDGE:-}" ]; then
   fi
 fi
 
-echo "${PROJECT}${BRANCH_SUFFIX} | ${DOT} ${DISPLAY_NAME} ${PROGRESS_BAR} ${PCT_DISPLAY} | \$${COST_DISPLAY} · ${CO2_DISPLAY}${USAGE_SEGMENT}${UPDATE_SEGMENT}${DRIFT_SEGMENT}${CARD_SEGMENT}"
+echo "${PROJECT}${BRANCH_SUFFIX} | ${DOT} ${DISPLAY_NAME} ${PROGRESS_BAR} ${PCT_DISPLAY} | ${COST_DISPLAY} · ${CO2_DISPLAY}${USAGE_SEGMENT}${UPDATE_SEGMENT}${DRIFT_SEGMENT}${CARD_SEGMENT}"

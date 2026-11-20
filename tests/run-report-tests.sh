@@ -110,6 +110,16 @@ check "world: car row" \
   "        8570 km driven by car     (200 gCO2/km, world average)" \
   "$(line_after "$OUT" "--- Car equivalent (all-time) ---")"
 
+# Costs are USD unless CLAUDE_CARBON_CURRENCY=EUR: 3 sessions at $0.50 = $1.50, 1.50 x 0.8729 = 1.31.
+check "usd: cost row" "  Cost      : \$1.50" \
+  "$(echo "$OUT" | grep -F "  Cost      :")"
+OUT="$(export CLAUDE_CARBON_CURRENCY=EUR; run_report "$DB" en_US)"
+check "eur: cost row" "  Cost      : €1.31" \
+  "$(echo "$OUT" | grep -F "  Cost      :")"
+OUT="$(export CLAUDE_CARBON_CURRENCY=GBP; run_report "$DB" en_US)"
+check "unknown currency: stays USD" "  Cost      : \$1.50" \
+  "$(echo "$OUT" | grep -F "  Cost      :")"
+
 # ---------------------------------------------------------------- 3. small totals
 
 DB="${TMPROOT}/small.db"
