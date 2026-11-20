@@ -1168,10 +1168,20 @@ describe("first run", () => {
 });
 
 describe("language without LANG", () => {
-  test("nothing set gives French, and no process is started", async ($: any, on: any) => {
+  test("nothing set gives English, and no process is started", async ($: any, on: any) => {
     const { toasts, processes } = world(on, { welcomed: false, lang: null });
     await startSession($);
     expect(processes).toEqual([]);
+    expect(toasts).toEqual([EN_TOAST]);
+  });
+
+  test("the language setting can still make it French", async ($: any, on: any) => {
+    const { toasts } = world(on, {
+      welcomed: false,
+      lang: null,
+      language: "Français",
+    });
+    await startSession($);
     expect(toasts).toEqual([FR_TOAST]);
   });
 

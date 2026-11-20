@@ -29,11 +29,10 @@ detect_equiv_set() {
   # Windows and macOS spell the locale with a hyphen ("fr-FR", "en-US") where a
   # POSIX LANG uses an underscore; the patterns below accept both spellings.
   case "$resolved" in
-    # An undetected locale falls back to the French set, this tool's original
-    # default: a detection failure must reproduce the pre-locale behavior, not
-    # silently switch factor sets. Non-France francophone locales (fr_BE,
-    # fr_CA, fr_CH) deliberately fall through to the world set.
-    "" | fr | fr.* | fr_FR* | fr-FR*) echo "fr" ;;
+    # An undetected locale gets the world set, with English text, like any
+    # locale that is not France's or the US's. Non-France francophone locales
+    # (fr_BE, fr_CA, fr_CH) also fall through to the world set.
+    fr | fr.* | fr_FR* | fr-FR*) echo "fr" ;;
     us | US | *_US* | *-US*) echo "us" ;;
     *) echo "world" ;;
   esac

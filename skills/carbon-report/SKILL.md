@@ -112,8 +112,8 @@ ALL_COST="$(sqlite3 "$DB_PATH" "SELECT COALESCE(SUM(cost_usd), 0) FROM sessions 
 # --- Car equivalent (all-time total) ---
 # Factor: data/factors.json "equivalences", the car row of the detected set, the
 # same factor, label and source the cards use; derivations in METHODOLOGY.md
-# "Equivalences used in reports". France and undetected locales get ADEME, a US
-# locale EPA in miles, everyone else the world average. The other rows of each
+# "Equivalences used in reports". France gets ADEME, a US
+# locale EPA in miles, everyone else (undetected locales included) the world average. The other rows of each
 # set (Gemini prompt, TGV, steak, phone charge) stay in factors.json, unused here.
 IFS='|' read -r CAR_DIVISOR CAR_DECIMALS CAR_LABEL CAR_SOURCE <<< \
   "$(jq -r --arg set "$EQUIV_SET" \

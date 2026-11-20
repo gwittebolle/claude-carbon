@@ -181,8 +181,8 @@ TOTAL_COST="$(echo "$TOTAL_COST_RAW" | LC_ALL=C awk '{printf "%.0f", $1}')"
 FIRST_DATE="$(echo "$FIRST_DATE_RAW" | cut -c1-10)"
 # Car equivalence factors: data/factors.json "equivalences", derivations in
 # METHODOLOGY.md "Equivalences used in reports". The FR card always uses the ADEME
-# factor in km; the EN card follows the locale (ADEME on a French or undetected
-# locale, EPA in miles on a US one, world average otherwise), so the same factor
+# factor in km; the EN card follows the locale (ADEME on a French locale,
+# EPA in miles on a US one, world average otherwise, undetected included), so the same factor
 # family /carbon-report selects also drives the card.
 # shellcheck source=scripts/equiv-lib.sh
 . "$SCRIPT_DIR/equiv-lib.sh"
@@ -492,8 +492,7 @@ if [ ! -f "${STATE_DIR}/card-tokens-with-cache" ]; then
 fi
 echo "Totals since ${SINCE_LABEL_EN}: ${TOTAL_CO2_VALUE} ${TOTAL_CO2_UNIT} CO2e · \$${TOTAL_COST} · ${EQUIV_KM} ${EQUIV_UNIT} by car (${EQUIV_SRC}) · ${TOTAL_SESSIONS} sessions"
 
-# The card put in front of the user: the French one on the French (or undetected)
-# locale, which is also the set whose figure the Totals line quotes.
+# The card put in front of the user: the French one on the French locale, which is also the set whose figure the Totals line quotes.
 if [ "$LANG_FILTER" = "fr" ] || { [ -z "$LANG_FILTER" ] && [ "$EQUIV_SET" = "fr" ]; }; then
   LEAD_LANG="fr"
 else
