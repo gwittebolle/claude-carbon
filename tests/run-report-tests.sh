@@ -110,6 +110,15 @@ check "world: car row" \
   "        8570 km driven by car     (200 gCO2/km, world average)" \
   "$(line_after "$OUT" "--- Car equivalent (all-time) ---")"
 
+# No locale at all (the desktop app, a bare container): English text and the world set.
+OUT="$(unset LANG LC_ALL LC_MESSAGES; run_report "$DB" "")"
+check "undetected: car row is the world one" \
+  "        8570 km driven by car     (200 gCO2/km, world average)" \
+  "$(line_after "$OUT" "--- Car equivalent (all-time) ---")"
+check "undetected: budget line in English" \
+  "  Since January 1: 1,214 kg, 61% of a 2 t per-person annual budget" \
+  "$(line_after "$OUT" "--- Annual budget (${YEAR}) ---")"
+
 # ---------------------------------------------------------------- 3. small totals
 
 DB="${TMPROOT}/small.db"

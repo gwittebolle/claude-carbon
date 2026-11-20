@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-20
+
+### feat: English is the default language when no locale is detected
+
+With no locale set (`CLAUDE_CARBON_LOCALE`, `LC_ALL`, `LC_MESSAGES`, `LANG`, or the OS locale)
+and no `language` setting, the mod and the reports spoke French and used the French car
+factor. They now use English and the world car factor (200 gCO2/km), as a locale that is
+neither France's nor the US's already did. `fr` and `fr_FR` locales and a French `language`
+setting still give French text and the ADEME factor; `CLAUDE_CARBON_LOCALE=fr` keeps the
+French default for anyone who relied on it. `detectLang` in the mod and `detect_equiv_set` in
+`scripts/equiv-lib.sh` change; no emission factor or price changes. METHODOLOGY.md ("Locale
+detection") and the README say so, and tests cover the undetected case in the mod and in
+`/carbon-report`.
+
 ## 2026-11-18
 
 ### docs: METHODOLOGY dates the on-site water figure and no longer says Jegham measured
