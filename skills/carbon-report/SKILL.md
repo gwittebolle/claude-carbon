@@ -77,6 +77,7 @@ fi
 # the factors are country-specific (a French car and a US car differ by ~1.7x).
 . "$REPO_DIR/scripts/equiv-lib.sh"
 EQUIV_SET="$(detect_equiv_set)"
+cc_currency_init "$REPO_DIR/data/prices.json"
 
 # Force C locale: comma-decimal locales (de_DE, fr_FR) make awk mis-parse
 # "431.7045" as 431 and print "431,0" instead of "431.7"
@@ -200,7 +201,7 @@ echo ""
 echo "All time"
 echo "  CO2       : ${ALL_CO2}g"
 echo "  Sessions  : ${ALL_SESSIONS}"
-echo "  Cost      : \$${ALL_COST}"
+echo "  Cost      : $(cc_money "$ALL_COST" 2)"
 echo ""
 echo "--- Car equivalent (all-time) ---"
 printf "  %10s %-20s (%s)\n" "$CAR_COUNT" "$CAR_LABEL" "$CAR_SOURCE"
@@ -213,14 +214,14 @@ echo "--- Top 5 sessions by CO2 ---"
 echo "Date        | Project                 | CO2 (g) | Model                          | Cost"
 echo "------------|-------------------------|---------|--------------------------------|--------"
 while IFS='|' read -r date project co2 model cost; do
-  printf "%-11s | %-23s | %-7s | %-30s | \$%s\n" "$date" "$project" "$co2" "$model" "$cost"
+  printf "%-11s | %-23s | %-7s | %-30s | %s\n" "$date" "$project" "$co2" "$model" "$(cc_money "$cost" 2)"
 done <<< "$TOP5"
 echo ""
 echo "--- By project ---"
 echo "Project                  | CO2 (g)  | Sessions | Cost"
 echo "-------------------------|----------|----------|--------"
 while IFS='|' read -r project co2 sessions cost; do
-  printf "%-25s | %-8s | %-8s | \$%s\n" "$project" "$co2" "$sessions" "$cost"
+  printf "%-25s | %-8s | %-8s | %s\n" "$project" "$co2" "$sessions" "$(cc_money "$cost" 2)"
 done <<< "$BY_PROJECT"
 echo ""
 echo "Team view (same methodology): tokenclimate.com"

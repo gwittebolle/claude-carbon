@@ -24,12 +24,14 @@ import {
 } from "../hooks/mod/lib/co2.ts";
 import {
   costUsd,
+  eurPerUsd,
   modelPrices,
   parsePrices,
   priceOverride,
 } from "../hooks/mod/lib/cost.ts";
 import {
   buildAnswerCo2,
+  currencyFrom,
   detectLang,
   formatGrams,
   formatUsd,
@@ -488,6 +490,24 @@ check("$0.01", u(0.01), "0,01 $");
 check("under a cent", u(0.004), "< 0,01 $");
 check("under a cent en", u(0.004, "en"), "< $0.01");
 check("nbsp before $", formatUsd(0.12, "fr") === `0,12${NBSP}$`, true);
+const EUR = currencyFrom("eur", 0.8729);
+check("eur: usd stays the default", formatUsd(10, "en"), "$10.00");
+check("eur: en", formatUsd(10, "en", EUR), "€8.73");
+check("eur: fr, symbol after", formatUsd(10, "fr", EUR), `8,73${NBSP}€`);
+check("eur: tiny after conversion", formatUsd(0.01, "en", EUR), `<${NBSP}€0.01`);
+check("eur: cost text grouped", costText(27608.16, "en", EUR), "€24,099 at API prices");
+check("eur: cost text fr", costText(12.3, "fr", EUR).replaceAll(NBSP, " "), "10,74 € au prix API");
+check("eur: money value", moneyValue(100, "en", EUR), "€87.29");
+check("currency: unset", currencyFrom(undefined, 0.8729).code, "USD");
+check("currency: other code", currencyFrom("GBP", 0.8729).code, "USD");
+check("currency: no rate", currencyFrom("EUR", null).code, "USD");
+check("currency: bad rate", currencyFrom("EUR", 0).code, "USD");
+check("currency: spaced, any case", currencyFrom(" Eur ", 0.9).code, "EUR");
+check("rate: read", eurPerUsd({ eur_per_usd: 0.8729 }), 0.8729);
+check("rate: missing", eurPerUsd({}), null);
+check("rate: not a number", eurPerUsd({ eur_per_usd: "0.87" }), null);
+check("rate: not an object", eurPerUsd(null), null);
+check("rate: the shipped file has one", eurPerUsd(pricesRaw) > 0, true);
 check("nbsp after < en", formatUsd(0.001, "en") === `<${NBSP}$0.01`, true);
 
 const sessionCases = [
