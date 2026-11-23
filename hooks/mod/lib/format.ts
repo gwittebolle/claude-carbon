@@ -43,7 +43,7 @@ function isLocaleValue(value: string | undefined): value is string {
 }
 
 // Same order and sentinels as detect_equiv_set (scripts/equiv-lib.sh). With no
-// variable set, the language setting decides; with none, French, as in the bash.
+// variable set, the language setting decides; with none, English, as in the bash.
 export function detectLang(
   envValues: Array<string | undefined>,
   setting?: string,
@@ -55,7 +55,7 @@ export function detectLang(
   if (setting !== undefined && setting !== "") {
     return setting.toLowerCase().startsWith("fr") ? "fr" : "en";
   }
-  return "fr";
+  return "en";
 }
 
 // Whether one of the variables decides alone, so nothing else needs to be asked.

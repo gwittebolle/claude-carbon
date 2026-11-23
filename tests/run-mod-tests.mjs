@@ -603,7 +603,7 @@ check(
   "fr",
 );
 check("lang empty: setting", detectLang([undefined, ""], "en-US"), "en");
-check("lang nothing: French", detectLang([undefined]), "fr");
+check("lang nothing: English", detectLang([undefined]), "en");
 check("lang variable set", hasLangVariable([undefined, "en_US.UTF-8"]), true);
 check("lang only C and empty", hasLangVariable(["", "C.UTF-8", undefined]), false);
 // The language setting, free text, read as a locale

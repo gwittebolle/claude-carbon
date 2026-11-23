@@ -657,7 +657,7 @@ export const register: Register = (on, options) => {
   let car: CarEquivalence | null = null;
   // Null when data/prices.json cannot be read: the entry then shows the CO2 alone.
   let prices: Prices | null = null;
-  let lang: Lang = "fr";
+  let lang: Lang = "en";
   let hasCarbonStatusLine = false;
   let current: OpenTurn | null = null;
   // Background subagents: their requests count in the session total only, since they
@@ -711,7 +711,7 @@ export const register: Register = (on, options) => {
     hasCarbonStatusLine = isCarbonStatusLine(statusLine?.command);
 
     // Same variables, order and sentinels as the reports. The desktop app and a
-    // Windows session usually set none: then the language setting, then French.
+    // Windows session usually set none: then the language setting, then English.
     const envValues = [
       await $.env.get("CLAUDE_CARBON_LOCALE"),
       await $.env.get("LC_ALL"),

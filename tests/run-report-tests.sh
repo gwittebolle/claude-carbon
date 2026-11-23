@@ -110,6 +110,22 @@ check "world: car row" \
   "        8570 km driven by car     (200 gCO2/km, world average)" \
   "$(line_after "$OUT" "--- Car equivalent (all-time) ---")"
 
+# No locale at all (the desktop app, a bare container): English text and the world set.
+# Unsetting the variables is not enough on macOS and Windows, where detect_equiv_set
+# then reads the OS locale (`defaults` and `reg`): stubs that print nothing hide it.
+NO_OS_LOCALE="${TMPROOT}/no-os-locale"
+mkdir -p "$NO_OS_LOCALE"
+printf '#!/bin/sh\nexit 0\n' > "${NO_OS_LOCALE}/defaults"
+printf '#!/bin/sh\nexit 0\n' > "${NO_OS_LOCALE}/reg"
+chmod +x "${NO_OS_LOCALE}/defaults" "${NO_OS_LOCALE}/reg"
+OUT="$(unset LANG LC_ALL LC_MESSAGES; PATH="${NO_OS_LOCALE}:${PATH}"; run_report "$DB" "")"
+check "undetected: car row is the world one" \
+  "        8570 km driven by car     (200 gCO2/km, world average)" \
+  "$(line_after "$OUT" "--- Car equivalent (all-time) ---")"
+check "undetected: budget line in English" \
+  "  Since January 1: 1,214 kg, 61% of a 2 t per-person annual budget" \
+  "$(line_after "$OUT" "--- Annual budget (${YEAR}) ---")"
+
 # ---------------------------------------------------------------- 3. small totals
 
 DB="${TMPROOT}/small.db"
