@@ -111,7 +111,14 @@ check "world: car row" \
   "$(line_after "$OUT" "--- Car equivalent (all-time) ---")"
 
 # No locale at all (the desktop app, a bare container): English text and the world set.
-OUT="$(unset LANG LC_ALL LC_MESSAGES; run_report "$DB" "")"
+# Unsetting the variables is not enough on macOS and Windows, where detect_equiv_set
+# then reads the OS locale (`defaults` and `reg`): stubs that print nothing hide it.
+NO_OS_LOCALE="${TMPROOT}/no-os-locale"
+mkdir -p "$NO_OS_LOCALE"
+printf '#!/bin/sh\nexit 0\n' > "${NO_OS_LOCALE}/defaults"
+printf '#!/bin/sh\nexit 0\n' > "${NO_OS_LOCALE}/reg"
+chmod +x "${NO_OS_LOCALE}/defaults" "${NO_OS_LOCALE}/reg"
+OUT="$(unset LANG LC_ALL LC_MESSAGES; PATH="${NO_OS_LOCALE}:${PATH}"; run_report "$DB" "")"
 check "undetected: car row is the world one" \
   "        8570 km driven by car     (200 gCO2/km, world average)" \
   "$(line_after "$OUT" "--- Car equivalent (all-time) ---")"
