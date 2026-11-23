@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-23
+
+### chore: prices.json drops the unused EUR rate
+
+`data/prices.json` carried `eur_per_usd` (ECB rate of 2026-06-22) and METHODOLOGY.md described
+converting costs to euros at display time, but no script and no part of the mod read it. Both
+are removed: costs are shown in US dollars, the currency of Anthropic's list prices, and the
+tool keeps no exchange rate. No price, factor or computed figure changes.
+
 ## 2026-11-20
 
 ### feat: English is the default language when no locale is detected
