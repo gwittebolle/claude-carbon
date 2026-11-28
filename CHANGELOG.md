@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-28
+
+### docs: METHODOLOGY reads EcoLogits 0.12 for Haiku 5.5, Opus 5.5 and Fable 5.2
+
+METHODOLOGY.md said to revisit the Haiku floor once EcoLogits added Haiku 5.5, and had no
+EcoLogits reading for Opus 5.5 or any Fable. EcoLogits 0.12.0 (models data of 2026-11-19) has
+all of them. Haiku 5.5 copies the Haiku 4.5 assumptions and reads 0.071x Sonnet 5.5, so the
+floor stays about 0.07x. Opus 5.5 reads 3.1x Sonnet 5.5 (2.3x on parameters) and Fable 5.2
+2.7x Opus 5.5 (1.6x on parameters, the rest from the GPU count rounding up to a power of
+two), against 2x and 2x here. The Opus, Haiku and Fable paragraphs and the November 2026
+review say so, with how the figures were computed. No factor, price or computed figure
+changes.
+
 ## 2026-11-23
 
 ### chore: prices.json drops the unused EUR rate
